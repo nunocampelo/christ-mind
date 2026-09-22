@@ -4,22 +4,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A monorepo (root `christ/`, apps under `apps/`) currently holding one package:
-**`mind-of-christ-mcp`** (`apps/mcp-server/`), an **MCP (Model Context Protocol) server**
-exposing the "Mind of Christ" knowledge system as tools for an LLM agent to call over
-stdio. It is not an HTTP service — there's no FastAPI/web layer here.
+A monorepo (root `christ/`) that is now DDD-layered:
 
-This is an early prototype slice, not the target architecture. The current tool set is one
-function, `find_sources`, backed by a small in-memory stub of public-domain (KJV) source
-passages — not a real datastore. Per `apps/mcp-server/README.md`, not yet built: real
-database-backed repositories, additional tools (e.g. `explore_situation`), an
-orchestrator/agent layer, an A2A interface, and an evaluation harness. Expect more apps to
-land under `apps/` as that architecture is built out — keep each app self-contained with
-its own `pyproject.toml`, sharing only the root `.venv`.
+- `apps/` — thin, transport-specific interfaces. Currently one: **`mind-of-christ-mcp`**
+  (`apps/mcp-server/`), an **MCP (Model Context Protocol) server** exposing the "Mind of
+  Christ" knowledge system as tools for an LLM agent to call over stdio. Not an HTTP
+  service — there's no FastAPI/web layer here. More apps (`agent/`, `a2a-server/`) will
+  land here as the orchestrator/agent layer and A2A interface are built; only create an
+  app directory once it has real code, not as an empty scaffold.
+- `src/domain/` — entities and business rules, transport- and storage-agnostic. Currently
+  `src/domain/sources/` (the `Source` dataclass).
+- `src/application/` — use cases that orchestrate domain objects against a repository.
+  Currently `src/application/retrieval/` (`find_sources`).
+- `src/infrastructure/` — concrete backing for the domain/application layers. Currently
+  `src/infrastructure/database/` (`list_sources`, an in-memory stub — see Architecture).
+- `evaluation/` — not built yet; add it (and its subfolders) only once there's a real
+  scenario/evaluator to put in it, per the README's roadmap.
 
-Imports inside `apps/mcp-server` are bare-package (`from mind_of_christ_mcp.tools import
-find_sources`), since the package installs editable (`pip install -e`) with `src/` as the
-layout root. Tests import the same way.
+`src/domain/`, `src/application/`, and `src/infrastructure/` are one shared, installable
+package (`mind-of-christ`, root `pyproject.toml`, `where = ["src"]` in its
+`[tool.setuptools.packages.find]`) that `apps/mcp-server` depends on — unlike `apps/`, they
+are **not** self-contained per-app code; that's the point of pulling shared logic out of
+`apps/mcp-server` in the first place. Everything still shares the one root `.venv`. The
+package names stay bare (`domain`, `application`, `infrastructure`, no `src.` prefix) —
+`src/` is only a layout root, exactly like `apps/mcp-server/src/`.
+
+**Every `__init__.py` in this repo is empty — no re-exporting.** Imports always name the
+actual module a symbol is defined in, never the enclosing package:
+`from domain.sources.models import Source`, `from application.retrieval.find_sources import
+find_sources`, `from infrastructure.database.sources import list_sources`, and inside
+`apps/mcp-server`, `from application.retrieval.find_sources import find_sources` and `from
+mind_of_christ_mcp.schemas.sources import SourceResult`. This trades a shorter import path
+for one that's unambiguous about where a symbol actually lives, and it means a package's
+`__init__.py` never becomes a second place a new export has to be wired up. Both the root
+package and `apps/mcp-server` install editable (`pip install -e`), each with its own `src/`
+as its layout root. Tests import the same way.
 
 ## Style
 
@@ -27,9 +46,10 @@ layout root. Tests import the same way.
 preamble describing what the next few lines do, and do not restate what a function or
 variable name already tells the reader. Add a comment only when a competent reader would
 still be confused — a subtle invariant, a non-obvious workaround, or a "why this and not
-the obvious alternative". Applies equally to `src/` and `tests/`. If in doubt, delete the
-comment. `data.py` and `tools.py` already follow this — module docstrings explain *why* a
-piece is a placeholder, not what each line does.
+the obvious alternative". Applies equally to both `src/` trees (root and
+`apps/mcp-server/`) and `tests/`. If in doubt, delete the comment.
+`src/infrastructure/database/sources.py` already follows this — its module docstring
+explains *why* it's a placeholder, not what each line does.
 
 ## Formatting
 
@@ -43,14 +63,26 @@ around it or weaken its config to silence a warning.
 
 `requires-python = ">=3.12"`; the checked-in `.venv` runs 3.14.7. **Use the modern, native
 syntax** — `list[X]` / `dict[K, V]`, `X | None` — never `typing.List`/`typing.Optional`.
-No type checker (`mypy`/`pyright`) is configured yet; if one is added, run it before
-finishing a change, fix every error by tightening the annotation or narrowing with
-`isinstance`, and reserve a scoped `# type: ignore[code]` (never bare) for genuine
-checker limitations.
+
+**`pyright` is configured** (root `pyproject.toml`'s `[tool.pyright]`, `dev` extra of the
+root package), `typeCheckingMode = "standard"`, covering root `src/`, root `tests/`, and
+`apps/mcp-server/src`. Run `.venv/bin/pyright` from the repo root before finishing any
+change; fix every error by tightening the annotation or narrowing with `isinstance`, and
+reserve a scoped `# type: ignore[code]` (never bare) for genuine checker limitations.
 
 Keep tool-facing shapes typed: `find_sources` returns `list[Source]` (a frozen dataclass in
-`data.py`), and the MCP tool wrapper in `server.py` is the one place that flattens it to
-`list[dict]` for the wire — that conversion doesn't belong in `tools.py`.
+`src/domain/sources/models.py`), and the MCP tool wrapper in `apps/mcp-server`'s `server.py`
+is
+the one place that converts it to the wire type for each tool — that conversion doesn't
+belong in `application/retrieval`.
+
+**No bare `dict`/`dict[K, V]` in a tool's return type.** Every MCP tool return type is a
+`pydantic.BaseModel` defined under `apps/mcp-server/src/mind_of_christ_mcp/schemas/` (e.g.
+`SourceResult` in `schemas/sources.py`, for `find_sources`), never a raw `dict`. A `dict` return type gives up field
+names, types, and the schema the MCP client sees for free validation — a typo'd key or a
+dropped field fails silently instead of at construction. The `server.py` wrapper builds the
+model from the domain dataclass field-by-field; new tools follow the same pattern rather
+than reusing an existing model for an unrelated shape.
 
 ## Logging
 
@@ -89,11 +121,18 @@ upstream calls) is introduced:
 # Create/refresh the venv (already created at .venv/; see apps/mcp-server/README.md)
 python3.14 -m venv .venv
 
+# Install the shared domain/application/infrastructure package (src/), editable, with dev
+# deps (pytest, pyright) — install this first, apps depend on it
+.venv/bin/pip install -e ".[dev]"
+
 # Install the mcp-server package, editable, with dev deps
 .venv/bin/pip install -e "apps/mcp-server[dev]"
 
-# Run tests
-.venv/bin/python -m pytest apps/mcp-server/tests -q
+# Run tests (domain/application/infrastructure)
+.venv/bin/python -m pytest tests -q
+
+# Type-check everything (root src/ + apps/mcp-server/src)
+.venv/bin/pyright
 
 # Run the server (stdio) — point an MCP client (Claude Desktop, MCP inspector) at this
 .venv/bin/python -m mind_of_christ_mcp.server
@@ -103,25 +142,34 @@ There is no `.env`/config loading yet — the server takes no external configura
 
 ## Dependencies
 
-`apps/mcp-server/pyproject.toml` currently pins with `>=` (`mcp>=1.2.0`,
-`pytest>=8.0.0`), which is fine for a prototype with no deployment target. Once this ships
-anywhere (a container, a scheduled process), switch to exact pins (`pkg==X.Y.Z`) so a cold
-install can't silently pull in a breaking release — tests pass on version X locally but the
-shipped build comes up on X+1.
+Both `pyproject.toml`s pin exact versions (root: `pytest==9.1.1`, `pyright==1.1.414`;
+`apps/mcp-server`: `mcp==2.2.0`, `mind-of-christ==0.1.0`, `pydantic==2.13.5`,
+`pytest==9.1.1`) so a cold install can't silently pull in a breaking release — tests
+passing on version X locally is no guarantee once a cold install lands on X+1. When
+bumping a pin, install the new version locally, run the full test suite and `pyright`
+against it, and only then update the `==` in the relevant `pyproject.toml`.
+
+`apps/mcp-server`'s dependency on `mind-of-christ` is a same-repo path install, not a
+published package: it's satisfied by whatever the root `pyproject.toml -e ".[dev]"` install
+already registered in the shared `.venv`, so install the root package first (see Commands)
+or `pip` will fail to resolve it against PyPI.
 
 **When adding a new dependency:** install it locally to find the version you need, add it
-to `dependencies` (or the `dev` extra) in `pyproject.toml`, and re-run
-`pip install -e "apps/mcp-server[dev]"`. If something you already `import` isn't declared,
-add it — arriving transitively via `mcp` or another dep is not declaring it.
+to `dependencies` (or the `dev` extra) in the relevant `pyproject.toml` (root for
+`src/domain`/`src/application`/`src/infrastructure`, `apps/mcp-server/pyproject.toml` for
+the app), and
+re-run the matching `pip install -e` from Commands. If something you already `import` isn't
+declared, add it — arriving transitively via `mcp` or another dep is not declaring it.
 
 ## Tests
 
-`apps/mcp-server/tests/test_tools.py` imports `tools.find_sources` directly and asserts
-against the returned `Source` dataclasses — no MCP transport in the loop. Keep following
-that pattern: **tool logic lives in `tools.py` precisely so it can be tested without the
-MCP server**, per its own module docstring. If `server.py`'s wrapper (the dict-flattening,
-tool registration) grows logic beyond a straight pass-through, add tests around it too,
-mocking the MCP transport rather than `tools.py`.
+`tests/test_retrieval.py` (root) imports `application.retrieval.find_sources` directly and
+asserts against the returned `Source` dataclasses — no MCP transport in the loop. Keep
+following that pattern: **retrieval logic lives in `application/retrieval` precisely so it
+can be tested without any transport**, independent of which app (MCP, A2A, ...) calls it.
+If `apps/mcp-server`'s `server.py` wrapper (the dataclass → pydantic conversion, tool
+registration) grows logic beyond a straight pass-through, add tests for it under
+`apps/mcp-server/tests/`, mocking the MCP transport rather than the application layer.
 
 **Prefer equality/membership assertions that would catch a real regression** over vague
 truthiness — e.g. `all("forgiveness" in source.concepts for source in results)`, not just
@@ -129,26 +177,49 @@ truthiness — e.g. `all("forgiveness" in source.concepts for source in results)
 returning `[]` as *intentional behavior*, not an oversight — preserve that if you touch the
 function.
 
+**The no-`dict` policy (see Typing) applies to test code too.** Don't build expected/actual
+values as `dict` literals to compare against a model or dataclass — construct the real
+`Source`/`SourceResult` (or whichever type is under test) instead, or assert against its
+fields directly. Use a `pydantic.BaseModel` when the test is exercising something at the
+MCP wire boundary (`apps/mcp-server/tests/`) and a plain `@dataclass` for domain-layer
+fixtures (root `tests/`) — match whichever type the code under test actually returns rather
+than introducing a third shape just for the test.
+
 ## Architecture
 
-Minimal today, not yet DDD-layered — there's exactly one tool, so don't over-structure
-ahead of need:
+DDD-layered, but still minimal within each layer — there's exactly one domain concept
+(`sources`) and one use case (`retrieval`), so don't add sibling packages
+(`domain/concepts`, `application/exploration`, `infrastructure/embeddings`, etc.) ahead of
+need. Add a new one only once there's a real tool/use case that needs it, per the README's
+roadmap (`explore_situation` and friends).
 
-- `src/mind_of_christ_mcp/server.py` — entrypoint only: builds the `MCPServer`, registers
-  tools via `@mcp.tool()`, and does the wire-shape conversion (dataclass → `dict`) for each
-  one. Stays thin — no retrieval logic here.
-- `src/mind_of_christ_mcp/tools.py` — tool implementations, deliberately independent of the
-  MCP transport so they're unit-testable directly (see Tests). This is where new tools
-  (`explore_situation`, etc., per the README's roadmap) should be added as plain functions,
-  registered in `server.py`.
-- `src/mind_of_christ_mcp/data.py` — stub in-memory `SOURCES`, explicitly a placeholder for
-  a real repository/infrastructure layer. When a real datastore arrives, it should sit
-  behind the same `find_sources`-style function signature so `tools.py` and `server.py`
-  don't need to change shape — only what backs them.
+- `apps/mcp-server/src/mind_of_christ_mcp/server.py` — entrypoint only: builds the
+  `MCPServer`, registers tools via `@mcp.tool()`, calls into `application/retrieval`, and
+  does the wire-shape conversion (dataclass → pydantic model, defined in `schemas.py`) for
+  each tool. Stays thin — no retrieval logic here, no domain/infrastructure imports.
+- `apps/mcp-server/src/mind_of_christ_mcp/schemas/` — the pydantic `BaseModel`s each tool
+  returns, one module per concept (e.g. `schemas/sources.py` → `SourceResult`, imported as
+  `from mind_of_christ_mcp.schemas.sources import SourceResult` — `schemas/__init__.py`
+  stays empty, see What this is) rather than one file for all of them — mirrors
+  `domain/sources/`, `application/retrieval/` splitting by concept instead of by layer.
+  This is where a tool's return type lives, never a bare `dict` (see Typing). A new tool
+  with its own wire shape gets its own `schemas/<concept>.py`, not a new class appended to
+  an existing one.
+- `src/domain/sources/models.py` — the `Source` frozen dataclass: the entity itself, no
+  behavior, no storage or transport concerns.
+- `src/application/retrieval/find_sources.py` — the use case: matches a query against
+  `infrastructure.database.sources.list_sources()`, deliberately independent of the MCP
+  transport so it's unit-testable directly (see Tests). This is where new use cases
+  (`explore_situation`, etc.) get their own `src/application/<use_case>/` package.
+- `src/infrastructure/database/sources.py` — stub in-memory `list_sources()`, explicitly a
+  placeholder for a real repository. When a real datastore arrives, it should sit behind
+  this same `list_sources`-style signature so `domain/` and `application/` don't need to
+  change shape — only what backs them.
 
-**Push work to its natural layer as the app grows**: retrieval/query logic belongs in the
-future repository layer, not duplicated in `tools.py`; wire-shape conversion belongs in
-`server.py`, not leaked into `tools.py`'s return types.
+**Push work to its natural layer as the app grows**: entities/business rules go in
+`domain/`, use-case orchestration in `application/`, concrete storage/external calls in
+`infrastructure/`, and wire-shape conversion stays in each app's own thin adapter
+(`server.py` for MCP) — never leaked into `application/`'s return types.
 
 ## Deployment
 

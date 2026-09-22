@@ -1,8 +1,9 @@
-"""Tool implementations, kept independent of the MCP transport layer so they
-can be unit tested directly.
+"""Retrieval logic, kept independent of any transport layer so it can be
+unit tested directly.
 """
 
-from .data import SOURCES, Source
+from domain.sources.models import Source
+from infrastructure.database.sources import list_sources
 
 
 def find_sources(query: str, limit: int = 5) -> list[Source]:
@@ -18,7 +19,7 @@ def find_sources(query: str, limit: int = 5) -> list[Source]:
     needle = query.strip().lower()
     matches = [
         source
-        for source in SOURCES
+        for source in list_sources()
         if needle in source.text.lower()
         or any(needle in concept for concept in source.concepts)
     ]

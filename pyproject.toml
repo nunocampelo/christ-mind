@@ -1,0 +1,25 @@
+[project]
+name = "mind-of-christ"
+version = "0.1.0"
+description = "Shared domain, application, and infrastructure layers for the Mind of Christ knowledge system"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pyright==1.1.414",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["domain*", "application*", "infrastructure*"]
+
+[tool.pyright]
+include = ["src", "tests", "apps/mcp-server/src"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"

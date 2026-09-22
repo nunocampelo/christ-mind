@@ -1,22 +1,15 @@
-"""Stub in-memory source data.
+"""Stub in-memory source repository.
 
-Placeholder for the real repository (infrastructure/database) described in
-the project architecture. Content is public-domain KJV text, chosen only to
-exercise the retrieval tool end to end -- not a vetted or complete corpus.
+Placeholder for a real database-backed repository. Content is public-domain
+KJV text, chosen only to exercise the retrieval path end to end -- not a
+vetted or complete corpus. When a real datastore arrives, it should sit
+behind the same `list_sources` signature so `application/retrieval` doesn't
+need to change shape -- only what backs it.
 """
 
-from dataclasses import dataclass, field
+from domain.sources.models import Source
 
-
-@dataclass(frozen=True)
-class Source:
-    id: str
-    reference: str
-    text: str
-    concepts: tuple[str, ...] = field(default_factory=tuple)
-
-
-SOURCES: tuple[Source, ...] = (
+_SOURCES: tuple[Source, ...] = (
     Source(
         id="matt-5-7",
         reference="Matthew 5:7 (KJV)",
@@ -70,3 +63,7 @@ SOURCES: tuple[Source, ...] = (
         concepts=("forgiveness", "patience"),
     ),
 )
+
+
+def list_sources() -> tuple[Source, ...]:
+    return _SOURCES

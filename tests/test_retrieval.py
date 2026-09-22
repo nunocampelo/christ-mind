@@ -1,4 +1,4 @@
-from mind_of_christ_mcp.tools import find_sources
+from application.retrieval.find_sources import find_sources
 
 
 def test_find_sources_matches_by_concept():

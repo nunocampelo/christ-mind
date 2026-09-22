@@ -4,12 +4,14 @@ version = "0.1.0"
 description = "MCP server exposing the Mind of Christ knowledge system as tools"
 requires-python = ">=3.12"
 dependencies = [
-    "mcp>=1.2.0",
+    "mcp==2.2.0",
+    "mind-of-christ==0.1.0",
+    "pydantic==2.13.5",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
+    "pytest==9.1.1",
 ]
 
 [project.scripts]

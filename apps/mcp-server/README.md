@@ -10,13 +10,17 @@ From the repo root:
 
 ```sh
 python3.14 -m venv .venv   # already created; see below if starting fresh
+.venv/bin/pip install -e ".[dev]"              # shared domain/application/infrastructure
 .venv/bin/pip install -e "apps/mcp-server[dev]"
 ```
+
+Retrieval logic lives in `application/retrieval` (root of the monorepo), not in this
+package — see the root `CLAUDE.md` for the full domain/application/infrastructure layout.
 
 ## Run tests
 
 ```sh
-.venv/bin/python -m pytest apps/mcp-server/tests -q
+.venv/bin/python -m pytest tests -q   # from the repo root
 ```
 
 ## Run the server (stdio)

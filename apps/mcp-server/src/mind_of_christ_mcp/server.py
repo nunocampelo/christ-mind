@@ -7,22 +7,24 @@ Run directly for local stdio testing:
 
 from mcp.server.mcpserver import MCPServer
 
-from . import tools
+from application.retrieval.find_sources import find_sources as _find_sources
+
+from mind_of_christ_mcp.schemas.sources import SourceResult
 
 mcp = MCPServer(name="mind-of-christ")
 
 
 @mcp.tool()
-def find_sources(query: str, limit: int = 5) -> list[dict]:
+def find_sources(query: str, limit: int = 5) -> list[SourceResult]:
     """Find source passages relevant to a query (keyword, concept, or theme)."""
-    results = tools.find_sources(query, limit=limit)
+    results = _find_sources(query, limit=limit)
     return [
-        {
-            "id": source.id,
-            "reference": source.reference,
-            "text": source.text,
-            "concepts": list(source.concepts),
-        }
+        SourceResult(
+            id=source.id,
+            reference=source.reference,
+            text=source.text,
+            concepts=list(source.concepts),
+        )
         for source in results
     ]
 
