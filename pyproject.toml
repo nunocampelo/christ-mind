@@ -20,6 +20,6 @@ where = ["src"]
 include = ["domain*", "application*", "infrastructure*"]
 
 [tool.pyright]
-include = ["src", "tests", "apps/mcp-server/src"]
+include = ["src", "tests", "evaluation", "apps/mcp-server/src"]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"

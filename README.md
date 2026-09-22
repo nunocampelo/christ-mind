@@ -22,8 +22,11 @@ apps in `apps/` calling into it.
   text) and `sources_acim.py` (parses the markdown chapter files under
   `data/acim/` into `Source` objects at import time). Both are placeholders
   for a real datastore.
-- `evaluation/` — not built yet; will hold scenario/evaluator code once
-  there's a real one to add.
+- `src/domain/claims/` — the `Claim` frozen dataclass: one assertion a
+  passage makes (subject, predicate, object, polarity, mode, attribution),
+  with evidence offsets into the source text.
+- `evaluation/claims/` — hand-labelled gold claims (`gold/*.jsonl`) and a
+  scorer for claim extraction runs. The extractor itself isn't built yet.
 
 `src/domain/`, `src/application/`, and `src/infrastructure/` are one shared,
 installable package (`mind-of-christ`) that `apps/mcp-server` depends on.
@@ -81,5 +84,6 @@ npx @modelcontextprotocol/inspector .venv/bin/python -m mind_of_christ_mcp.serve
 This is a prototype, not the full architecture. Not yet built: a real
 database-backed repository (both source sets are still stub/file-parsed
 in-memory data), additional tools (`explore_situation` and friends), the
-orchestrator/agent layer, the A2A interface, and the evaluation harness. No
+orchestrator/agent layer, the A2A interface, and the claim extractor that
+the `evaluation/claims` scorer is waiting on. No
 CI, no container, no deployment pipeline yet.

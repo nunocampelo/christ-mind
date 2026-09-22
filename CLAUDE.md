@@ -13,13 +13,18 @@ A monorepo (root `christ/`) that is now DDD-layered:
   land here as the orchestrator/agent layer and A2A interface are built; only create an
   app directory once it has real code, not as an empty scaffold.
 - `src/domain/` — entities and business rules, transport- and storage-agnostic. Currently
-  `src/domain/sources/` (the `Source` dataclass).
+  `src/domain/sources/` (the `Source` dataclass) and `src/domain/claims/` (the `Claim`
+  dataclass and its closed `Predicate`/`Polarity`/`Mode`/`Attribution` enums).
 - `src/application/` — use cases that orchestrate domain objects against a repository.
   Currently `src/application/retrieval/` (`find_sources`).
 - `src/infrastructure/` — concrete backing for the domain/application layers. Currently
   `src/infrastructure/database/` (`list_sources`, an in-memory stub — see Architecture).
-- `evaluation/` — not built yet; add it (and its subfolders) only once there's a real
-  scenario/evaluator to put in it, per the README's roadmap.
+- `evaluation/` — measures claim extraction against hand-labelled data.
+  `evaluation/claims/gold/*.jsonl` holds gold claims, which name evidence by exact text;
+  `gold.py` resolves that to offsets in the parsed `Source.text` and fails loudly if the
+  text moved. `score.py` reports loose (triple) and strict (+ polarity/mode/attribution)
+  precision/recall. Not an installed package — importable from the repo root, which is
+  where pytest and pyright run.
 
 `src/domain/`, `src/application/`, and `src/infrastructure/` are one shared, installable
 package (`mind-of-christ`, root `pyproject.toml`, `where = ["src"]` in its
@@ -207,6 +212,11 @@ roadmap (`explore_situation` and friends).
   an existing one.
 - `src/domain/sources/models.py` — the `Source` frozen dataclass: the entity itself, no
   behavior, no storage or transport concerns.
+- `src/domain/claims/models.py` — the `Claim` frozen dataclass: one assertion a passage
+  makes, with evidence offsets into `Source.text`. Subject/object are surface forms (no
+  entity resolution yet). Negation lives only in `polarity`, never as a predicate, and
+  `attribution` separates what the Course asserts from what it reports the ego or others
+  believing — keep both when extending the model.
 - `src/application/retrieval/find_sources.py` — the use case: matches a query against
   `infrastructure.database.sources.list_sources()`, deliberately independent of the MCP
   transport so it's unit-testable directly (see Tests). This is where new use cases
