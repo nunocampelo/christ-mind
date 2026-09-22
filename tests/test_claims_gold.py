@@ -10,6 +10,7 @@ from infrastructure.database.sources_acim import list_acim_sources
 GOLD_DIR = Path(__file__).parent.parent / "evaluation/claims/gold"
 GOLD_T1_1 = GOLD_DIR / "t1_1.jsonl"
 GOLD_T1_1_HOLDOUT = GOLD_DIR / "t1_1_holdout.jsonl"
+GOLD_T3_2 = GOLD_DIR / "t3_2.jsonl"
 
 SOURCE = Source(id="s1", book="ACIM", chapter=1, text="Miracles are natural.")
 
@@ -69,6 +70,20 @@ def test_t1_1_holdout_attributes_rejected_beliefs_to_others():
     darkness = next(c for c in claims if c.subject == "darkness")
     assert darkness.source_id == "t1-1-22"
     assert darkness.attribution == Attribution.OTHERS
+
+
+def test_t3_2_gold_keeps_rejected_views_out_of_the_course_voice():
+    claims = load_gold_claims(GOLD_T3_2, list_acim_sources())
+
+    crucifixion = next(c for c in claims if c.subject == "crucifixion")
+    assert crucifixion.predicate == Predicate.CAUSES
+    assert crucifixion.polarity == Polarity.NEGATED
+
+    appearance = next(c for c in claims if c.source_id == "t3-2-1" and c.subject == "God")
+    assert appearance.attribution == Attribution.OTHERS
+
+    question = next(c for c in claims if c.source_id == "t3-2-2" and c.subject == "God")
+    assert (question.polarity, question.mode) == (Polarity.AFFIRMED, Mode.QUESTION)
 
 
 def test_load_gold_claims_resolves_evidence_offsets(tmp_path: Path):
