@@ -1,0 +1,23 @@
+[project]
+name = "mind-of-christ-mcp"
+version = "0.1.0"
+description = "MCP server exposing the Mind of Christ knowledge system as tools"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+mind-of-christ-mcp = "mind_of_christ_mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
