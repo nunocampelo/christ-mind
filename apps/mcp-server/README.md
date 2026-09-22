@@ -35,7 +35,8 @@ at this command over stdio to connect.
 ## Tools
 
 - `find_sources(query, limit=5)` -- keyword/concept search over the stub
-  source set, returns matching passages with reference and concept tags.
+  source set, returns matching passages with their book/chapter/verse (or
+  section/paragraph) locator and concept tags.
 
 ## Status
 

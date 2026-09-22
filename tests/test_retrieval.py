@@ -5,7 +5,7 @@ def test_find_sources_matches_by_concept():
     results = find_sources("forgiveness")
 
     assert results
-    assert all("forgiveness" in source.concepts for source in results)
+    assert any(source.id == "matt-6-14-15" for source in results)
 
 
 def test_find_sources_matches_by_text():

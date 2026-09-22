@@ -21,8 +21,12 @@ def find_sources(query: str, limit: int = 5) -> list[SourceResult]:
     return [
         SourceResult(
             id=source.id,
-            reference=source.reference,
+            book=source.book,
+            chapter=source.chapter,
             text=source.text,
+            verse=source.verse,
+            section=source.section,
+            paragraph=source.paragraph,
             concepts=list(source.concepts),
         )
         for source in results

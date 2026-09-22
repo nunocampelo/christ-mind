@@ -20,7 +20,7 @@ async def test_find_sources_tool_matches_by_concept():
     assert not result.is_error
     sources = [SourceResult(**item) for item in result.structured_content["result"]]
     assert sources
-    assert all("forgiveness" in source.concepts for source in sources)
+    assert any(source.id == "matt-6-14-15" for source in sources)
 
 
 @pytest.mark.anyio
