@@ -16,7 +16,8 @@ A monorepo (root `christ/`) that is now DDD-layered:
   `src/domain/sources/` (the `Source` dataclass) and `src/domain/claims/` (the `Claim`
   dataclass and its closed `Predicate`/`Polarity`/`Mode`/`Attribution` enums).
 - `src/application/` — use cases that orchestrate domain objects against a repository.
-  Currently `src/application/retrieval/` (`find_sources`).
+  Currently `src/application/retrieval/` (`find_sources`) and
+  `src/application/extraction/` (`extract_claims`).
 - `src/infrastructure/` — concrete backing for the domain/application layers. Currently
   `src/infrastructure/database/` (`list_sources`, an in-memory stub — see Architecture).
 - `evaluation/` — measures claim extraction against hand-labelled data.
@@ -221,6 +222,15 @@ roadmap (`explore_situation` and friends).
   `infrastructure.database.sources.list_sources()`, deliberately independent of the MCP
   transport so it's unit-testable directly (see Tests). This is where new use cases
   (`explore_situation`, etc.) get their own `src/application/<use_case>/` package.
+- `src/application/extraction/extract_claims.py` — the `ClaimExtractor` protocol that a
+  provider adapter implements (under `src/infrastructure/llm/`, once one exists), and
+  `extract_claims`, which anchors each `CandidateClaim`'s quoted evidence to offsets in
+  `Source.text`. Candidates whose quote is missing or ambiguous come back as
+  `RejectedCandidate`s instead of being dropped, because the rejection rate measures
+  how often a model invents evidence. `anchor_claim` is also what
+  `evaluation/claims/gold.py` uses, so gold and predicted claims are anchored
+  identically. Keep provider-specific parsing (raw strings → enums) in the adapter, not
+  here.
 - `src/infrastructure/database/sources.py` — stub in-memory `list_sources()`, explicitly a
   placeholder for a real repository. When a real datastore arrives, it should sit behind
   this same `list_sources`-style signature so `domain/` and `application/` don't need to

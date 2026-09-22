@@ -25,8 +25,12 @@ apps in `apps/` calling into it.
 - `src/domain/claims/` — the `Claim` frozen dataclass: one assertion a
   passage makes (subject, predicate, object, polarity, mode, attribution),
   with evidence offsets into the source text.
+- `src/application/extraction/` — `extract_claims`, which runs any
+  `ClaimExtractor` (the protocol an LLM provider adapter implements) over
+  sources and anchors each claim's quoted evidence in the source text,
+  keeping unanchorable claims as rejections.
 - `evaluation/claims/` — hand-labelled gold claims (`gold/*.jsonl`) and a
-  scorer for claim extraction runs. The extractor itself isn't built yet.
+  scorer for claim extraction runs.
 
 `src/domain/`, `src/application/`, and `src/infrastructure/` are one shared,
 installable package (`mind-of-christ`) that `apps/mcp-server` depends on.
@@ -84,6 +88,6 @@ npx @modelcontextprotocol/inspector .venv/bin/python -m mind_of_christ_mcp.serve
 This is a prototype, not the full architecture. Not yet built: a real
 database-backed repository (both source sets are still stub/file-parsed
 in-memory data), additional tools (`explore_situation` and friends), the
-orchestrator/agent layer, the A2A interface, and the claim extractor that
-the `evaluation/claims` scorer is waiting on. No
+orchestrator/agent layer, the A2A interface, and an LLM provider adapter
+for `ClaimExtractor`, and a runner that scores its output. No
 CI, no container, no deployment pipeline yet.
