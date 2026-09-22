@@ -26,11 +26,13 @@ apps in `apps/` calling into it.
   passage makes (subject, predicate, object, polarity, mode, attribution),
   with evidence offsets into the source text.
 - `src/application/extraction/` — `extract_claims`, which runs any
-  `ClaimExtractor` (the protocol an LLM provider adapter implements) over
-  sources and anchors each claim's quoted evidence in the source text,
-  keeping unanchorable claims as rejections.
-- `evaluation/claims/` — hand-labelled gold claims (`gold/*.jsonl`) and a
-  scorer for claim extraction runs.
+  `ClaimExtractor` over sources and anchors each claim's quoted evidence in
+  the source text, keeping unanchorable claims as rejections; and `prompt.py`,
+  the extraction prompt and reply parser. A provider plugs in by supplying one
+  `(system, user) -> reply` function to `PromptedClaimExtractor`.
+- `evaluation/claims/` — hand-labelled gold claims (`gold/*.jsonl`), a
+  scorer, and `run.py`, which scores an extractor and records each run under
+  `evaluation/runs/` (committed, so runs can be compared over time).
 
 `src/domain/`, `src/application/`, and `src/infrastructure/` are one shared,
 installable package (`mind-of-christ`) that `apps/mcp-server` depends on.
@@ -59,6 +61,17 @@ python3.14 -m venv .venv
 ```sh
 .venv/bin/pyright   # covers root src/, root tests/, and apps/mcp-server/src
 ```
+
+## Score a claim extractor
+
+```sh
+.venv/bin/python -m evaluation.claims.run --extractor my_pkg.my_module:make_extractor
+```
+
+`make_extractor` takes no arguments and returns a `ClaimExtractor`, typically
+`PromptedClaimExtractor(complete)`, where `complete(system, user)` calls your
+model and returns its reply text. Scores against the dev set; `--holdout`
+scores the held-out set, which is only for reporting a final result.
 
 ## Run the server (stdio)
 
@@ -89,5 +102,5 @@ This is a prototype, not the full architecture. Not yet built: a real
 database-backed repository (both source sets are still stub/file-parsed
 in-memory data), additional tools (`explore_situation` and friends), the
 orchestrator/agent layer, the A2A interface, and an LLM provider adapter
-for `ClaimExtractor`, and a runner that scores its output. No
+(a `Complete` function for `PromptedClaimExtractor`). No
 CI, no container, no deployment pipeline yet.

@@ -7,6 +7,7 @@ from application.extraction.extract_claims import (
     AmbiguousEvidenceError,
     CandidateClaim,
     EvidenceNotFoundError,
+    ExtractionFailedError,
     RejectedCandidate,
     RejectionReason,
     anchor_claim,
@@ -121,4 +122,27 @@ def test_extract_claims_keeps_unanchorable_candidates_as_rejections():
 def test_extract_claims_with_no_candidates_returns_empty_result():
     result = extract_claims([NATURAL_SOURCE], FakeExtractor({}))
 
-    assert (result.claims, result.rejected) == ((), ())
+    assert (result.claims, result.rejected, result.failed_source_ids) == ((), (), ())
+
+
+class FailingExtractor:
+    def extract(self, source: Source) -> Sequence[CandidateClaim]:
+        if source.id == "t1-1-6":
+            raise ExtractionFailedError("unusable response")
+        return [PURIFICATION]
+
+
+def test_extract_claims_records_failed_sources_and_continues():
+    result = extract_claims([NATURAL_SOURCE, RIGHT_SOURCE], FailingExtractor())
+
+    assert result.failed_source_ids == ("t1-1-6",)
+    assert [c.source_id for c in result.claims] == ["t1-1-7"]
+
+
+def test_extract_claims_lets_other_extractor_errors_stop_the_run():
+    class OutageExtractor:
+        def extract(self, source: Source) -> Sequence[CandidateClaim]:
+            raise ConnectionError("provider unreachable")
+
+    with pytest.raises(ConnectionError):
+        extract_claims([NATURAL_SOURCE], OutageExtractor())

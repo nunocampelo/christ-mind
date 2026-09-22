@@ -140,6 +140,10 @@ python3.14 -m venv .venv
 # Type-check everything (root src/ + apps/mcp-server/src)
 .venv/bin/pyright
 
+# Score a claim extractor against the dev gold set (add --holdout only to report a
+# result, never while tuning); writes evaluation/runs/<run_id>.jsonl — commit it
+.venv/bin/python -m evaluation.claims.run --extractor my_pkg.my_module:make_extractor
+
 # Run the server (stdio) — point an MCP client (Claude Desktop, MCP inspector) at this
 .venv/bin/python -m mind_of_christ_mcp.server
 ```
@@ -229,8 +233,14 @@ roadmap (`explore_situation` and friends).
   `RejectedCandidate`s instead of being dropped, because the rejection rate measures
   how often a model invents evidence. `anchor_claim` is also what
   `evaluation/claims/gold.py` uses, so gold and predicted claims are anchored
-  identically. Keep provider-specific parsing (raw strings → enums) in the adapter, not
-  here.
+  identically. A source whose response can't be parsed raises `ExtractionFailedError`,
+  which is recorded per source. Any other exception, such as a provider outage, stops
+  the run.
+- `src/application/extraction/prompt.py` — `SYSTEM_PROMPT` (the single statement of the
+  labelling rules the gold set follows), `parse_response`, and `PromptedClaimExtractor`,
+  which wraps a `Complete` function (`(system, user) -> reply text`). A provider adapter
+  implements only `Complete`, so every provider is compared on the same prompt and
+  parser. Changing a rule means relabelling the gold set and bumping `PROMPT_VERSION`.
 - `src/infrastructure/database/sources.py` — stub in-memory `list_sources()`, explicitly a
   placeholder for a real repository. When a real datastore arrives, it should sit behind
   this same `list_sources`-style signature so `domain/` and `application/` don't need to

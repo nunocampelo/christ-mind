@@ -28,6 +28,13 @@ class AmbiguousEvidenceError(EvidenceError):
     pass
 
 
+class ExtractionFailedError(Exception):
+    """Raised by a `ClaimExtractor` when it got a response it can't turn into
+    candidates. Only this is caught per source; any other error, such as a
+    provider outage, stops the whole run.
+    """
+
+
 @dataclass(frozen=True)
 class CandidateClaim:
     subject: str
@@ -38,6 +45,35 @@ class CandidateClaim:
     mode: Mode
     attribution: Attribution
     evidence: str
+
+
+def parse_candidate(record: object) -> CandidateClaim:
+    """Builds a candidate from a decoded JSON object, as written in gold files or
+    returned by a prompted model. Raises `ValueError` if a field is missing or
+    not one of the allowed values.
+    """
+    if not isinstance(record, dict):
+        raise ValueError("candidate claim must be a JSON object")
+    object_ = record.get("object")
+    if object_ is not None and not isinstance(object_, str):
+        raise ValueError("candidate claim object must be a string or null")
+    return CandidateClaim(
+        subject=_require_str(record, "subject"),
+        verb_phrase=_require_str(record, "verb_phrase"),
+        object=object_,
+        predicate=Predicate(_require_str(record, "predicate")),
+        polarity=Polarity(_require_str(record, "polarity")),
+        mode=Mode(_require_str(record, "mode")),
+        attribution=Attribution(_require_str(record, "attribution")),
+        evidence=_require_str(record, "evidence"),
+    )
+
+
+def _require_str(record: dict[object, object], key: str) -> str:
+    value = record.get(key)
+    if not isinstance(value, str):
+        raise ValueError("candidate claim field is missing or not a string")
+    return value
 
 
 class ClaimExtractor(Protocol):
@@ -60,6 +96,7 @@ class RejectedCandidate:
 class ExtractionResult:
     claims: tuple[Claim, ...]
     rejected: tuple[RejectedCandidate, ...]
+    failed_source_ids: tuple[str, ...]
 
 
 def extract_claims(
@@ -67,8 +104,14 @@ def extract_claims(
 ) -> ExtractionResult:
     claims = []
     rejected = []
+    failed_source_ids = []
     for source in sources:
-        for candidate in extractor.extract(source):
+        try:
+            candidates = extractor.extract(source)
+        except ExtractionFailedError:
+            failed_source_ids.append(source.id)
+            continue
+        for candidate in candidates:
             try:
                 claims.append(anchor_claim(source, candidate))
             except EvidenceNotFoundError:
@@ -77,7 +120,11 @@ def extract_claims(
             except AmbiguousEvidenceError:
                 reason = RejectionReason.EVIDENCE_AMBIGUOUS
                 rejected.append(RejectedCandidate(source.id, candidate, reason))
-    return ExtractionResult(claims=tuple(claims), rejected=tuple(rejected))
+    return ExtractionResult(
+        claims=tuple(claims),
+        rejected=tuple(rejected),
+        failed_source_ids=tuple(failed_source_ids),
+    )
 
 
 def anchor_claim(source: Source, candidate: CandidateClaim) -> Claim:
