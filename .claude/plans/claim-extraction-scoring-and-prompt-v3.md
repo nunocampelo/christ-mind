@@ -257,3 +257,9 @@ structure only together with its provenance and extraction version.
 | 20260923T002530Z | v2 | dev | 0.30 / 0.31 | 0.29 / 0.30 | — | old scorer, before step 1 |
 | 20260923T002530Z | v2 | dev | 0.43 / 0.45 | 0.40 / 0.42 | 0.62 / 0.65 | re-scored under step-1 scorer (no new call) — **this is the baseline from now on**; mode mismatches 2 |
 | 20260923T075901Z | v2 | dev | 0.45 / 0.47 | 0.43 / 0.45 | 0.62 / 0.65 | fresh v2 run in the readable (step-2) format — the file to diff against v3; within run-to-run variance of the re-score; mode mismatches 2 |
+| 20260923T081252Z | v3 (pre-sharpen) | dev | 0.44 / 0.48 | 0.40 / 0.45 | 0.62 / 0.69 | first v3 run. Relaxed R 0.65→0.69 (57 matched). Step-4 near-miss check: `causes` reversal fixed (all 3 now correct direction), relative-clause swap fixed, double-negative fixed, embedded proposition fixed; **`makes`-on-"make this mistake" survived once** (t3-2-1). Sharpened the `makes` rule after this run. |
+| 20260923T081750Z | v3 | dev | 0.46 / 0.51 | 0.45 / 0.49 | 0.63 / 0.70 | sharpened-v3 run 1 of N=3 |
+| 20260923T081927Z | v3 | dev | 0.46 / 0.52 | 0.45 / 0.51 | 0.63 / 0.71 | sharpened-v3 run 2 of N=3 |
+| 20260923T082110Z | v3 | dev | 0.47 / 0.52 | 0.45 / 0.49 | 0.62 / 0.69 | sharpened-v3 run 3 of N=3 |
+
+**Sharpened-v3, N=3 dev (mean ± stdev):** loose 0.460±0.006 / 0.514±0.007 · strict 0.446±0.001 / 0.498±0.007 · relaxed 0.626±0.005 / 0.699±0.012 (58±1 matched). Noise floor on relaxed R ≈ 0.012. All five step-4 error types cleared in all three runs (the only surviving `makes` is `intellectualizing makes the physical`, a genuine Course-sense make). vs. the re-scored v2 baseline (strict R 0.42 → 0.50, relaxed R 0.65 → 0.70): strict R gain (~0.08) and relaxed R gain (~0.05) both exceed the noise floor.

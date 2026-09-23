@@ -21,7 +21,7 @@ from application.extraction.extract_claims import (
 from domain.claims.models import Attribution, Mode, Polarity, Predicate
 from domain.sources.models import Source
 
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 
 type Complete = Callable[[str, str], str]
 """Sends (system prompt, user prompt) to a model and returns its reply text."""
@@ -57,6 +57,10 @@ Rules:
 - Subject and object: drop articles, and resolve pronouns to what they refer to
   ("They" -> "miracles", "One" -> "intellectualizing"). Otherwise keep the
   text's words; don't normalise "miracle" vs "miracles".
+- A relative clause states its own claim, with the clause's own subject as the
+  subject: "a point which many very sincere Christians have misunderstood" is
+  subject "many very sincere Christians", verb_phrase "have misunderstood",
+  object "this point" -- not subject "point".
 - Put the claim's own noun phrase, with its quantifiers and modifiers, in
   "object" -- "There is no order of difficulty among miracles" is object "order of
   difficulty"; "Miracles are all the same" is object "all the same", not "are all"
@@ -68,17 +72,29 @@ Rules:
   love is received"), use the shortest connector that reads correctly
   ("confusing the levels" "causes" "sickness"; "love" "is received through"
   "prayer"). Never repeat the object inside the verb phrase.
-- "is": identity, definition, and predicate adjectives ("Miracles are natural").
-  Also for a plain property or state of the subject worded as "feels X", "has
-  been X", "seems X" ("this error has been particularly difficult to overcome" is
-  "is", object "particularly difficult to overcome").
-- "causes": always cause -> effect. "X comes from Y" and "X arises from Y" become
-  Y causes X. Effect verbs ("heal", "are healing", "bring") are "causes" with the
-  effect as object.
+- "is": identity, definition, and predicate adjectives ("Miracles are natural",
+  "Miracles are healing"). Also for a plain property or state of the subject
+  worded as "feels X", "has been X", "seems X" ("this error has been
+  particularly difficult to overcome" is "is", object "particularly difficult to
+  overcome"). For a copula ("is", "are"), verb_phrase is just the copula and the
+  whole noun phrase is the object: "Prayer is the medium of miracles" is subject
+  "prayer", verb_phrase "is", object "medium of miracles", not verb_phrase "is
+  the medium of".
+- "causes": always cause -> effect. "X comes from Y", "X arises from Y", "X arose
+  out of Y", "X because Y" and "X is the result of Y" all become Y causes X --
+  the subject is the cause. "interpretation arose out of misprojections" is
+  subject "misprojections", object "interpretation". Effect verbs ("heal",
+  "bring") are "causes" with the effect as object, but a plain predicate
+  adjective is "is", not "causes" ("Miracles are healing" is "is").
 - "requires": preconditions and means ("necessary first", "depend on", "by
   extending it").
-- "makes" and "creates" are distinct: the Course separates what is made from what
-  is created. Use each only where the text uses that verb or its sense.
+- "makes" and "creates" are distinct, and both are limited to the Course's
+  sense: "makes" is making by the ego or in perception (making an illusion, a
+  false world), "creates" is creating by spirit. An ordinary English "make" is
+  "other", never "makes": "make a mistake", "make this mistake", "make an error"
+  are all "other" -- "one who is free of the scarcity-error could POSSIBLY make
+  this mistake" is subject "one who is free of the scarcity-error", predicate
+  "other", object "this mistake", polarity "negated".
 - "other": anything the other predicates don't cover; verb_phrase then carries
   the meaning.
 - Negation: set polarity "negated"; never rephrase it into the subject or object.
@@ -87,11 +103,16 @@ Rules:
   thinking", verb_phrase "remains in", object "your mind", polarity "negated".
   "The Spirit, not the body, is the altar" is two claims, one affirmed and one
   negated. A "NOT" or "no" on the verb negates the claim, whatever the predicate:
-  "your being bad did NOT cause my punishment" is subject "your being bad", verb
-  "caused", object "my punishment", predicate "causes", polarity "negated". A "NOT" inside an if/when clause doesn't negate the claim: "When they
-  do NOT occur something has gone wrong" is subject "absence of miracles",
-  verb_phrase "means", object "something has gone wrong", mode "conditional",
-  polarity "affirmed".
+  "I was NOT punished because YOU were bad" is subject "your being bad",
+  verb_phrase "did NOT cause", object "my punishment", predicate "causes",
+  polarity "negated" (the cause is negated, and the subject is still the cause).
+  A double negative negates once, not twice: "No-one who is free of the
+  scarcity-error could POSSIBLY make this mistake" is subject "one who is free of
+  the scarcity-error", verb_phrase "could POSSIBLY make", object "this mistake",
+  polarity "negated" -- the "No-one" is the only negation. A "NOT" inside an
+  if/when clause doesn't negate the claim: "When they do NOT occur something has
+  gone wrong" is subject "absence of miracles", verb_phrase "means", object
+  "something has gone wrong", mode "conditional", polarity "affirmed".
 - Appearance vs. reality: "X seems to A, but really B" is two claims, and
   verb_phrase keeps "seem" and "really".
 - mode: "normative" for should/must, "conditional" for if/when/without clauses,
@@ -105,6 +126,14 @@ Rules:
   when the view is attributed to the ego. "hypothetical" for a case posed but not
   asserted. That someone holds a view is itself a "course" claim ("Many ministers
   preach this every day"), separate from the view's content.
+- Embedded propositions: a "that X" clause after awareness, belief, recognition,
+  or idea is its own claim (or claims), in addition to the claim about the frame.
+  "reawaken the awareness that the Spirit, not the body, is the altar of truth"
+  gives "miracles" "reawaken" "awareness" and, from the "that" clause, "Spirit"
+  "is" "altar of truth" (affirmed) and "body" "is not" "altar of truth"
+  (negated). The clause's attribution comes from its frame: a plain awareness or
+  recognition is "course", but a "fallacious belief that X" or "the idea that X"
+  it rejects makes X "others".
 """
 
 
