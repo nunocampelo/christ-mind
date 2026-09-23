@@ -92,6 +92,7 @@ def test_claim_lines_lead_with_the_human_scannable_fields(tmp_path: Path):
     _, first_claim, *_ = _read_lines(outcome.path)
     assert list(first_claim) == [
         "type",
+        "claim_id",
         "source_id",
         "subject",
         "verb_phrase",

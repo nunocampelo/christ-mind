@@ -12,7 +12,11 @@ from evaluation.claims.run import Split
 
 SOURCE = Source(id="t1-1-1", book="T", chapter=1, text="a b c d e f g h i j")
 
+# Placeholder claim_id: near_miss keys claims by signature and recomputes the id
+# when reading a run line, so the fixture's id is never compared. `_write_run`
+# deliberately omits claim_id from the line to exercise that recompute path.
 GOLD = Claim(
+    claim_id="gold",
     source_id="t1-1-1",
     subject="love",
     predicate=Predicate.CAUSES,

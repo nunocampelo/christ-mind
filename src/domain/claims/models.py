@@ -44,8 +44,12 @@ class Claim:
 
     `subject` and `object` are surface forms, not resolved entities, and
     `verb_phrase` keeps the text's own wording since `predicate` is lossy.
+
+    `claim_id` is the deterministic content fingerprint from `identity.py`, not a
+    stored surrogate key: identical signatures always yield the same id.
     """
 
+    claim_id: str
     source_id: str
     subject: str
     predicate: Predicate

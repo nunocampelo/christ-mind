@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
+from domain.claims.identity import compute_claim_id
 from domain.claims.models import Attribution, Claim, Mode, Polarity, Predicate
 from domain.sources.models import Source
 
@@ -136,6 +137,16 @@ def anchor_claim(source: Source, candidate: CandidateClaim) -> Claim:
         raise AmbiguousEvidenceError("evidence occurs more than once in the source text")
 
     return Claim(
+        claim_id=compute_claim_id(
+            source_id=source.id,
+            evidence=evidence,
+            subject=candidate.subject,
+            predicate=candidate.predicate,
+            object=candidate.object,
+            polarity=candidate.polarity,
+            mode=candidate.mode,
+            attribution=candidate.attribution,
+        ),
         source_id=source.id,
         subject=candidate.subject,
         predicate=candidate.predicate,

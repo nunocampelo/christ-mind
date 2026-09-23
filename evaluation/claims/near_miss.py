@@ -16,35 +16,27 @@ from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
-from domain.claims.models import Attribution, Claim, Mode, Polarity, Predicate
+from domain.claims.models import Claim, Polarity
 from domain.sources.models import Source
 from evaluation.claims.gold import load_gold_claims
 from evaluation.claims.run import GOLD_FILES, Split
+from evaluation.claims.run_format import ClaimLine
 from evaluation.claims.score import relaxed_pairing
 from infrastructure.database.sources_acim import list_acim_sources
 
 _FIELDS = ("subject", "predicate", "object", "polarity", "mode", "attribution")
 
 
-def _claim_from_line(line: dict[str, object]) -> Claim:
-    return Claim(
-        source_id=str(line["source_id"]),
-        subject=str(line["subject"]),
-        predicate=Predicate(line["predicate"]),
-        object=None if line["object"] is None else str(line["object"]),
-        verb_phrase=str(line["verb_phrase"]),
-        polarity=Polarity(line["polarity"]),
-        mode=Mode(line["mode"]),
-        attribution=Attribution(line["attribution"]),
-        evidence_start=int(line["evidence_start"]),  # type: ignore[arg-type]
-        evidence_end=int(line["evidence_end"]),  # type: ignore[arg-type]
-    )
-
-
 def _load_run(path: Path) -> tuple[Split, list[Claim]]:
-    lines = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-    header = next(line for line in lines if line["type"] == "header")
-    predicted = [_claim_from_line(line) for line in lines if line["type"] == "claim"]
+    records = [
+        json.loads(line) for line in path.read_text().splitlines() if line.strip()
+    ]
+    header = next(record for record in records if record.get("type") == "header")
+    predicted = [
+        ClaimLine.model_validate(record).to_claim()
+        for record in records
+        if record.get("type") == "claim"
+    ]
     return Split(header["split"]), predicted
 
 

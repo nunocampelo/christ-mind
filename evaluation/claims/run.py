@@ -28,6 +28,7 @@ from application.extraction.extract_claims import (
 from application.extraction.prompt import PROMPT_VERSION, PromptedClaimExtractor
 from domain.sources.models import Source
 from evaluation.claims.gold import load_gold_claims
+from evaluation.claims.run_format import ClaimLine
 from evaluation.claims.score import ClaimScore, ScoreReport, score_claims
 from infrastructure.database.sources_acim import list_acim_sources
 
@@ -102,22 +103,9 @@ def run(
     texts = {source.id: source.text for source in targets}
     lines = [{"type": "header", **asdict(header)}]
     lines += [
-        {
-            "type": "claim",
-            "source_id": claim.source_id,
-            "subject": claim.subject,
-            "verb_phrase": claim.verb_phrase,
-            "object": claim.object,
-            "predicate": claim.predicate,
-            "polarity": claim.polarity,
-            "mode": claim.mode,
-            "attribution": claim.attribution,
-            "evidence": texts[claim.source_id][
-                claim.evidence_start : claim.evidence_end
-            ],
-            "evidence_start": claim.evidence_start,
-            "evidence_end": claim.evidence_end,
-        }
+        ClaimLine.from_claim(
+            claim, texts[claim.source_id][claim.evidence_start : claim.evidence_end]
+        ).model_dump()
         for claim in result.claims
     ]
     lines += [

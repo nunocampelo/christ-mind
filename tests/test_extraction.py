@@ -13,6 +13,7 @@ from application.extraction.extract_claims import (
     anchor_claim,
     extract_claims,
 )
+from domain.claims.identity import compute_claim_id
 from domain.claims.models import Attribution, Claim, Mode, Polarity, Predicate
 from domain.sources.models import Source
 
@@ -59,6 +60,16 @@ def test_anchor_claim_resolves_quoted_evidence_to_offsets():
     claim = anchor_claim(NATURAL_SOURCE, NATURAL)
 
     assert claim == Claim(
+        claim_id=compute_claim_id(
+            source_id="t1-1-6",
+            evidence="Miracles are natural.",
+            subject="miracles",
+            predicate=Predicate.IS,
+            object="natural",
+            polarity=Polarity.AFFIRMED,
+            mode=Mode.ASSERTION,
+            attribution=Attribution.COURSE,
+        ),
         source_id="t1-1-6",
         subject="miracles",
         predicate=Predicate.IS,
@@ -73,6 +84,21 @@ def test_anchor_claim_resolves_quoted_evidence_to_offsets():
     assert NATURAL_SOURCE.text[claim.evidence_start : claim.evidence_end] == (
         "Miracles are natural."
     )
+
+
+def test_anchor_claim_id_is_stable_across_offset_shifts():
+    """The id is anchored by the evidence quote, not its offsets: the same claim
+    in a source where its span sits at different offsets gets the same id.
+    """
+    shifted_source = replace(
+        NATURAL_SOURCE, text="   " + NATURAL_SOURCE.text
+    )
+
+    claim = anchor_claim(NATURAL_SOURCE, NATURAL)
+    shifted = anchor_claim(shifted_source, NATURAL)
+
+    assert claim.evidence_start != shifted.evidence_start
+    assert claim.claim_id == shifted.claim_id
 
 
 @pytest.mark.parametrize(

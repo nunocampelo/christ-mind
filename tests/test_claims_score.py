@@ -3,7 +3,12 @@ from dataclasses import replace
 from domain.claims.models import Attribution, Claim, Mode, Polarity, Predicate
 from evaluation.claims.score import ClaimScore, score_claims
 
+# These fixtures set claim_id to a placeholder label rather than a real
+# fingerprint: the scorer keys on the signature fields, never on claim_id, and
+# `replace` doesn't recompute it. Tests that need the real hash build through
+# `anchor_claim` (see test_extraction.py).
 NATURAL = Claim(
+    claim_id="natural",
     source_id="t1-1-6",
     subject="miracles",
     predicate=Predicate.IS,
