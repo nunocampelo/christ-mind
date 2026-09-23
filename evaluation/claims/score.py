@@ -3,6 +3,15 @@
 Only predictions for sources that appear in the gold set are scored, so
 extracting a whole section and scoring against a partial gold set doesn't
 count unlabelled passages as false positives.
+
+Three tiers answer three questions. `loose` is a regression detector for
+literal correctness (triple match after normalisation). `strict` also requires
+polarity, mode, and attribution to agree, and is the primary metric that must
+rise. `relaxed` is a diagnostic for surface-form disagreement: it keeps the
+predicate but matches subject/object by containment when the evidence spans
+overlap, so it answers "is the model extracting the same claim despite
+wording?" -- never the optimization target, since tuning toward it rewards
+broad predictions that score through containment.
 """
 
 from collections import Counter, defaultdict
@@ -10,6 +19,12 @@ from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 
 from domain.claims.models import Claim
+
+_LEADING_DETERMINERS = frozenset(
+    {"the", "a", "an", "this", "that", "their", "his", "its"}
+)
+_PUNCTUATION = str.maketrans("", "", '.,?!"')
+_QUOTE_FOLDING = str.maketrans("’‘“”", "''\"\"")
 
 
 @dataclass(frozen=True)
@@ -32,12 +47,14 @@ class ClaimScore:
 @dataclass(frozen=True)
 class ScoreReport:
     """`loose` matches on (source, subject, predicate, object); `strict` also
-    requires polarity, mode, and attribution to agree. The mismatch counts say
-    which of those three fields account for the gap between the two.
+    requires polarity, mode, and attribution to agree; `relaxed` matches
+    subject/object by containment over overlapping evidence. The mismatch counts
+    say which of polarity/mode/attribution account for the loose-strict gap.
     """
 
     loose: ClaimScore
     strict: ClaimScore
+    relaxed: ClaimScore
     polarity_mismatches: int
     mode_mismatches: int
     attribution_mismatches: int
@@ -56,6 +73,7 @@ def score_claims(predicted: Sequence[Claim], gold: Sequence[Claim]) -> ScoreRepo
     return ScoreReport(
         loose=_count(predicted, gold, _loose_key),
         strict=_count(predicted, gold, _strict_key),
+        relaxed=_count_relaxed(predicted, gold),
         polarity_mismatches=polarity_mismatches,
         mode_mismatches=mode_mismatches,
         attribution_mismatches=attribution_mismatches,
@@ -63,7 +81,13 @@ def score_claims(predicted: Sequence[Claim], gold: Sequence[Claim]) -> ScoreRepo
 
 
 def _normalize(value: str | None) -> str | None:
-    return None if value is None else " ".join(value.lower().split())
+    if value is None:
+        return None
+    folded = value.lower().translate(_QUOTE_FOLDING).translate(_PUNCTUATION)
+    words = folded.split()
+    while words and words[0] in _LEADING_DETERMINERS:
+        words.pop(0)
+    return " ".join(words)
 
 
 def _loose_key(claim: Claim) -> tuple[Hashable, ...]:
@@ -123,3 +147,64 @@ def _pair_loose_matches(
         if candidates:
             pairs.append((candidates.pop(0), gold_claim))
     return pairs
+
+
+def _evidence_overlaps(a: Claim, b: Claim) -> bool:
+    return a.evidence_start < b.evidence_end and b.evidence_start < a.evidence_end
+
+
+def _phrase_contains(a: str | None, b: str | None) -> bool:
+    """One normalised phrase contains the other. Both null counts as a match;
+    exactly one null does not.
+    """
+    na, nb = _normalize(a), _normalize(b)
+    if na is None or nb is None:
+        return na is None and nb is None
+    return na in nb or nb in na
+
+
+def _relaxed_matches(predicted: Claim, gold: Claim) -> bool:
+    return (
+        predicted.source_id == gold.source_id
+        and predicted.predicate == gold.predicate
+        and _evidence_overlaps(predicted, gold)
+        and _phrase_contains(predicted.subject, gold.subject)
+        and _phrase_contains(predicted.object, gold.object)
+    )
+
+
+def _count_relaxed(predicted: Sequence[Claim], gold: Sequence[Claim]) -> ClaimScore:
+    """Pairs one-to-one, strict matches first so a claim already counted under
+    strict consumes its gold partner and can't also be reached by a broad
+    containment match, then containment matches for the rest.
+    """
+    remaining_predicted = list(predicted)
+    matched_gold: list[Claim] = []
+    unmatched_gold: list[Claim] = []
+
+    for gold_claim in gold:
+        exact = next(
+            (c for c in remaining_predicted if _strict_key(c) == _strict_key(gold_claim)),
+            None,
+        )
+        if exact is None:
+            unmatched_gold.append(gold_claim)
+        else:
+            remaining_predicted.remove(exact)
+            matched_gold.append(gold_claim)
+
+    for gold_claim in unmatched_gold:
+        partner = next(
+            (c for c in remaining_predicted if _relaxed_matches(c, gold_claim)),
+            None,
+        )
+        if partner is not None:
+            remaining_predicted.remove(partner)
+            matched_gold.append(gold_claim)
+
+    true_positives = len(matched_gold)
+    return ClaimScore(
+        true_positives=true_positives,
+        false_positives=len(predicted) - true_positives,
+        false_negatives=len(gold) - true_positives,
+    )

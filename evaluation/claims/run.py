@@ -156,6 +156,7 @@ def _summary(outcome: RunOutcome) -> str:
         f"run {outcome.run_id} -> {outcome.path}",
         _score_line("loose", report.loose),
         _score_line("strict", report.strict),
+        _score_line("relaxed", report.relaxed),
         f"  mismatches on loose matches: polarity {report.polarity_mismatches}, "
         f"mode {report.mode_mismatches}, "
         f"attribution {report.attribution_mismatches}",
