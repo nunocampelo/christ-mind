@@ -256,3 +256,4 @@ structure only together with its provenance and extraction version.
 | --- | ------ | ----- | --------- | ---------- | ----------- | ----- |
 | 20260923T002530Z | v2 | dev | 0.30 / 0.31 | 0.29 / 0.30 | — | old scorer, before step 1 |
 | 20260923T002530Z | v2 | dev | 0.43 / 0.45 | 0.40 / 0.42 | 0.62 / 0.65 | re-scored under step-1 scorer (no new call) — **this is the baseline from now on**; mode mismatches 2 |
+| 20260923T075901Z | v2 | dev | 0.45 / 0.47 | 0.43 / 0.45 | 0.62 / 0.65 | fresh v2 run in the readable (step-2) format — the file to diff against v3; within run-to-run variance of the re-score; mode mismatches 2 |

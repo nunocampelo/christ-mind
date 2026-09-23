@@ -81,6 +81,31 @@ def test_run_file_has_header_then_one_line_per_claim(tmp_path: Path):
     assert crucifixion["evidence"] == "The crucifixion did NOT establish the Atonement."
 
 
+def test_claim_lines_lead_with_the_human_scannable_fields(tmp_path: Path):
+    sources = list_acim_sources()
+    gold = _gold(Split.DEV, sources)
+
+    outcome = run(
+        GoldEchoExtractor(gold, sources), "echo", Split.DEV, sources, tmp_path, NOW
+    )
+
+    _, first_claim, *_ = _read_lines(outcome.path)
+    assert list(first_claim) == [
+        "type",
+        "source_id",
+        "subject",
+        "verb_phrase",
+        "object",
+        "predicate",
+        "polarity",
+        "mode",
+        "attribution",
+        "evidence",
+        "evidence_start",
+        "evidence_end",
+    ]
+
+
 def test_holdout_runs_only_the_holdout_passages(tmp_path: Path):
     sources = list_acim_sources()
     extractor = GoldEchoExtractor(_gold(Split.DEV, sources), sources)

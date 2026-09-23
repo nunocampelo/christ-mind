@@ -104,10 +104,19 @@ def run(
     lines += [
         {
             "type": "claim",
-            **asdict(claim),
+            "source_id": claim.source_id,
+            "subject": claim.subject,
+            "verb_phrase": claim.verb_phrase,
+            "object": claim.object,
+            "predicate": claim.predicate,
+            "polarity": claim.polarity,
+            "mode": claim.mode,
+            "attribution": claim.attribution,
             "evidence": texts[claim.source_id][
                 claim.evidence_start : claim.evidence_end
             ],
+            "evidence_start": claim.evidence_start,
+            "evidence_end": claim.evidence_end,
         }
         for claim in result.claims
     ]

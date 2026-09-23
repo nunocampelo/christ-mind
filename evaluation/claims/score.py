@@ -173,14 +173,30 @@ def _relaxed_matches(predicted: Claim, gold: Claim) -> bool:
     )
 
 
-def _count_relaxed(predicted: Sequence[Claim], gold: Sequence[Claim]) -> ClaimScore:
+@dataclass(frozen=True)
+class RelaxedPairing:
+    """The one-to-one relaxed match of predictions to gold: `pairs` are matched
+    (predicted, gold), `unmatched_gold` are gold claims with no relaxed partner,
+    and `unmatched_predicted` are predictions that matched no gold claim.
+    """
+
+    pairs: list[tuple[Claim, Claim]]
+    unmatched_gold: list[Claim]
+    unmatched_predicted: list[Claim]
+
+
+def relaxed_pairing(
+    predicted: Sequence[Claim], gold: Sequence[Claim]
+) -> RelaxedPairing:
     """Pairs one-to-one, strict matches first so a claim already counted under
     strict consumes its gold partner and can't also be reached by a broad
-    containment match, then containment matches for the rest.
+    containment match, then containment matches for the rest. Used both to count
+    the relaxed tier and by the near-miss report, so "matched" means the same in
+    both.
     """
     remaining_predicted = list(predicted)
-    matched_gold: list[Claim] = []
-    unmatched_gold: list[Claim] = []
+    pairs: list[tuple[Claim, Claim]] = []
+    pending_gold: list[Claim] = []
 
     for gold_claim in gold:
         exact = next(
@@ -188,21 +204,32 @@ def _count_relaxed(predicted: Sequence[Claim], gold: Sequence[Claim]) -> ClaimSc
             None,
         )
         if exact is None:
-            unmatched_gold.append(gold_claim)
+            pending_gold.append(gold_claim)
         else:
             remaining_predicted.remove(exact)
-            matched_gold.append(gold_claim)
+            pairs.append((exact, gold_claim))
 
-    for gold_claim in unmatched_gold:
+    unmatched_gold: list[Claim] = []
+    for gold_claim in pending_gold:
         partner = next(
             (c for c in remaining_predicted if _relaxed_matches(c, gold_claim)),
             None,
         )
-        if partner is not None:
+        if partner is None:
+            unmatched_gold.append(gold_claim)
+        else:
             remaining_predicted.remove(partner)
-            matched_gold.append(gold_claim)
+            pairs.append((partner, gold_claim))
 
-    true_positives = len(matched_gold)
+    return RelaxedPairing(
+        pairs=pairs,
+        unmatched_gold=unmatched_gold,
+        unmatched_predicted=remaining_predicted,
+    )
+
+
+def _count_relaxed(predicted: Sequence[Claim], gold: Sequence[Claim]) -> ClaimScore:
+    true_positives = len(relaxed_pairing(predicted, gold).pairs)
     return ClaimScore(
         true_positives=true_positives,
         false_positives=len(predicted) - true_positives,
