@@ -21,7 +21,7 @@ from application.extraction.extract_claims import (
 from domain.claims.models import Attribution, Mode, Polarity, Predicate
 from domain.sources.models import Source
 
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 
 type Complete = Callable[[str, str], str]
 """Sends (system prompt, user prompt) to a model and returns its reply text."""
@@ -57,6 +57,10 @@ Rules:
 - Subject and object: drop articles, and resolve pronouns to what they refer to
   ("They" -> "miracles", "One" -> "intellectualizing"). Otherwise keep the
   text's words; don't normalise "miracle" vs "miracles".
+- Put the claim's own noun phrase, with its quantifiers and modifiers, in
+  "object" -- "There is no order of difficulty among miracles" is object "order of
+  difficulty"; "Miracles are all the same" is object "all the same", not "are all"
+  / "the same". Use a null object only when the claim has none.
 - verb_phrase: "subject verb_phrase object" must read as a sentence with the
   claim's meaning. Use the text's own words, including emphasis capitals ("are
   ALWAYS"), where they read correctly in that order. Where the text is built the
@@ -65,6 +69,9 @@ Rules:
   ("confusing the levels" "causes" "sickness"; "love" "is received through"
   "prayer"). Never repeat the object inside the verb phrase.
 - "is": identity, definition, and predicate adjectives ("Miracles are natural").
+  Also for a plain property or state of the subject worded as "feels X", "has
+  been X", "seems X" ("this error has been particularly difficult to overcome" is
+  "is", object "particularly difficult to overcome").
 - "causes": always cause -> effect. "X comes from Y" and "X arises from Y" become
   Y causes X. Effect verbs ("heal", "are healing", "bring") are "causes" with the
   effect as object.
@@ -79,7 +86,9 @@ Rules:
   polarity: "NOTHING of this kind remains in your mind" is subject "this kind of
   thinking", verb_phrase "remains in", object "your mind", polarity "negated".
   "The Spirit, not the body, is the altar" is two claims, one affirmed and one
-  negated. A "NOT" inside an if/when clause doesn't negate the claim: "When they
+  negated. A "NOT" or "no" on the verb negates the claim, whatever the predicate:
+  "your being bad did NOT cause my punishment" is subject "your being bad", verb
+  "caused", object "my punishment", predicate "causes", polarity "negated". A "NOT" inside an if/when clause doesn't negate the claim: "When they
   do NOT occur something has gone wrong" is subject "absence of miracles",
   verb_phrase "means", object "something has gone wrong", mode "conditional",
   polarity "affirmed".
