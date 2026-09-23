@@ -11,6 +11,7 @@ compared on the same prompt.
 """
 
 import json
+import re
 from collections.abc import Callable, Sequence
 
 from application.extraction.extract_claims import (
@@ -158,7 +159,7 @@ def user_prompt(source: Source) -> str:
 
 def parse_response(text: str) -> list[CandidateClaim]:
     try:
-        response = json.loads(_strip_code_fence(text))
+        response = json.loads(_repair_duplicate_header(_strip_code_fence(text)))
         if not isinstance(response, dict) or not isinstance(
             claims := response.get("claims"), list
         ):
@@ -176,6 +177,18 @@ def _strip_code_fence(text: str) -> str:
         stripped = stripped.removeprefix("```").removesuffix("```")
         stripped = stripped.removeprefix("json")
     return stripped
+
+
+_DUPLICATE_HEADER = re.compile(r'^(\s*\{\s*"claims"\s*:\s*\[)\s*"claims"\s*:\s*\[')
+
+
+def _repair_duplicate_header(text: str) -> str:
+    # A recurring generation tic: the model opens the object, then repeats the
+    # "claims": [ key inside the array -- {"claims": [ "claims": [ {...}, ...] }.
+    # The claim objects themselves are well-formed, so collapse the duplicated
+    # header rather than fail the whole source. Anchored at the start and
+    # matching only the doubled header, so a well-formed reply is left untouched.
+    return _DUPLICATE_HEADER.sub(r"\1", text, count=1)
 
 
 class PromptedClaimExtractor:

@@ -43,8 +43,12 @@ def test_system_prompt_offers_every_allowed_value(
         f'{{"claims": [{CLAIM_JSON}]}}',
         f'```json\n{{"claims": [{CLAIM_JSON}]}}\n```',
         f'```\n{{"claims": [{CLAIM_JSON}]}}\n```',
+        # The model sometimes repeats the "claims": [ header inside the array;
+        # the claim objects are well-formed, so the duplicated header is repaired.
+        f'{{"claims": [\n  "claims": [\n    {CLAIM_JSON}\n]}}',
+        f'```json\n{{"claims": [\n  "claims": [\n    {CLAIM_JSON}\n]}}\n```',
     ],
-    ids=["bare", "json-fence", "plain-fence"],
+    ids=["bare", "json-fence", "plain-fence", "dup-header", "dup-header-fenced"],
 )
 def test_parse_response_reads_claims(response: str):
     assert parse_response(response) == [NATURAL]
