@@ -48,6 +48,14 @@ def _read_lines(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
+def _header(lines: list[dict[str, object]]) -> dict[str, object]:
+    return next(line for line in lines if line["type"] == "header")
+
+
+def _non_header(lines: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [line for line in lines if line["type"] != "header"]
+
+
 def test_echoing_the_dev_gold_scores_perfectly(tmp_path: Path):
     sources = list_acim_sources()
     gold = _gold(Split.DEV, sources)
@@ -62,7 +70,7 @@ def test_echoing_the_dev_gold_scores_perfectly(tmp_path: Path):
     assert outcome.result.rejected == ()
 
 
-def test_run_file_has_header_then_one_line_per_claim(tmp_path: Path):
+def test_run_file_has_a_header_and_one_line_per_claim(tmp_path: Path):
     sources = list_acim_sources()
     gold = _gold(Split.DEV, sources)
 
@@ -71,8 +79,9 @@ def test_run_file_has_header_then_one_line_per_claim(tmp_path: Path):
     )
 
     assert outcome.path == tmp_path / "20260923T120000Z.jsonl"
-    header, *rest = _read_lines(outcome.path)
-    assert header["type"] == "header"
+    lines = _read_lines(outcome.path)
+    header = _header(lines)
+    rest = _non_header(lines)
     assert header["extractor"] == "echo"
     assert header["split"] == "dev"
     assert header["prompt_version"] is None
@@ -80,6 +89,17 @@ def test_run_file_has_header_then_one_line_per_claim(tmp_path: Path):
     assert {line["type"] for line in rest} == {"claim"}
     crucifixion = next(line for line in rest if line["subject"] == "crucifixion")
     assert crucifixion["evidence"] == "The crucifixion did NOT establish the Atonement."
+
+
+def test_header_is_written_last(tmp_path: Path):
+    sources = list_acim_sources()
+    gold = _gold(Split.DEV, sources)
+
+    outcome = run(
+        GoldEchoExtractor(gold, sources), "echo", Split.DEV, sources, tmp_path, NOW
+    )
+
+    assert _read_lines(outcome.path)[-1]["type"] == "header"
 
 
 def test_claim_lines_lead_with_the_human_scannable_fields(tmp_path: Path):
@@ -90,7 +110,9 @@ def test_claim_lines_lead_with_the_human_scannable_fields(tmp_path: Path):
         GoldEchoExtractor(gold, sources), "echo", Split.DEV, sources, tmp_path, NOW
     )
 
-    _, first_claim, *_ = _read_lines(outcome.path)
+    first_claim = next(
+        line for line in _read_lines(outcome.path) if line["type"] == "claim"
+    )
     assert list(first_claim) == [
         "type",
         "claim_id",
@@ -144,11 +166,12 @@ def test_corpus_run_targets_every_source_and_is_unscored(tmp_path: Path):
     outcome = run(extractor, "echo", Split.CORPUS, sources, tmp_path, NOW)
 
     assert outcome.report is None
-    header, *rest = _read_lines(outcome.path)
+    lines = _read_lines(outcome.path)
+    header = _header(lines)
     assert header["split"] == "corpus"
     assert header["score"] is None
     assert header["gold_sha256"] == ""
-    claim_lines = [line for line in rest if line["type"] == "claim"]
+    claim_lines = [line for line in lines if line["type"] == "claim"]
     covered = {line["source_id"] for line in claim_lines}
     dev_ids = {c.source_id for c in _gold(Split.DEV, sources)}
     assert dev_ids <= covered
@@ -164,6 +187,6 @@ def test_failed_sources_are_written_to_the_run_file(tmp_path: Path):
         AlwaysFails(), "fails", Split.HOLDOUT, list_acim_sources(), tmp_path, NOW
     )
 
-    header, *rest = _read_lines(outcome.path)
-    assert header["failed_sources"] == 5
-    assert {line["type"] for line in rest} == {"failed"}
+    lines = _read_lines(outcome.path)
+    assert _header(lines)["failed_sources"] == 5
+    assert {line["type"] for line in _non_header(lines)} == {"failed"}

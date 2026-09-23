@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import importlib
 import json
+import sys
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
@@ -23,6 +24,7 @@ from pathlib import Path
 from application.extraction.extract_claims import (
     ClaimExtractor,
     ExtractionResult,
+    SourceExtraction,
     extract_claims,
 )
 from application.extraction.prompt import PROMPT_VERSION, PromptedClaimExtractor
@@ -87,46 +89,71 @@ def run(
         gold_source_ids = {claim.source_id for claim in gold}
         targets = [source for source in sources if source.id in gold_source_ids]
 
-    result = extract_claims(targets, extractor)
-    report = score_claims(result.claims, gold) if split is not Split.CORPUS else None
-
-    run_id = now.strftime("%Y%m%dT%H%M%SZ")
-    header = RunHeader(
-        run_id=run_id,
-        created_at=now.isoformat(),
-        extractor=extractor_name,
-        prompt_version=(
-            PROMPT_VERSION if isinstance(extractor, PromptedClaimExtractor) else None
-        ),
-        split=split,
-        passages_sha256=_hash_passages(targets),
-        gold_sha256=_hash_files(gold_files) if gold_files else "",
-        score=report,
-        rejected=len(result.rejected),
-        failed_sources=len(result.failed_source_ids),
-    )
     texts = {source.id: source.text for source in targets}
-    lines = [{"type": "header", **asdict(header)}]
-    lines += [
+    run_id = now.strftime("%Y%m%dT%H%M%SZ")
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    path = runs_dir / f"{run_id}.jsonl"
+
+    total = len(targets)
+    completed = 0
+
+    with path.open("w") as file:
+
+        def write_source(outcome: SourceExtraction) -> None:
+            nonlocal completed
+            for line in _source_lines(outcome, texts):
+                file.write(json.dumps(line, ensure_ascii=False) + "\n")
+            file.flush()
+            completed += 1
+            status = "FAILED" if outcome.failed else f"{len(outcome.claims)} claims"
+            print(
+                f"[{completed}/{total}] {outcome.source_id}: {status}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+        result = extract_claims(targets, extractor, on_source_complete=write_source)
+        report = (
+            score_claims(result.claims, gold) if split is not Split.CORPUS else None
+        )
+        header = RunHeader(
+            run_id=run_id,
+            created_at=now.isoformat(),
+            extractor=extractor_name,
+            prompt_version=(
+                PROMPT_VERSION
+                if isinstance(extractor, PromptedClaimExtractor)
+                else None
+            ),
+            split=split,
+            passages_sha256=_hash_passages(targets),
+            gold_sha256=_hash_files(gold_files) if gold_files else "",
+            score=report,
+            rejected=len(result.rejected),
+            failed_sources=len(result.failed_source_ids),
+        )
+        file.write(
+            json.dumps({"type": "header", **asdict(header)}, ensure_ascii=False) + "\n"
+        )
+
+    return RunOutcome(run_id=run_id, path=path, result=result, report=report)
+
+
+def _source_lines(
+    outcome: SourceExtraction, texts: dict[str, str]
+) -> list[dict[str, object]]:
+    if outcome.failed:
+        return [{"type": "failed", "source_id": outcome.source_id}]
+    lines: list[dict[str, object]] = [
         ClaimLine.from_claim(
             claim, texts[claim.source_id][claim.evidence_start : claim.evidence_end]
         ).model_dump()
-        for claim in result.claims
+        for claim in outcome.claims
     ]
     lines += [
-        {"type": "rejected", **asdict(rejection)} for rejection in result.rejected
+        {"type": "rejected", **asdict(rejection)} for rejection in outcome.rejected
     ]
-    lines += [
-        {"type": "failed", "source_id": source_id}
-        for source_id in result.failed_source_ids
-    ]
-
-    runs_dir.mkdir(parents=True, exist_ok=True)
-    path = runs_dir / f"{run_id}.jsonl"
-    path.write_text(
-        "".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines)
-    )
-    return RunOutcome(run_id=run_id, path=path, result=result, report=report)
+    return lines
 
 
 def _hash_passages(sources: Sequence[Source]) -> str:

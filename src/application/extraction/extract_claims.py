@@ -7,7 +7,7 @@ returned as rejections instead of being dropped, since how often a model invents
 evidence is itself a measure of its quality.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
@@ -94,6 +94,18 @@ class RejectedCandidate:
 
 
 @dataclass(frozen=True)
+class SourceExtraction:
+    """One source's outcome. `failed` is True when the extractor raised
+    `ExtractionFailedError`, in which case `claims` and `rejected` are empty.
+    """
+
+    source_id: str
+    claims: tuple[Claim, ...]
+    rejected: tuple[RejectedCandidate, ...]
+    failed: bool
+
+
+@dataclass(frozen=True)
 class ExtractionResult:
     claims: tuple[Claim, ...]
     rejected: tuple[RejectedCandidate, ...]
@@ -101,30 +113,50 @@ class ExtractionResult:
 
 
 def extract_claims(
-    sources: Iterable[Source], extractor: ClaimExtractor
+    sources: Iterable[Source],
+    extractor: ClaimExtractor,
+    on_source_complete: Callable[[SourceExtraction], None] | None = None,
 ) -> ExtractionResult:
+    """Extracts and anchors claims from each source. When `on_source_complete` is
+    given, it's called with that source's outcome as soon as the source finishes,
+    so a caller can persist and report progress incrementally over a long run.
+    """
     claims = []
     rejected = []
     failed_source_ids = []
     for source in sources:
-        try:
-            candidates = extractor.extract(source)
-        except ExtractionFailedError:
+        outcome = _extract_source(source, extractor)
+        claims.extend(outcome.claims)
+        rejected.extend(outcome.rejected)
+        if outcome.failed:
             failed_source_ids.append(source.id)
-            continue
-        for candidate in candidates:
-            try:
-                claims.append(anchor_claim(source, candidate))
-            except EvidenceNotFoundError:
-                reason = RejectionReason.EVIDENCE_NOT_FOUND
-                rejected.append(RejectedCandidate(source.id, candidate, reason))
-            except AmbiguousEvidenceError:
-                reason = RejectionReason.EVIDENCE_AMBIGUOUS
-                rejected.append(RejectedCandidate(source.id, candidate, reason))
+        if on_source_complete is not None:
+            on_source_complete(outcome)
     return ExtractionResult(
         claims=tuple(claims),
         rejected=tuple(rejected),
         failed_source_ids=tuple(failed_source_ids),
+    )
+
+
+def _extract_source(source: Source, extractor: ClaimExtractor) -> SourceExtraction:
+    try:
+        candidates = extractor.extract(source)
+    except ExtractionFailedError:
+        return SourceExtraction(source.id, (), (), failed=True)
+    claims = []
+    rejected = []
+    for candidate in candidates:
+        try:
+            claims.append(anchor_claim(source, candidate))
+        except EvidenceNotFoundError:
+            reason = RejectionReason.EVIDENCE_NOT_FOUND
+            rejected.append(RejectedCandidate(source.id, candidate, reason))
+        except AmbiguousEvidenceError:
+            reason = RejectionReason.EVIDENCE_AMBIGUOUS
+            rejected.append(RejectedCandidate(source.id, candidate, reason))
+    return SourceExtraction(
+        source.id, tuple(claims), tuple(rejected), failed=False
     )
 
 
