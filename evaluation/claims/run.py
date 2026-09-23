@@ -15,7 +15,8 @@ import importlib
 import json
 import sys
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -25,7 +26,9 @@ from application.extraction.extract_claims import (
     ClaimExtractor,
     ExtractionResult,
     SourceExtraction,
+    collect_extraction,
     extract_claims,
+    extract_source,
 )
 from application.extraction.prompt import PROMPT_VERSION, PromptedClaimExtractor
 from domain.sources.models import Source
@@ -80,6 +83,7 @@ def run(
     sources: Sequence[Source],
     runs_dir: Path,
     now: datetime,
+    workers: int = 1,
 ) -> RunOutcome:
     gold_files = GOLD_FILES[split]
     gold = [claim for path in gold_files for claim in load_gold_claims(path, sources)]
@@ -112,7 +116,12 @@ def run(
                 flush=True,
             )
 
-        result = extract_claims(targets, extractor, on_source_complete=write_source)
+        if workers > 1:
+            result = _extract_concurrent(targets, extractor, workers, write_source)
+        else:
+            result = extract_claims(
+                targets, extractor, on_source_complete=write_source
+            )
         report = (
             score_claims(result.claims, gold) if split is not Split.CORPUS else None
         )
@@ -137,6 +146,31 @@ def run(
         )
 
     return RunOutcome(run_id=run_id, path=path, result=result, report=report)
+
+
+def _extract_concurrent(
+    targets: Sequence[Source],
+    extractor: ClaimExtractor,
+    workers: int,
+    on_source_complete: Callable[[SourceExtraction], None],
+) -> ExtractionResult:
+    """Runs `extract_source` across a thread pool (the provider call is I/O-bound,
+    so threads give real concurrency). Outcomes complete out of order; the caller's
+    `on_source_complete` runs here in the main thread as each finishes, so it stays
+    the sole writer and needs no lock. An unexpected error in any worker surfaces
+    from `future.result()` and stops the run, matching the serial path.
+    """
+    outcomes: list[SourceExtraction] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(extract_source, source, extractor): source
+            for source in targets
+        }
+        for future in as_completed(futures):
+            outcome = future.result()
+            outcomes.append(outcome)
+            on_source_complete(outcome)
+    return collect_extraction(outcomes)
 
 
 def _source_lines(
@@ -230,7 +264,15 @@ def main(argv: Sequence[str] | None = None) -> None:
         action="store_true",
         help="extract over the whole corpus, unscored; writes versioned JSONL",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        help="concurrent extraction requests (default 8; 1 runs serially)",
+    )
     args = parser.parse_args(argv)
+    if args.workers < 1:
+        parser.error("--workers must be at least 1")
 
     try:
         extractor = _load_extractor(args.extractor)
@@ -251,6 +293,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         sources=list_acim_sources(),
         runs_dir=RUNS_DIR,
         now=datetime.now(UTC),
+        workers=args.workers,
     )
     print(_summary(outcome))
 

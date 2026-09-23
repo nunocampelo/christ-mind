@@ -178,6 +178,31 @@ def test_corpus_run_targets_every_source_and_is_unscored(tmp_path: Path):
     assert covered <= {source.id for source in sources}
 
 
+def test_concurrent_run_matches_the_serial_result(tmp_path: Path):
+    sources = list_acim_sources()
+    gold = _gold(Split.DEV, sources)
+
+    serial = run(
+        GoldEchoExtractor(gold, sources), "echo", Split.DEV, sources, tmp_path / "s", NOW
+    )
+    parallel = run(
+        GoldEchoExtractor(gold, sources),
+        "echo",
+        Split.DEV,
+        sources,
+        tmp_path / "p",
+        NOW,
+        workers=8,
+    )
+
+    assert serial.report is not None and parallel.report is not None
+    assert parallel.report.strict == serial.report.strict
+    assert set(parallel.result.claims) == set(serial.result.claims)
+    lines = _read_lines(parallel.path)
+    assert _read_lines(parallel.path)[-1]["type"] == "header"
+    assert len(_non_header(lines)) == len(gold)
+
+
 def test_failed_sources_are_written_to_the_run_file(tmp_path: Path):
     class AlwaysFails:
         def extract(self, source: Source) -> Sequence[CandidateClaim]:

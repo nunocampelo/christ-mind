@@ -121,17 +121,28 @@ def extract_claims(
     given, it's called with that source's outcome as soon as the source finishes,
     so a caller can persist and report progress incrementally over a long run.
     """
+    outcomes = []
+    for source in sources:
+        outcome = extract_source(source, extractor)
+        outcomes.append(outcome)
+        if on_source_complete is not None:
+            on_source_complete(outcome)
+    return collect_extraction(outcomes)
+
+
+def collect_extraction(outcomes: Iterable[SourceExtraction]) -> ExtractionResult:
+    """Folds per-source outcomes into one `ExtractionResult`. A caller that runs
+    `extract_source` concurrently uses this to assemble the same result
+    `extract_claims` would have returned serially.
+    """
     claims = []
     rejected = []
     failed_source_ids = []
-    for source in sources:
-        outcome = _extract_source(source, extractor)
+    for outcome in outcomes:
         claims.extend(outcome.claims)
         rejected.extend(outcome.rejected)
         if outcome.failed:
-            failed_source_ids.append(source.id)
-        if on_source_complete is not None:
-            on_source_complete(outcome)
+            failed_source_ids.append(outcome.source_id)
     return ExtractionResult(
         claims=tuple(claims),
         rejected=tuple(rejected),
@@ -139,7 +150,7 @@ def extract_claims(
     )
 
 
-def _extract_source(source: Source, extractor: ClaimExtractor) -> SourceExtraction:
+def extract_source(source: Source, extractor: ClaimExtractor) -> SourceExtraction:
     try:
         candidates = extractor.extract(source)
     except ExtractionFailedError:
