@@ -263,3 +263,5 @@ structure only together with its provenance and extraction version.
 | 20260923T082110Z | v3 | dev | 0.47 / 0.52 | 0.45 / 0.49 | 0.62 / 0.69 | sharpened-v3 run 3 of N=3 |
 
 **Sharpened-v3, N=3 dev (mean ± stdev):** loose 0.460±0.006 / 0.514±0.007 · strict 0.446±0.001 / 0.498±0.007 · relaxed 0.626±0.005 / 0.699±0.012 (58±1 matched). Noise floor on relaxed R ≈ 0.012. All five step-4 error types cleared in all three runs (the only surviving `makes` is `intellectualizing makes the physical`, a genuine Course-sense make). vs. the re-scored v2 baseline (strict R 0.42 → 0.50, relaxed R 0.65 → 0.70): strict R gain (~0.08) and relaxed R gain (~0.05) both exceed the noise floor.
+
+| 20260923T182131Z | v3.1 | dev | 0.49 / 0.55 | 0.47 / 0.53 | 0.64 / 0.72 | v3.1: added explicit `expresses` and `contrasts_with` rules (aligning the prompt to gold conventions already set in step 5; no relabelling). 1 run. Relaxed R 0.72 vs v3 mean 0.699 (+0.024, ~2σ). Mechanism confirmed: t1-1-3, t1-1-21 flipped `is`→`expresses` and t1-1-12 flipped `is`→`contrasts_with`, all now matching gold. **Needs N≥3 to confirm the aggregate lift against the noise floor.** |

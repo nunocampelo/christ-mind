@@ -21,7 +21,7 @@ from application.extraction.extract_claims import (
 from domain.claims.models import Attribution, Mode, Polarity, Predicate
 from domain.sources.models import Source
 
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "3.1"
 
 type Complete = Callable[[str, str], str]
 """Sends (system prompt, user prompt) to a model and returns its reply text."""
@@ -88,6 +88,17 @@ Rules:
   adjective is "is", not "causes" ("Miracles are healing" is "is").
 - "requires": preconditions and means ("necessary first", "depend on", "by
   extending it").
+- "expresses": the subject is an expression, manifestation, or showing-forth of
+  the object. "X is an expression of Y", "X is expressions of Y", "X are natural
+  expressions of Y" are all "X expresses Y": "Miracles are expressions of love"
+  is subject "miracles", predicate "expresses", object "love", verb_phrase "are
+  expressions of" -- not "is" with object "expressions of love".
+- "contrasts_with": the text sets two things against each other as a distinction.
+  "the distinction between A and B", "A as opposed to B", "A rather than B" is "A
+  contrasts_with B": "the basic distinction between intellectualizing and
+  thinking" is subject "intellectualizing", predicate "contrasts_with", object
+  "thinking" -- not "this is the distinction". (This is a distinction between two
+  things; it is not the "A, not B, is C" negation pattern below.)
 - "makes" and "creates" are distinct, and both are limited to the Course's
   sense: "makes" is making by the ego or in perception (making an illusion, a
   false world), "creates" is creating by spirit. An ordinary English "make" is
