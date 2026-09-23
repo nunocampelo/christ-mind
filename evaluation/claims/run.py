@@ -48,7 +48,11 @@ class Split(StrEnum):
 
 
 GOLD_FILES = {
-    Split.DEV: (GOLD_DIR / "t1_1.jsonl", GOLD_DIR / "t3_2.jsonl"),
+    Split.DEV: (
+        GOLD_DIR / "t1_1.jsonl",
+        GOLD_DIR / "t3_2.jsonl",
+        GOLD_DIR / "t4_ego.jsonl",
+    ),
     Split.HOLDOUT: (GOLD_DIR / "t1_1_holdout.jsonl",),
     Split.CORPUS: (),
 }
