@@ -56,6 +56,7 @@ def test_echoing_the_dev_gold_scores_perfectly(tmp_path: Path):
         GoldEchoExtractor(gold, sources), "echo", Split.DEV, sources, tmp_path, NOW
     )
 
+    assert outcome.report is not None
     assert outcome.report.strict.true_positives == len(gold)
     assert outcome.report.strict.precision == outcome.report.strict.recall == 1.0
     assert outcome.result.rejected == ()
@@ -114,6 +115,7 @@ def test_holdout_runs_only_the_holdout_passages(tmp_path: Path):
     outcome = run(extractor, "echo", Split.HOLDOUT, sources, tmp_path, NOW)
 
     assert outcome.result.claims == ()
+    assert outcome.report is not None
     assert outcome.report.strict.false_negatives == len(
         _gold(Split.HOLDOUT, sources)
     )
@@ -133,6 +135,24 @@ def test_hashes_change_only_when_passages_or_gold_change(tmp_path: Path):
     for key in ("passages_sha256", "gold_sha256"):
         assert first_header[key] == second_header[key]
         assert first_header[key] != holdout_header[key]
+
+
+def test_corpus_run_targets_every_source_and_is_unscored(tmp_path: Path):
+    sources = list_acim_sources()
+    extractor = GoldEchoExtractor(_gold(Split.DEV, sources), sources)
+
+    outcome = run(extractor, "echo", Split.CORPUS, sources, tmp_path, NOW)
+
+    assert outcome.report is None
+    header, *rest = _read_lines(outcome.path)
+    assert header["split"] == "corpus"
+    assert header["score"] is None
+    assert header["gold_sha256"] == ""
+    claim_lines = [line for line in rest if line["type"] == "claim"]
+    covered = {line["source_id"] for line in claim_lines}
+    dev_ids = {c.source_id for c in _gold(Split.DEV, sources)}
+    assert dev_ids <= covered
+    assert covered <= {source.id for source in sources}
 
 
 def test_failed_sources_are_written_to_the_run_file(tmp_path: Path):

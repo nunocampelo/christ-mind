@@ -39,11 +39,13 @@ RUNS_DIR = Path(__file__).parent.parent / "runs"
 class Split(StrEnum):
     DEV = "dev"
     HOLDOUT = "holdout"
+    CORPUS = "corpus"
 
 
 GOLD_FILES = {
     Split.DEV: (GOLD_DIR / "t1_1.jsonl", GOLD_DIR / "t3_2.jsonl"),
     Split.HOLDOUT: (GOLD_DIR / "t1_1_holdout.jsonl",),
+    Split.CORPUS: (),
 }
 
 
@@ -56,7 +58,7 @@ class RunHeader:
     split: Split
     passages_sha256: str
     gold_sha256: str
-    score: ScoreReport
+    score: ScoreReport | None
     rejected: int
     failed_sources: int
 
@@ -66,7 +68,7 @@ class RunOutcome:
     run_id: str
     path: Path
     result: ExtractionResult
-    report: ScoreReport
+    report: ScoreReport | None
 
 
 def run(
@@ -79,11 +81,14 @@ def run(
 ) -> RunOutcome:
     gold_files = GOLD_FILES[split]
     gold = [claim for path in gold_files for claim in load_gold_claims(path, sources)]
-    gold_source_ids = {claim.source_id for claim in gold}
-    targets = [source for source in sources if source.id in gold_source_ids]
+    if split is Split.CORPUS:
+        targets = list(sources)
+    else:
+        gold_source_ids = {claim.source_id for claim in gold}
+        targets = [source for source in sources if source.id in gold_source_ids]
 
     result = extract_claims(targets, extractor)
-    report = score_claims(result.claims, gold)
+    report = score_claims(result.claims, gold) if split is not Split.CORPUS else None
 
     run_id = now.strftime("%Y%m%dT%H%M%SZ")
     header = RunHeader(
@@ -95,7 +100,7 @@ def run(
         ),
         split=split,
         passages_sha256=_hash_passages(targets),
-        gold_sha256=_hash_files(gold_files),
+        gold_sha256=_hash_files(gold_files) if gold_files else "",
         score=report,
         rejected=len(result.rejected),
         failed_sources=len(result.failed_source_ids),
@@ -149,14 +154,19 @@ def _load_extractor(spec: str) -> ClaimExtractor:
 def _summary(outcome: RunOutcome) -> str:
     report = outcome.report
     result = outcome.result
-    rows = [
-        f"run {outcome.run_id} -> {outcome.path}",
-        _score_line("loose", report.loose),
-        _score_line("strict", report.strict),
-        _score_line("relaxed", report.relaxed),
-        f"  mismatches on loose matches: polarity {report.polarity_mismatches}, "
-        f"mode {report.mode_mismatches}, "
-        f"attribution {report.attribution_mismatches}",
+    rows = [f"run {outcome.run_id} -> {outcome.path}"]
+    if report is None:
+        rows.append(f"  unscored corpus run: {len(result.claims)} claims")
+    else:
+        rows += [
+            _score_line("loose", report.loose),
+            _score_line("strict", report.strict),
+            _score_line("relaxed", report.relaxed),
+            f"  mismatches on loose matches: polarity {report.polarity_mismatches}, "
+            f"mode {report.mode_mismatches}, "
+            f"attribution {report.attribution_mismatches}",
+        ]
+    rows += [
         f"  rejected candidates: {len(result.rejected)}"
         + "".join(
             f", {reason} {count}"
@@ -182,10 +192,16 @@ def main(argv: Sequence[str] | None = None) -> None:
         description="Run a claim extractor over a gold set and score it."
     )
     parser.add_argument("--extractor", required=True, help="module:factory")
-    parser.add_argument(
+    split_group = parser.add_mutually_exclusive_group()
+    split_group.add_argument(
         "--holdout",
         action="store_true",
         help="score against the held-out set; don't use while tuning",
+    )
+    split_group.add_argument(
+        "--all",
+        action="store_true",
+        help="extract over the whole corpus, unscored; writes versioned JSONL",
     )
     args = parser.parse_args(argv)
 
@@ -194,10 +210,17 @@ def main(argv: Sequence[str] | None = None) -> None:
     except ValueError as e:
         parser.error(str(e))
 
+    if args.all:
+        split = Split.CORPUS
+    elif args.holdout:
+        split = Split.HOLDOUT
+    else:
+        split = Split.DEV
+
     outcome = run(
         extractor=extractor,
         extractor_name=args.extractor,
-        split=Split.HOLDOUT if args.holdout else Split.DEV,
+        split=split,
         sources=list_acim_sources(),
         runs_dir=RUNS_DIR,
         now=datetime.now(UTC),
