@@ -21,7 +21,7 @@ from application.extraction.extract_claims import (
 from domain.claims.models import Attribution, Mode, Polarity, Predicate
 from domain.sources.models import Source
 
-PROMPT_VERSION = "3.1"
+PROMPT_VERSION = "3.2"
 
 type Complete = Callable[[str, str], str]
 """Sends (system prompt, user prompt) to a model and returns its reply text."""
@@ -128,6 +128,10 @@ Rules:
   verb_phrase keeps "seem" and "really".
 - mode: "normative" for should/must, "conditional" for if/when/without clauses,
   "question" for questions, including rhetorical ones. "assertion" otherwise.
+  "predicate" and "mode" are different fields with different value lists: a mode
+  value ("normative", "conditional", "question", "assertion") is NEVER a
+  predicate. A should/must claim still takes a predicate from the predicate list
+  (usually "is" or "other") with mode "normative" -- never predicate "normative".
 - Questions: extract the proposition as literally worded, with mode "question".
   Don't flip polarity to the implied answer: "Is it likely that God would be
   capable of X?" is "God" "would be capable of" "X", polarity "affirmed".
