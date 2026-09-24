@@ -11,6 +11,7 @@ import os
 from anthropic import Anthropic, AnthropicError
 
 from application.extraction.prompt import Complete, PromptedClaimExtractor
+from application.resolution.prompt import PromptedResolver
 
 _DEFAULT_BASE_URL = "http://localhost:6656"
 _DEFAULT_MODEL = "anthropic--claude-4.8-opus"
@@ -54,3 +55,7 @@ def make_complete(model: str | None = None) -> Complete:
 
 def make_extractor() -> PromptedClaimExtractor:
     return PromptedClaimExtractor(make_complete())
+
+
+def make_resolver() -> PromptedResolver:
+    return PromptedResolver(make_complete())

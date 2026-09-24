@@ -133,6 +133,17 @@ numbers; the scored comparison is steps 0, 2, and 4.
   cross-block same-pairs to measure exactly this. Gate note: if blocking recall on gold
   is already very high and its false-pair volume low, an LLM pass may not beat it —
   that's the step-4 decision, decided by numbers not assumption.
+  - **As built (step 2):** `candidate_pairs` blocks on `_normalize`-equality (the free
+    floor) plus **shared head token** (last normalised word), so "the ego"/"ego"/"the
+    false ego" all pair. Four unrelated head tokens yield zero pairs, not the 6 all-pairs
+    — blocking is doing its job. **Known recall gap, recorded now:** `_normalize` does
+    not strip apostrophes, so a possessive modifier moves the head noun off the last
+    slot — "the ego's wish" normalises to "ego's wish", head token "wish", and does
+    **not** block with "ego". Step 3's cross-block same-pairs must include a possessive
+    case so this gap is measured, not assumed away. Widening the blocker (e.g. also
+    keying on the first content token) is a deliberate later decision if the gold shows
+    the gap costs real recall — not done pre-emptively, per the plan's "let the numbers
+    decide" discipline.
 - **`ResolveEntities` protocol + `PromptedResolver`** mirroring `extract_claims.py`'s
   `ClaimExtractor`/`PromptedClaimExtractor`: a `Complete` function answers "are these two
   mentions the same entity, given these example occurrences?" against a `SYSTEM_PROMPT`
