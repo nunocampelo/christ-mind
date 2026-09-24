@@ -159,6 +159,21 @@ if a predicate is added; otherwise a documented no-op.
   predicate now covers (relabel it in the same commit). One predicate per commit, with
   the before/after `other`-share in the log.
 
+**Outcome — no predicate added.** The recurring-`other`-verb tally did not surface a
+relationship operator recurring across more passages than the T1.1+T3.2 gold and not
+already covered by an existing predicate + `verb_phrase`, so `Predicate` is unchanged
+(the roadmap's conservative default). The one prompt change in this window
+(commit `cac0fa4`, **v3.2**) was *not* a predicate addition — it was a parse-failure
+fix: the v3.1 corpus run's 19 failed sources traced to the model putting a mode value
+(usually `normative`) in the `predicate` field, which `parse_candidate` rejects and
+which fails the whole source. v3.2 adds an explicit rule that `predicate` and `mode`
+are separate fields with separate value lists. Measured on those 19 sources, N=3:
+failure rate 50.9% (v3.1) → 29.8% (v3.2); residual failures are malformed JSON, which
+a prompt rule can't fix. Commit `9cb3245` (repair the model's duplicated claims-header
+before parsing) is a parser-robustness fix in the same vein. Neither touches the enum
+or the labelling rules, so neither is a relabelling event — the gold set is unchanged
+from step 3.
+
 ### 5. Run v3.1 (or v3.2 if step 4 changed the prompt) N≥3 on the enlarged dev set
 
 - N≥3 dev runs, identical settings, via `tmp/compare_prompts.py` (or the runner). Use
@@ -196,5 +211,31 @@ if a predicate is added; otherwise a documented no-op.
 | 20260923T224451Z | v3.1 | dev+ego | 0.59 / 0.63 | 0.56 / 0.60 | 0.75 / 0.80 | step 3 re-baseline run 1 of 3, on the **enlarged** dev set (t1_1 + t3_2 + t4_ego). New baseline from here — not comparable to the pre-ego dev numbers. |
 | 20260923T224527Z | v3.1 | dev+ego | 0.60 / 0.63 | 0.56 / 0.60 | 0.76 / 0.80 | re-baseline run 2 of 3 |
 | 20260923T224600Z | v3.1 | dev+ego | 0.59 / 0.65 | 0.55 / 0.60 | 0.76 / 0.82 | re-baseline run 3 of 3 |
+| 20260924T063845Z | v3.2 | dev+ego | 0.59 / 0.63 | 0.54 / 0.58 | 0.74 / 0.79 | step 5 run 1 of 3, v3.2 on the same enlarged dev set. 1 rejected (evidence_ambiguous), **0 failed** (v3.2's predicate/mode fix — cf. v3.1 corpus 19 failed). Mismatches: polarity 2, mode 1, attribution 5. |
+| 20260924T063919Z | v3.2 | dev+ego | 0.60 / 0.65 | 0.57 / 0.62 | 0.74 / 0.80 | step 5 run 2 of 3. 1 rejected, 0 failed. Mismatches: polarity 1, mode 2, attribution 3. |
+| 20260924T063951Z | v3.2 | dev+ego | 0.65 / 0.70 | 0.62 / 0.67 | 0.79 / 0.85 | step 5 run 3 of 3. 1 rejected, 0 failed. Mismatches: polarity 1, mode 2, attribution 3. |
+
+**Step-5, v3.2, N=3 enlarged dev (mean ± stdev):** loose 0.613±0.036 / 0.661±0.039 ·
+strict 0.577±0.038 / 0.622±0.042 · relaxed 0.757±0.032 / **0.816±0.033**. Directly
+comparable to the step-3 v3.1 baseline (same gold set). Every mean is at or above the
+v3.1 baseline (strict R 0.622 vs 0.595; relaxed R 0.816 vs 0.808), but the stdevs here
+(~0.04) are an order of magnitude wider than step 3's (~0.01), so **the apparent gain
+is within the noise floor** — v3.2 is not a scored improvement over v3.1 on dev, and
+isn't claimed as one. Its measured effect is the parse-failure drop on the corpus run
+(step 4 outcome), which dev — already near-zero failures under v3.1 — doesn't exercise:
+0 failed sources across all three v3.2 dev runs. `near_miss.py` on run 3
+(`20260924T063951Z`): differing-field tally object 20 / subject 16 / predicate 15 /
+**mode 2**, plus 3 no-overlap predictions. None of #4's five error types resurface; the
+gap is the same subject/object surface-modifier spread that step 3 flagged as
+entity-resolution (#6) territory. Attribution near-misses stay low (3–5/run).
+
+**Step-5 decision: #5 is done → write the #6 plan.** The enlarged dev set is stable
+across N=3 (strict R exactly consistent in character, relaxed R comfortably above the
+old 0.8 gate), `ego` is represented and scored with the model handling it well (only a
+handful of attribution near-misses), the predicate list held (step 4 no-op), and the
+residual gap is object/subject surface-form differences — exactly what increment #6
+(`resolve_entities`, gold set = mention pairs labelled same/different) is for. No new
+systematic error was exposed that would send us back to prompt iteration. Next: write
+the #6 plan.
 
 **Step-3 re-baseline, v3.1, N=3 enlarged dev (mean ± stdev):** loose 0.591±0.004 / 0.635±0.008 · strict 0.554±0.005 / **0.595±0.000** · relaxed 0.753±0.005 / **0.808±0.011**. This is the new baseline; the pre-ego dev numbers (v3.1 strict R 0.53, relaxed R 0.72) no longer compare. Strict R is exactly stable across runs (same 94 claims match every time). Relaxed R ~0.81 sits above the old 0.8 gate, **but is inflated by the t4_ego claims being seeded from the model's own corpus output** — not a clean generalization signal. Attribution near-misses only 2/run: the model handles `ego` well on this set. The remaining gap is object (24) / subject (20) surface-modifier differences — entity-resolution territory (#6), not more prompting. All #4 error types still clear. No prompt change here, so this run is directly attributable to the gold growth alone.
