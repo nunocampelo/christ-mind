@@ -32,7 +32,10 @@ apps in `apps/` calling into it.
   `(system, user) -> reply` function to `PromptedClaimExtractor`.
 - `evaluation/claims/` — hand-labelled gold claims (`gold/*.jsonl`), a
   scorer, and `run.py`, which scores an extractor and records each run under
-  `evaluation/runs/` (committed, so runs can be compared over time).
+  `evaluation/claims/runs/` (committed, so runs can be compared over time).
+- `evaluation/entities/` — the entity-resolution evaluation: pair gold
+  (`gold/*.jsonl`), a pair scorer, and `run.py`, which scores a resolver against
+  the lexical baseline and records resolution runs under `evaluation/entities/runs/`.
 
 `src/domain/`, `src/application/`, and `src/infrastructure/` are one shared,
 installable package (`mind-of-christ`) that `apps/mcp-server` depends on.

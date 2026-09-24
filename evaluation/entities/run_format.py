@@ -20,6 +20,17 @@ from domain.entities.identity import compute_entity_id
 from domain.entities.models import Entity
 
 
+class ScoreLine(BaseModel):
+    """The pair-scoring result, embedded in the header so a run file is
+    self-describing. Kept as primitive counts + a rate rather than importing the
+    scorer's dataclass, so this on-disk shape doesn't depend on `score.py`."""
+
+    true_positives: int
+    false_positives: int
+    false_negatives: int
+    blocking_recall: float
+
+
 class ResolutionHeader(BaseModel):
     type: Literal["header"] = "header"
     run_id: str
@@ -29,6 +40,10 @@ class ResolutionHeader(BaseModel):
     source_run_id: str
     passages_sha256: str
     mentions: int
+    entities: int
+    rejected: int
+    failed: bool
+    score: ScoreLine | None
 
 
 class EntityLine(BaseModel):

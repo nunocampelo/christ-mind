@@ -1,6 +1,6 @@
 """Surveys an unscored corpus run to pick the next gold-labelling targets.
 
-    python -m evaluation.claims.corpus_survey evaluation/runs/<run_id>.jsonl
+    python -m evaluation.claims.corpus_survey evaluation/claims/runs/<run_id>.jsonl
 
 It labels nothing. It reports what a person should label next, so the second
 gold batch is chosen by evidence rather than hand-picked:
@@ -83,7 +83,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Survey an unscored corpus run for gold-labelling targets."
     )
-    parser.add_argument("run_file", type=Path, help="evaluation/runs/<run_id>.jsonl")
+    parser.add_argument(
+        "run_file", type=Path, help="evaluation/claims/runs/<run_id>.jsonl"
+    )
     args = parser.parse_args(argv)
     print(survey(args.run_file))
 

@@ -1,6 +1,6 @@
 """Sizes the entity-resolution problem from an unscored corpus run.
 
-    python -m evaluation.entities.mentions evaluation/runs/<run_id>.jsonl
+    python -m evaluation.entities.mentions evaluation/claims/runs/<run_id>.jsonl
 
 It resolves nothing. It reports the mention universe (every distinct subject/object
 surface form the extractor produced) and the free floor a normaliser already gets,
@@ -111,7 +111,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Size the mention universe and lexical-blocking floor of a run."
     )
-    parser.add_argument("run_file", type=Path, help="evaluation/runs/<run_id>.jsonl")
+    parser.add_argument(
+        "run_file", type=Path, help="evaluation/claims/runs/<run_id>.jsonl"
+    )
     args = parser.parse_args(argv)
     print(survey(args.run_file))
 

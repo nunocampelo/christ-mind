@@ -141,7 +141,7 @@ python3.14 -m venv .venv
 .venv/bin/pyright
 
 # Score a claim extractor against the dev gold set (add --holdout only to report a
-# result, never while tuning); writes evaluation/runs/<run_id>.jsonl — commit it
+# result, never while tuning); writes evaluation/claims/runs/<run_id>.jsonl — commit it
 .venv/bin/python -m evaluation.claims.run --extractor my_pkg.my_module:make_extractor
 
 # Run the server (stdio) — point an MCP client (Claude Desktop, MCP inspector) at this

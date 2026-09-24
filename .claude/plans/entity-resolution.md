@@ -327,6 +327,20 @@ pairs.
   artifact; writing it is a separate, large-output commit and is **not** required to call
   the #6 method proven. Next roadmap increment: #7 (expose claims + resolved entities to
   the agent).
+- **Recorded artifact.** `run.py` now writes a resolution run file (header hashing the
+  source claims run's passages, one line per entity) under `evaluation/entities/runs/`
+  when passed `--record`. The **baseline** full-corpus resolution is recorded already
+  (free, no model): `20260924T073722Z.jsonl`, 4308 entities over 4589 mentions — matching
+  step 0's 4308 normalised blocks exactly, the expected sanity check, with the "ego"
+  family (`ego`/`the ego`/`the EGO`/`his ego`/`an ego`) correctly merged. Recording the
+  **LLM** resolver over the whole corpus is the large provider run and is left as an
+  explicit `--record` invocation when wanted; the baseline file already captures every
+  merge normalisation gets, which step 4 showed is most of them.
+- **Run-file layout.** Run files are now per-concept: `evaluation/claims/runs/` (claim
+  extraction runs) and `evaluation/entities/runs/` (resolution runs), not one shared
+  `evaluation/runs/`. The entities runner reads its input claims run across concepts via
+  an explicit `../claims/runs/...` path, making the real dependency (resolution consumes
+  extraction's output) visible rather than hidden in a shared bucket.
 
 ## Results log
 
@@ -336,3 +350,4 @@ pairs.
 | — | none (step 3) | blocking recall | — | — | 22 gold pairs (19 same / 3 different) grounded in real corpus forms. Blocking recall on same-pairs 0.895 (17/19); misses `God's Will`/`Will of God` (possessive) and `miracle`/`miracles` (singular/plural, unanticipated). ~0.90 recall ceiling before the model judges. No resolver scored yet — that's step 4. |
 | — | lexical baseline | pair P/R | 1.000 / 0.789 | — | step 4: no-model floor. Perfect precision, 15/19 same-pairs (the 4 misses are non-normalise-equal). |
 | — | anthropic_proxy (N=3) | pair P/R | 1.000 / 0.789 | **1.000 / 0.895** | step 4: LLM resolver, all 3 runs identical (stdev 0). +0.106 recall over baseline at equal precision, 0 false merges. Hits the 0.895 blocking ceiling exactly — recovered both reachable misses; the 2 residual FNs are blocker-unreachable. **#6 done; residual gap is blocking, not the model.** |
+| 20260924T073722Z | baseline (`--record`) | recorded | 1.000 / 0.789 | — | Baseline full-corpus resolution recorded: 4308 entities over 4589 mentions (= step 0's block count), 0 rejected. `evaluation/entities/runs/`, header hashes the source claims run. LLM full-corpus record left as an explicit `--record` run. |

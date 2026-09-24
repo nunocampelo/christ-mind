@@ -4,7 +4,7 @@
 
 `--extractor` names a zero-argument factory that returns a `ClaimExtractor`
 (usually `PromptedClaimExtractor(complete)` around a provider's `Complete`).
-Each run is written to `evaluation/runs/<run_id>.jsonl`, and those files are
+Each run is written to `evaluation/claims/runs/<run_id>.jsonl`, and those files are
 meant to be committed. The header line hashes the passages and the gold files,
 so two runs can be checked for comparability before their scores are compared.
 """
@@ -38,7 +38,7 @@ from evaluation.claims.score import ClaimScore, ScoreReport, score_claims
 from infrastructure.database.sources_acim import list_acim_sources
 
 GOLD_DIR = Path(__file__).parent / "gold"
-RUNS_DIR = Path(__file__).parent.parent / "runs"
+RUNS_DIR = Path(__file__).parent / "runs"
 
 
 class Split(StrEnum):

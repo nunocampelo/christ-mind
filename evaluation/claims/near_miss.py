@@ -1,6 +1,6 @@
 """Explains a run's misses, so steps that fix them can be checked each run.
 
-    python -m evaluation.claims.near_miss evaluation/runs/<run_id>.jsonl
+    python -m evaluation.claims.near_miss evaluation/claims/runs/<run_id>.jsonl
 
 "Matched" means the same here as in the scorer: a gold claim is a near miss
 when `relaxed_pairing` found no relaxed partner for it. For each such gold
@@ -113,7 +113,9 @@ def report(run_path: Path, sources: Sequence[Source] | None = None) -> str:
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Explain a run's near misses.")
-    parser.add_argument("run_file", type=Path, help="evaluation/runs/<run_id>.jsonl")
+    parser.add_argument(
+        "run_file", type=Path, help="evaluation/claims/runs/<run_id>.jsonl"
+    )
     args = parser.parse_args(argv)
     print(report(args.run_file))
 
