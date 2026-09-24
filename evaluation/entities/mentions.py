@@ -88,8 +88,10 @@ def survey(path: Path) -> str:
 
     out = [
         f"{path.name}: {len(claims)} claims",
-        f"mention universe: {len(mentions)} distinct surface forms, "
-        f"{total_occurrences} occurrences",
+        (
+            f"mention universe: {len(mentions)} distinct surface forms, "
+            f"{total_occurrences} occurrences"
+        ),
         "",
         f"lexical blocking (normalised): {len(blocks)} blocks",
         f"  {singletons} singleton blocks (no normalisation merge)",
