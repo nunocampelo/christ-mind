@@ -42,6 +42,21 @@ The roadmap fixes two hard boundaries this plan must honour:
 - **A database.** Still versioned JSONL / a committed map file, as with claims.
 - **Re-running extraction.** #6 consumes the step-1 corpus run from #5 as-is; it does
   not re-extract.
+- **A dedicated pair classifier (e.g. Laya).** A calibrated typed-decision classifier
+  whose `noul` (binary yes/no + probability) format matches the resolver's same/different
+  vote exactly, and which "never generates text, so there is nothing to parse and nothing
+  to hallucinate" — removing the whole `RejectedVerdict` failure class. Deferred, not
+  adopted, for four reasons: (1) severe domain mismatch — it is trained for ticket/intent
+  triage and its own card reports near-chance zero-shot on typed-decisions, so ACIM
+  theology ("`God's Will`" vs "`Will of God`") is out of distribution; (2) making it good
+  needs fine-tuning on domain data, and #6's pair gold is ~22 labels — orders of magnitude
+  too few to fine-tune a ~400M-param model, barely enough to evaluate one; (3) it does not
+  touch the actual bottleneck — step 3 showed recall is capped at ~0.90 by *blocking*
+  before any model judges a pair, which a better classifier cannot recover; (4) it adds
+  `torch`/`transformers` + a model download while local-model infra is deferred to #7. It
+  is a legitimate **cost/latency optimization for later**: a cheap ~33 ms/pair local
+  classifier drops in behind the `ResolveEntities` protocol unchanged, but only once step
+  4 proves the task beats lexical blocking and a real fine-tuning gold set exists.
 
 ## Gate note (read first)
 
@@ -249,8 +264,75 @@ corpus run, 3984 claims):
   universe and nothing suggests a form means different things by role, so step 1 keys
   `Mention` by normalised text alone (open question resolved).
 
+## Step 3 findings (pair gold + blocking recall)
+
+`evaluation/entities/gold/pairs_ch1_4.jsonl`: 22 hand-labelled pairs (19 same, 3
+different), every form a real surface form from the #5 corpus run and anchored by
+`load_gold_pairs` against the run's mention universe (the fail-loud guard passed at
+4589 mentions). The pairs are grounded in step 0's blocks: caps/determiner variants
+(`ego`/`the EGO`/`his ego`, `knowledge`/`Knowledge`/`HIS knowledge`, `mind`/`MIND`),
+two cross-block same-pairs, and hard negatives that *do* block so they aren't trivially
+correct (`God`/`Son of God`, `fear`/`REAL source of fear` — shared head token, must
+stay different).
+
+**Blocking recall on the gold same-pairs = 0.895 (17/19).** The two misses are exactly
+the recall gap the gold exists to measure, and one was unanticipated:
+
+- `God's Will` / `Will of God` — the possessive case flagged in step 2: heads "will"
+  vs "god", so the blocker never proposes it. Expected.
+- **`miracle` / `miracles` — singular/plural. Unanticipated:** `_normalize` doesn't
+  stem, so the two head tokens differ and the blocker misses it. This is a second real
+  blocking-recall gap the gold caught, distinct from the possessive one.
+
+So the ceiling on the resolver's pair recall is ~0.90 *before it judges anything* —
+the blocker, not the model, caps the missing 10%. This is precisely the number step 4
+needs to attribute a low recall correctly (blocker vs. model) and is the strongest
+argument for widening blocking (stemming + a possessive/prepositional-head key) if
+step 4 shows the gap costs real recall. Not done pre-emptively — the resolver runs
+against this ceiling first, per the plan's "let the numbers decide" rule.
+
+`score.py` reports `PairScore` (P/R over same-pairs, kept separate from the claim
+scorer) plus `blocking_recall` alongside, so the two are never conflated.
+
+## Step 4 findings (resolver vs. baseline; the decision)
+
+`python -m evaluation.entities.run --baseline` and `--resolver
+infrastructure.llm.anthropic_proxy:make_resolver`, N=3. Both paths resolve the gold's
+own mentions through the same `resolve`/`score_pairs`, differing only in who judges the
+pairs.
+
+| | pair P | pair R | tp / fp / fn |
+| --- | --- | --- | --- |
+| lexical baseline (no model) | 1.000 | 0.789 | 15 / 0 / 4 |
+| LLM resolver (N=3, all identical) | 1.000 | **0.895** | 17 / 0 / 2 |
+
+- **The resolver beats the baseline by +0.106 recall at equal, perfect precision**, N=3
+  stdev 0.000 — far beyond the noise floor. It hits the **blocking ceiling exactly**
+  (0.895): it recovered *every* reachable same-pair the normaliser misses
+  (`forgiveness`/`God's forgiveness`, `fear`/`all FEAR`) and made **zero false merges**
+  on the hard negatives (`God`/`Son of God`, `fear`/`REAL source of fear`,
+  `God`/`God's Will`). The prompt's "same thing, not same words" rule holds on real ACIM
+  vocabulary.
+- **The residual gap is now entirely the blocker, not the model.** The 2 remaining FNs
+  (`God's Will`/`Will of God`, `miracle`/`miracles`) are pairs `candidate_pairs` never
+  proposes, so no judge — model or human — can reach them. The step-3 abort risk (blocker
+  so good the LLM can't beat it) did **not** materialise; the opposite, milder finding
+  did: the model is at ceiling and the blocker is what caps recall.
+- **Decision: the resolver clears the bar → #6 is done.** The remaining work is not more
+  prompting: it is **widening blocking** (stemming for singular/plural; a
+  possessive/prepositional-head key for `God's Will`/`Will of God`) to raise the ceiling,
+  which is pure lexical code with its own before/after `blocking_recall` number — a
+  natural first task for #7's consumption of resolved entities, or a small follow-up
+  commit here. The full-corpus `Resolution` file (all 4589 mentions) is the ship
+  artifact; writing it is a separate, large-output commit and is **not** required to call
+  the #6 method proven. Next roadmap increment: #7 (expose claims + resolved entities to
+  the agent).
+
 ## Results log
 
 | Run | Resolver | Metric | Baseline pair P/R | Resolver pair P/R | Notes |
 | --- | -------- | ------ | ----------------- | ----------------- | ----- |
 | — | none (step 0) | — | — | — | Mention universe 4589 forms / 7747 occ over the #5 corpus run; normalise-only blocking collapses 506 → 225 blocks, 4083 singletons. Free floor is mostly caps/determiner variants; LLM must earn its keep on cross-block merges. Sizes step 3's gold; no scoring yet. |
+| — | none (step 3) | blocking recall | — | — | 22 gold pairs (19 same / 3 different) grounded in real corpus forms. Blocking recall on same-pairs 0.895 (17/19); misses `God's Will`/`Will of God` (possessive) and `miracle`/`miracles` (singular/plural, unanticipated). ~0.90 recall ceiling before the model judges. No resolver scored yet — that's step 4. |
+| — | lexical baseline | pair P/R | 1.000 / 0.789 | — | step 4: no-model floor. Perfect precision, 15/19 same-pairs (the 4 misses are non-normalise-equal). |
+| — | anthropic_proxy (N=3) | pair P/R | 1.000 / 0.789 | **1.000 / 0.895** | step 4: LLM resolver, all 3 runs identical (stdev 0). +0.106 recall over baseline at equal precision, 0 false merges. Hits the 0.895 blocking ceiling exactly — recovered both reachable misses; the 2 residual FNs are blocker-unreachable. **#6 done; residual gap is blocking, not the model.** |

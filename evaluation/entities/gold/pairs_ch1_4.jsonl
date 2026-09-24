@@ -1,0 +1,22 @@
+{"left": "ego", "right": "the ego", "same": true}
+{"left": "ego", "right": "the EGO", "same": true}
+{"left": "ego", "right": "his ego", "same": true}
+{"left": "ego", "right": "an ego", "same": true}
+{"left": "knowledge", "right": "Knowledge", "same": true}
+{"left": "knowledge", "right": "HIS knowledge", "same": true}
+{"left": "knowledge", "right": "that knowledge", "same": true}
+{"left": "mind", "right": "MIND", "same": true}
+{"left": "mind", "right": "the mind", "same": true}
+{"left": "Kingdom", "right": "the Kingdom", "same": true}
+{"left": "Kingdom", "right": "His Kingdom", "same": true}
+{"left": "miracle", "right": "miracles", "same": true}
+{"left": "Atonement", "right": "the Atonement", "same": true}
+{"left": "fear", "right": "the fear", "same": true}
+{"left": "fear", "right": "this fear", "same": true}
+{"left": "forgiveness", "right": "God's forgiveness", "same": true}
+{"left": "God's Will", "right": "Will of God", "same": true}
+{"left": "God", "right": "Son of God", "same": false}
+{"left": "fear", "right": "REAL source of fear", "same": false}
+{"left": "fear", "right": "all FEAR", "same": true}
+{"left": "the body", "right": "body", "same": true}
+{"left": "God", "right": "God's Will", "same": false}
