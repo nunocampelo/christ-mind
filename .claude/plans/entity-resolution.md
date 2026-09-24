@@ -36,6 +36,26 @@ The roadmap fixes two hard boundaries this plan must honour:
   the count/passages each mention appears in. Picking a human-facing label (probably the
   most frequent or shortest mention) is a presentation detail deferred to #7 retrieval,
   not resolution.
+- **A stored claim↔entity link (foreign key on either side).** The relationship "this
+  claim's subject is that entity" is real and is what makes the graph traversable, but it
+  is **not** stored as a field on `Claim` or `Entity`. It stays a *read-time join through
+  the resolution's surface-form map*, materialised by #7. Reasons:
+  - **Claim ids are content fingerprints** (`domain/claims/identity.py`). If an entity id
+    were a claim field, re-running resolution (which happens whenever the corpus grows or
+    blocking improves) would change the ids of claims whose *text never changed* — making
+    claim identity depend on a downstream, evolving process. Same objection to storing
+    `claim_ids` on an `Entity`: the entity's content would depend on which corpus run it
+    was resolved from, and go stale on re-extraction.
+  - **The layering is one-directional** (text → claims → entities; the corpus run is
+    written before resolution exists and is its input). A foreign key in either direction
+    couples two independently content-addressed artifacts and violates "three
+    representations, never collapsed".
+  - **The resolution file already *is* the join table:** it maps surface form → entity.
+    #7 loads a resolution, builds the `surface_form → entity_id` index (exactly the
+    scorer's `_entity_of`), and answers "every claim about *the ego* as one entity" by
+    entity → member surface forms → claims whose subject/object is one of those forms. A
+    many-to-many join on the surface string, recomputed from whichever resolution is
+    pointed at — nothing to keep in sync, and it survives re-resolution.
 - **Embeddings / a vector store for candidate generation.** Candidates come from
   cheap lexical blocking first (see step 2's gate note); pgvector stays deferred
   (Decisions table) until blocking is shown to be the bottleneck.
@@ -234,10 +254,13 @@ numbers; the scored comparison is steps 0, 2, and 4.
   `ego`-attributed claim is the same entity; attribution is a property of the *claim*,
   not the mention. Keep them separate (don't fold attribution into `entity_id`) — noted
   here so it isn't re-litigated.
+- **Claim↔entity link.** Resolved: the link is a read-time join through the resolution's
+  surface-form map (#7's job), never a stored field on `Claim` or `Entity`. See the
+  reasoning under "Not in this increment".
 
 ## Step 0 findings (mention universe + free floor)
 
-`python -m evaluation.entities.mentions evaluation/runs/20260923T221456Z.jsonl` (the #5
+`python -m evaluation.entities.mentions evaluation/claims/runs/20260923T221456Z.jsonl` (the #5
 corpus run, 3984 claims):
 
 - **Mention universe: 4589 distinct surface forms, 7747 occurrences.** Low thousands —
