@@ -1,9 +1,12 @@
-"""The on-disk shape of a run file's claim line, shared by the writer and reader.
+"""The serialized (on-disk / wire) shape of a `Claim`, shared by every reader and
+writer.
 
-`run.py` builds a `ClaimLine` from an anchored `Claim` plus its evidence text and
-serializes it; `near_miss.py` validates a parsed line back into a `ClaimLine`.
-Keeping one model means a renamed or dropped field fails at validation instead of
-silently as a missing dict key, and the written and read shapes can't drift.
+The evaluation runner builds a `ClaimLine` from an anchored `Claim` plus its evidence
+text and serializes it; `near_miss.py` and the infrastructure claim store validate a
+parsed line back into a `ClaimLine`. Keeping one model means a renamed or dropped field
+fails at validation instead of silently as a missing dict key, and the written and read
+shapes can't drift. It lives in `domain/claims/` rather than the evaluation harness so
+`infrastructure/` can read persisted claims without depending on `evaluation/`.
 
 `claim_id` is written for new runs but reconstruction never trusts it: a run file
 written before the field existed simply lacks it, and `to_claim` recomputes the

@@ -20,7 +20,7 @@ from domain.claims.models import Claim, Polarity
 from domain.sources.models import Source
 from evaluation.claims.gold import load_gold_claims
 from evaluation.claims.run import GOLD_FILES, Split
-from evaluation.claims.run_format import ClaimLine
+from domain.claims.serialization import ClaimLine
 from evaluation.claims.score import relaxed_pairing
 from infrastructure.database.sources_acim import list_acim_sources
 

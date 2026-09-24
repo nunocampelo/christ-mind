@@ -81,6 +81,21 @@ boundary → entity join, so a reviewer can pin comments to a single concern.
   claim's fields by equality, not truthiness); a missing file raises rather than
   returning `[]`.
 
+**As built (step 1, done).** Promoted the #5 corpus run to
+`src/infrastructure/database/data/claims/corpus.jsonl` and added
+`infrastructure/database/claims.py` (`list_claims()`), which serves **3984 claims**
+(rejected/failed lines skipped), fails loud on a missing file, and parses at import into
+a module-level cache like `sources_acim`. **Enabling refactor first (not in the original
+step-1 sketch, but required):** the reader must reconstruct `Claim`s without `src/`
+depending on `evaluation/`, so `ClaimLine` (+ `to_claim`/`from_claim`) moved from
+`evaluation/claims/run_format.py` to `domain/claims/serialization.py`; that file is
+deleted and its four evaluation importers (`run`, `corpus_survey`, `near_miss`,
+`entities/mentions`) repointed. Serialization of a `Claim` is a domain concern, so this
+is its natural home and the app no longer needs the eval harness to read its own data.
+(A separate, pre-existing `src/ -> evaluation` leak remains: `resolve_entities.py`
+imports `_normalize` from `evaluation.claims.score`. Not addressed here; flagged for a
+later move of `_normalize` into a domain/shared home.)
+
 ### 2. `find_claims` use case (transport-free)
 
 `src/application/retrieval/find_claims.py`

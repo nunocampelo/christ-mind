@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from evaluation.claims.run_format import ClaimLine
+from domain.claims.serialization import ClaimLine
 from evaluation.claims.score import _normalize
 
 

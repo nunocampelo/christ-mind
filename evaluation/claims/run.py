@@ -33,7 +33,7 @@ from application.extraction.extract_claims import (
 from application.extraction.prompt import PROMPT_VERSION, PromptedClaimExtractor
 from domain.sources.models import Source
 from evaluation.claims.gold import load_gold_claims
-from evaluation.claims.run_format import ClaimLine
+from domain.claims.serialization import ClaimLine
 from evaluation.claims.score import ClaimScore, ScoreReport, score_claims
 from infrastructure.database.sources_acim import list_acim_sources
 

@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from domain.claims.models import Attribution, Claim, Predicate
-from evaluation.claims.run_format import ClaimLine
+from domain.claims.serialization import ClaimLine
 from evaluation.claims.score import _normalize
 
 
