@@ -209,8 +209,37 @@ numbers; the scored comparison is steps 0, 2, and 4.
   not the mention. Keep them separate (don't fold attribution into `entity_id`) — noted
   here so it isn't re-litigated.
 
+## Step 0 findings (mention universe + free floor)
+
+`python -m evaluation.entities.mentions evaluation/runs/20260923T221456Z.jsonl` (the #5
+corpus run, 3984 claims):
+
+- **Mention universe: 4589 distinct surface forms, 7747 occurrences.** Low thousands —
+  so the "blocking algorithm" open question resolves to the simple end: all-pairs
+  *within a normalised block* is tractable, no token-overlap blocker needed for a first
+  pass. Cross-block candidate generation is the only part that needs a cheap heuristic
+  (step 2).
+- **Lexical blocking (normalise only) already collapses 506 forms into 225 multi-member
+  blocks; 4083 singletons remain.** That is the free floor.
+- The multi-member blocks are **almost entirely capitalisation + determiner variants**
+  the normaliser already catches: `'ego'`/`'the ego'`/`'the EGO'`/`'an ego'` (×5),
+  `'knowledge'`/`'Knowledge'`/`'HIS knowledge'`, `'perception'`/`'Perception'`/`'the
+  perception'`, etc. The author's emphatic capitals (corpus caveat) generate a lot of
+  these, and `_normalize` lower-cases them for free.
+- **Implication for the step-4 decision, recorded now:** most of what's cheaply
+  mergeable, normalisation already gets. The LLM resolver's value has to come from
+  **cross-block** merges the normaliser cannot reach — "the ego" vs "the ego's belief"
+  vs "self esteem in ego terms" (from #5's t4 ego passages), where the head noun matches
+  but modifiers differ. The step-3 pair gold must therefore be weighted toward
+  cross-block same-pairs, or the baseline will look artificially close to the resolver
+  and the abort condition will fire on a rigged comparison. This is the object/subject
+  surface-modifier gap #5's near-miss tally flagged — the reason #6 exists.
+- Subject/object pooling confirmed harmless: the report pools both roles into one
+  universe and nothing suggests a form means different things by role, so step 1 keys
+  `Mention` by normalised text alone (open question resolved).
+
 ## Results log
 
 | Run | Resolver | Metric | Baseline pair P/R | Resolver pair P/R | Notes |
 | --- | -------- | ------ | ----------------- | ----------------- | ----- |
-| _(step 0 sizes the mention universe; step 4 fills the first scored rows)_ | | | | | |
+| — | none (step 0) | — | — | — | Mention universe 4589 forms / 7747 occ over the #5 corpus run; normalise-only blocking collapses 506 → 225 blocks, 4083 singletons. Free floor is mostly caps/determiner variants; LLM must earn its keep on cross-block merges. Sizes step 3's gold; no scoring yet. |
