@@ -3,9 +3,9 @@
 The long-running design for turning the ACIM corpus into structured,
 source-anchored claims an agent can reason over. It records *why* the pieces
 look the way they do, and the order they're built in. Detailed plans for
-individual increments live alongside this file. The current one is
-`claims-in-retrieval.md` (increment #7); its predecessor `entity-resolution.md`
-(#6) is complete.
+individual increments live alongside this file. The last completed one is
+`claims-in-retrieval.md` (increment #7, tools live); #8 (synthesis and
+interpretation) is next and unwritten.
 
 ## Origin
 
@@ -83,7 +83,7 @@ re-argued later.
 | 4 | Scoring fixes, near-miss report, prompt v3, predicate conventions | done: `claim-extraction-scoring-and-prompt-v3.md` |
 | 5 | Scale: extract chapters 1–4 into versioned JSONL; second gold batch including `ego` attribution; review the predicate list against recurring `other` verbs | done: `scale-and-second-gold-batch.md` |
 | 6 | Entity resolution: merge surface forms into entities, with the LLM choosing among candidates rather than inventing them | done: `entity-resolution.md` (resolver pair R 0.895 vs baseline 0.789 at P 1.0; residual gap is blocking recall) |
-| 7 | Claims in retrieval: expose claims and their passages to the agent (MCP tool or `find_sources` extension) | next: `claims-in-retrieval.md` (adds `find_claims` + `find_claims_for_entity`) |
+| 7 | Claims in retrieval: expose claims and their passages to the agent (MCP tool or `find_sources` extension) | done: `claims-in-retrieval.md` (`find_claims` + `find_claims_for_entity` live) |
 | 8 | Synthesis and interpretation layer: cross-passage chains and situation → concept mapping, each labelled as inferred and never presented as the Course speaking | later |
 | — | Embeddings and a database, concept dossiers | when #7 needs them |
 

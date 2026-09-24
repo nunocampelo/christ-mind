@@ -37,7 +37,8 @@ from application.resolution.resolve_entities import (
 from evaluation.claims.score import _normalize
 from evaluation.entities.gold import GoldPair, load_gold_pairs
 from evaluation.entities.mentions import _load_claims, collect_mentions
-from evaluation.entities.run_format import EntityLine, ResolutionHeader, ScoreLine
+from domain.entities.serialization import EntityLine
+from evaluation.entities.run_format import ResolutionHeader, ScoreLine
 from evaluation.entities.score import PairReport, score_pairs
 
 GOLD_DIR = Path(__file__).parent / "gold"

@@ -5,7 +5,8 @@ from pathlib import Path
 import evaluation.entities.run as run_module
 from evaluation.entities.gold import GoldPair
 from evaluation.entities.run import LexicalBaseline, run
-from evaluation.entities.run_format import EntityLine, ResolutionHeader
+from domain.entities.serialization import EntityLine
+from evaluation.entities.run_format import ResolutionHeader
 
 GOLD = [
     GoldPair("ego", "the ego", same=True),  # normalise-equal -> merged, tp

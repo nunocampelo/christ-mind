@@ -1,23 +1,17 @@
-"""The on-disk shape of a resolution file, shared by whatever writes and reads it.
+"""The on-disk shape of a resolution run's header line.
 
-A resolution is a partition of the mention universe into entities. It is written
-beside the claim runs, one `entity` line per entity, behind a `header` line that
-carries the `passages_sha256` of the corpus run it was resolved from -- so a
-resolution can be checked for drift against that run before its entities are trusted,
-the same discipline as `evaluation/claims/run.py`'s header. Keeping one model means a
-renamed or dropped field fails at validation instead of silently as a missing key.
-
-`entity_id` is written for convenience but reading never trusts it: `to_entity`
-recomputes the fingerprint from the members, so a hand-edited or older file still
-yields the canonical id.
+A resolution file is one `entity` line per entity (see
+`domain/entities/serialization.py`'s `EntityLine`) behind this `header` line, which
+carries the `passages_sha256` of the corpus run it was resolved from -- so a resolution
+can be checked for drift against that run before its entities are trusted, the same
+discipline as `evaluation/claims/run.py`'s header, plus the pair score so the run file
+is self-describing. The header is an evaluation run-record concern, not domain data, so
+it stays here while `EntityLine` lives in the domain layer.
 """
 
 from typing import Literal
 
 from pydantic import BaseModel
-
-from domain.entities.identity import compute_entity_id
-from domain.entities.models import Entity
 
 
 class ScoreLine(BaseModel):
@@ -44,17 +38,3 @@ class ResolutionHeader(BaseModel):
     rejected: int
     failed: bool
     score: ScoreLine | None
-
-
-class EntityLine(BaseModel):
-    type: Literal["entity"] = "entity"
-    entity_id: str
-    mentions: list[str]
-
-    @classmethod
-    def from_entity(cls, entity: Entity) -> "EntityLine":
-        return cls(entity_id=entity.entity_id, mentions=sorted(entity.mentions))
-
-    def to_entity(self) -> Entity:
-        members = frozenset(self.mentions)
-        return Entity(entity_id=compute_entity_id(members), mentions=members)

@@ -7,11 +7,33 @@ Run directly for local stdio testing:
 
 from mcp.server.mcpserver import MCPServer
 
+from application.retrieval.find_claims import find_claims as _find_claims
+from application.retrieval.find_claims_for_entity import (
+    find_claims_for_entity as _find_claims_for_entity,
+)
 from application.retrieval.find_sources import find_sources as _find_sources
+from domain.claims.models import Claim
 
+from mind_of_christ_mcp.schemas.claims import ClaimResult
 from mind_of_christ_mcp.schemas.sources import SourceResult
 
 mcp = MCPServer(name="mind-of-christ")
+
+
+def _to_claim_result(claim: Claim) -> ClaimResult:
+    return ClaimResult(
+        claim_id=claim.claim_id,
+        source_id=claim.source_id,
+        subject=claim.subject,
+        predicate=claim.predicate.value,
+        object=claim.object,
+        verb_phrase=claim.verb_phrase,
+        polarity=claim.polarity.value,
+        mode=claim.mode.value,
+        attribution=claim.attribution.value,
+        evidence_start=claim.evidence_start,
+        evidence_end=claim.evidence_end,
+    )
 
 
 @mcp.tool()
@@ -31,6 +53,29 @@ def find_sources(query: str, limit: int = 5) -> list[SourceResult]:
         )
         for source in results
     ]
+
+
+@mcp.tool()
+def find_claims(query: str, limit: int = 5) -> list[ClaimResult]:
+    """Find claims (subject/predicate/object assertions extracted from the Course)
+    whose subject, object, or verb phrase matches a query. Each result carries the
+    source_id of the passage it was extracted from. Results are in extraction order,
+    not ranked by relevance.
+    """
+    results = _find_claims(query, limit=limit)
+    return [_to_claim_result(claim) for claim in results]
+
+
+@mcp.tool()
+def find_claims_for_entity(mention: str, limit: int = 20) -> list[ClaimResult]:
+    """Find every claim about the entity a mention belongs to. Surface forms that name
+    the same thing (e.g. "the ego", "ego", "his ego") are resolved to one entity, so
+    this returns claims whose subject or object is any of that entity's forms -- not
+    just the exact string given. A mention the resolver never merged returns its own
+    claims. Each result carries the source_id of the passage it came from.
+    """
+    results = _find_claims_for_entity(mention, limit=limit)
+    return [_to_claim_result(claim) for claim in results]
 
 
 def main() -> None:

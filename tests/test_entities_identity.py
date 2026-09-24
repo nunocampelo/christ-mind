@@ -1,6 +1,6 @@
 from domain.entities.identity import compute_entity_id, entity_signature
 from domain.entities.models import Entity
-from evaluation.entities.run_format import EntityLine
+from domain.entities.serialization import EntityLine
 
 
 def test_id_is_independent_of_member_order():

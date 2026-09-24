@@ -109,6 +109,17 @@ later move of `_normalize` into a domain/shared home.)
   results)`), not just `assert results`; preserve the empty-query `[]` contract; assert
   `limit` bounds the count. Construct/return real `Claim`s, no dict literals.
 
+**As built (step 2, done).** `find_claims(query, limit=5)` mirrors `find_sources`:
+substring match, empty query → `[]`, `limit`-bounded. **Correction to the sketch above:**
+it matches over `subject`, `object`, `verb_phrase` only — **not** evidence text. A `Claim`
+carries evidence as `evidence_start`/`evidence_end` offsets into `Source.text`, not the
+quote itself (the reader drops the quote when reconstructing), so there is no evidence
+string on a `Claim` to search. Searching evidence would require joining back to the
+source — deferred; the claim's own words are the retrieval surface for now. Tests assert
+every result genuinely contains the needle in one of the three fields (regression-
+catching, not truthiness), plus case-insensitivity, limit, and the empty/no-match
+contracts.
+
 ### 3. `find_claims` MCP tool + `ClaimResult` schema
 
 `apps/mcp-server/src/mind_of_christ_mcp/schemas/claims.py`, `server.py`
@@ -125,6 +136,16 @@ later move of `_normalize` into a domain/shared home.)
   reconstruct `ClaimResult`s from `structured_content`, assert on them; no-match → `[]`;
   `limit` respected. Mock only the repository boundary if needed, not the application
   layer.
+
+**As built (step 3, done — `find_claims` is now live).** `ClaimResult` in
+`schemas/claims.py` (its own module); the four enum fields are typed `str` on the wire
+and the wrapper passes their `.value`, so no Python enum member name leaks. `server.py`
+registers `find_claims` with a thin field-by-field conversion and a description noting
+the match scope and that results are in extraction order (not relevance-ranked). Four
+component tests boot the real `mcp` via `Client(mcp)` and exercise the wire path: every
+result matches the needle, enums serialise as lowercase values, `source_id` is carried,
+`limit` is respected, no-match → `[]`. Verified callable over the wire (returns real
+claims with their `source_id`). README's Tools section updated.
 
 ### 4. Promote a resolution + `find_claims_for_entity`
 
@@ -147,6 +168,30 @@ later move of `_normalize` into a domain/shared home.)
 - Tool + schema: a `find_claims_for_entity` `@mcp.tool()` returning `ClaimResult`s (reuse
   the step-3 schema — same concept, a claim is a claim). Mirror the step-3 wrapper and
   tests.
+
+**As built (step 4, done — `find_claims_for_entity` is now live). #7 complete.**
+- **Enabling refactor (same as step 1):** moved `EntityLine` from
+  `evaluation/entities/run_format.py` to `domain/entities/serialization.py` (symmetric
+  with `ClaimLine`), so `infrastructure/` reads a resolution without importing
+  `evaluation/`. `ResolutionHeader`/`ScoreLine` stayed in the eval `run_format.py` — they
+  are run-record concerns (resolver name, provenance, pair score), not domain data. No
+  re-export shim; the three importers now name the real home.
+- Promoted the recorded baseline resolution to
+  `src/infrastructure/database/data/resolutions/baseline.jsonl`.
+  `infrastructure/database/resolutions.py` exposes `list_entities()` and
+  `entity_for_mention()` (built over a `surface_form -> entity_id` index, the scorer's
+  `_entity_of` shape); fails loud on a missing file; header line skipped.
+- `find_claims_for_entity(mention, limit=20)` resolves the mention to its entity and
+  returns claims whose subject/object is any member form; a form the resolver never
+  merged falls back to its own claims; empty → `[]`.
+- `server.py`: `find_claims_for_entity` `@mcp.tool()` reusing `ClaimResult` via a shared
+  `_to_claim_result` helper (factored out so both claim tools share the field-by-field
+  conversion, no duplication).
+- **The payoff is measurable:** "the ego" as an *entity* returns **149 claims** across
+  its 5 surface forms, vs. **6** for the exact string "the ego" — entity resolution (#6)
+  earning its keep in retrieval. Verified live over the wire.
+- Tests: 12 new (use case, resolutions repo, and component tests through `Client(mcp)`),
+  141 total pass; pyright clean. README lists all three tools.
 
 ## Not in this increment
 

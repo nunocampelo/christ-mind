@@ -98,6 +98,13 @@ npx @modelcontextprotocol/inspector .venv/bin/python -m mind_of_christ_mcp.serve
 - `find_sources(query, limit=5)` — keyword/concept search over the source
   set (Bible + ACIM), returning matching passages with their book/chapter/verse
   (or section/paragraph) locator and concept tags.
+- `find_claims(query, limit=5)` — substring search over extracted claims'
+  subject/object/verb phrase, returning each claim (subject, predicate, object,
+  polarity, mode, attribution) with the `source_id` of the passage it came from.
+- `find_claims_for_entity(mention, limit=20)` — every claim about the resolved
+  entity a mention belongs to: surface forms that name the same thing ("the ego",
+  "ego", "his ego") are merged, so this returns claims across all of them, not just
+  the exact string.
 
 ## Status
 
