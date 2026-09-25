@@ -12,8 +12,11 @@ from application.retrieval.find_claims_for_entity import (
     find_claims_for_entity as _find_claims_for_entity,
 )
 from application.retrieval.find_sources import find_sources as _find_sources
-from domain.claims.models import Claim
+from application.synthesis.chain_claims import ClaimChain as _ClaimChain
+from application.synthesis.chain_claims import chain_claims as _chain_claims
+from domain.claims.models import Claim, Predicate
 
+from mind_of_christ_mcp.schemas.chains import ChainResult, ClaimChain
 from mind_of_christ_mcp.schemas.claims import ClaimResult
 from mind_of_christ_mcp.schemas.sources import SourceResult
 
@@ -76,6 +79,59 @@ def find_claims_for_entity(mention: str, limit: int = 20) -> list[ClaimResult]:
     """
     results = _find_claims_for_entity(mention, limit=limit)
     return [_to_claim_result(claim) for claim in results]
+
+
+# Predicates that read subject -> object as a directed step, so a chain of them
+# means something. `undoes` is held out until its direction is confirmed (see the #8
+# plan's open questions); non-directional predicates (`is`, `contrasts_with`) never
+# chain.
+_WALKABLE_PREDICATES = frozenset(
+    {
+        Predicate.CAUSES,
+        Predicate.EXPRESSES,
+        Predicate.REQUIRES,
+        Predicate.MAKES,
+        Predicate.CREATES,
+    }
+)
+
+
+@mcp.tool()
+def chain_claims(
+    subject_mention: str, predicate: str, max_hops: int = 3, limit: int = 10
+) -> ChainResult:
+    """Follow one predicate across stored claims from a starting subject, e.g.
+    "fear causes X, X causes Y, Y causes Z". Returns an INFERRED path: every link is
+    an individual, Course-attributed, cited claim (each with its source_id), but the
+    connection between them is this tool's inference, not something the Course states
+    as a whole -- so `inferred` is always True. The same predicate is walked at every
+    hop; the seed claim may report what the ego or others believe, but every later
+    link must be an affirmed, Course-attributed claim. Chains come back shortest-first
+    and are bounded by max_hops and limit as given (no auto-expansion). Walkable
+    predicates: causes, expresses, requires, makes, creates.
+    """
+    try:
+        predicate_enum = Predicate(predicate)
+    except ValueError:
+        predicate_enum = Predicate.OTHER
+    if predicate_enum not in _WALKABLE_PREDICATES:
+        return ChainResult(
+            inferred=True, subject_mention=subject_mention, predicate=predicate, chains=[]
+        )
+
+    domain_chains = _chain_claims(
+        subject_mention, predicate_enum, max_hops=max_hops, limit=limit
+    )
+    return ChainResult(
+        inferred=True,
+        subject_mention=subject_mention,
+        predicate=predicate_enum.value,
+        chains=[_to_claim_chain(chain) for chain in domain_chains],
+    )
+
+
+def _to_claim_chain(chain: _ClaimChain) -> ClaimChain:
+    return ClaimChain(links=[_to_claim_result(link) for link in chain.links])
 
 
 def main() -> None:

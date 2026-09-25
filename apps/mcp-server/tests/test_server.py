@@ -3,6 +3,7 @@
 import pytest
 from mcp import Client
 
+from mind_of_christ_mcp.schemas.chains import ChainResult
 from mind_of_christ_mcp.schemas.claims import ClaimResult
 from mind_of_christ_mcp.schemas.sources import SourceResult
 from mind_of_christ_mcp.server import mcp
@@ -115,3 +116,64 @@ async def test_find_claims_for_entity_tool_empty_mention_returns_empty():
         result = await client.call_tool("find_claims_for_entity", {"mention": ""})
 
     assert result.structured_content["result"] == []
+
+
+@pytest.mark.anyio
+async def test_chain_claims_tool_returns_inferred_path_of_stated_claims():
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "chain_claims",
+            {"subject_mention": "mind", "predicate": "makes", "max_hops": 2},
+        )
+
+    assert not result.is_error
+    chain_result = ChainResult(**result.structured_content)
+    # The aggregate is inferred; the links it is inferred from are stated claims.
+    assert chain_result.inferred is True
+    assert chain_result.predicate == "makes"
+    assert any(len(chain.links) >= 2 for chain in chain_result.chains)
+    for chain in chain_result.chains:
+        for link in chain.links:
+            assert isinstance(link, ClaimResult)
+            assert link.source_id
+            # No inferential edge is negated or spoken by anyone but the Course --
+            # only the seed (hop 0) is allowed to be either.
+            for extension in chain.links[1:]:
+                assert extension.polarity == "affirmed"
+                assert extension.attribution == "course"
+
+
+@pytest.mark.anyio
+async def test_chain_claims_tool_shortest_first():
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "chain_claims",
+            {"subject_mention": "mind", "predicate": "makes", "max_hops": 3},
+        )
+
+    chain_result = ChainResult(**result.structured_content)
+    lengths = [len(chain.links) for chain in chain_result.chains]
+    assert lengths == sorted(lengths)
+
+
+@pytest.mark.anyio
+async def test_chain_claims_tool_non_walkable_predicate_returns_empty():
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "chain_claims", {"subject_mention": "mind", "predicate": "undoes"}
+        )
+
+    chain_result = ChainResult(**result.structured_content)
+    assert chain_result.inferred is True
+    assert chain_result.chains == []
+
+
+@pytest.mark.anyio
+async def test_chain_claims_tool_empty_mention_returns_empty():
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "chain_claims", {"subject_mention": "", "predicate": "causes"}
+        )
+
+    chain_result = ChainResult(**result.structured_content)
+    assert chain_result.chains == []
