@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Unima design tokens. Light is the default (:root); .dark on <html> flips them.
+   Values are raw OKLCH so shadcn-style components can read them as CSS vars and
+   Tailwind maps them to utilities via the @theme block below. */
+:root {
+  --background: oklch(0.99 0.004 106);
+  --foreground: oklch(0.21 0.02 260);
+  --muted: oklch(0.96 0.004 106);
+  --muted-foreground: oklch(0.52 0.02 260);
+  --border: oklch(0.9 0.006 260);
+  --input: oklch(0.9 0.006 260);
+  --ring: oklch(0.62 0.14 265);
+  --primary: oklch(0.55 0.18 265);
+  --primary-foreground: oklch(0.99 0.004 106);
+  --accent: oklch(0.7 0.15 300);
+  --radius: 0.875rem;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+.dark {
+  --background: oklch(0.17 0.02 265);
+  --foreground: oklch(0.94 0.01 260);
+  --muted: oklch(0.24 0.02 265);
+  --muted-foreground: oklch(0.68 0.02 260);
+  --border: oklch(0.3 0.02 265);
+  --input: oklch(0.3 0.02 265);
+  --ring: oklch(0.7 0.15 285);
+  --primary: oklch(0.72 0.15 285);
+  --primary-foreground: oklch(0.17 0.02 265);
+  --accent: oklch(0.78 0.14 305);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --radius-app: var(--radius);
+  --font-sans: var(--font-sans);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    margin: 0;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}

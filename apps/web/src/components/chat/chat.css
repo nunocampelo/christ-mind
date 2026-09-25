@@ -1,0 +1,46 @@
+/* Component-scoped companion stylesheet: the few bits Tailwind utilities can't
+   express cleanly (gradient-clipped title, its soft glow, reduced-motion opt-out).
+   Not global — imported only by the chat components that use these classes. */
+
+.landing-title {
+  background-image: linear-gradient(
+    135deg,
+    var(--color-foreground),
+    var(--color-primary) 55%,
+    var(--color-accent)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: landing-rise 600ms ease-out both;
+}
+
+.landing-glow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(
+    50% 40% at 50% 35%,
+    color-mix(in oklch, var(--color-primary) 22%, transparent),
+    transparent 70%
+  );
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-title {
+    animation: none;
+  }
+}
