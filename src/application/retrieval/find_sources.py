@@ -21,6 +21,6 @@ def find_sources(query: str, limit: int = 5) -> list[Source]:
         source
         for source in list_sources()
         if needle in source.text.lower()
-        or any(needle in concept for concept in source.concepts)
+        or any(needle in concept.lower() for concept in source.concepts)
     ]
     return matches[:limit]

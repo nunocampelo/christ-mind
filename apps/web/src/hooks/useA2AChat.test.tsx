@@ -31,7 +31,7 @@ describe("useA2AChat", () => {
     const streamFn = streamOf([
       { kind: "text", delta: "Forgiveness " },
       { kind: "text", delta: "undoes it." },
-      { kind: "status", state: "TASK_STATE_COMPLETED" },
+      { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
     ]);
     const { result } = renderHook(() => useA2AChat({ streamFn }));
 
@@ -54,7 +54,7 @@ describe("useA2AChat", () => {
     const streamFn = streamOf([
       { kind: "text", delta: "Forgiveness undoes it." },
       { kind: "answer", answer: ANSWER },
-      { kind: "status", state: "TASK_STATE_COMPLETED" },
+      { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
     ]);
     const { result } = renderHook(() => useA2AChat({ streamFn }));
 
@@ -68,7 +68,7 @@ describe("useA2AChat", () => {
   it("keeps an answer-only turn even when no prose streamed", async () => {
     const streamFn = streamOf([
       { kind: "answer", answer: ANSWER },
-      { kind: "status", state: "TASK_STATE_COMPLETED" },
+      { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
     ]);
     const { result } = renderHook(() => useA2AChat({ streamFn }));
 
@@ -81,9 +81,45 @@ describe("useA2AChat", () => {
     expect(result.current.turns[1].answer).toEqual(ANSWER);
   });
 
+  it("accumulates status step labels on the agent turn", async () => {
+    const streamFn = streamOf([
+      { kind: "status", state: "TASK_STATE_WORKING", text: "Mapped situation to 2 concept(s)" },
+      { kind: "status", state: "TASK_STATE_WORKING", text: "Calling find_claims" },
+      { kind: "status", state: "TASK_STATE_WORKING", text: "find_claims returned" },
+      { kind: "text", delta: "Forgiveness undoes it." },
+      { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+    ]);
+    const { result } = renderHook(() => useA2AChat({ streamFn }));
+
+    await act(async () => {
+      await result.current.send("help");
+    });
+
+    expect(result.current.turns[1].steps).toEqual([
+      "Mapped situation to 2 concept(s)",
+      "Calling find_claims",
+      "find_claims returned",
+    ]);
+  });
+
+  it("keeps a turn that only ran tools even with no prose or answer", async () => {
+    const streamFn = streamOf([
+      { kind: "status", state: "TASK_STATE_WORKING", text: "Calling find_claims" },
+      { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+    ]);
+    const { result } = renderHook(() => useA2AChat({ streamFn }));
+
+    await act(async () => {
+      await result.current.send("help");
+    });
+
+    expect(result.current.turns).toHaveLength(2);
+    expect(result.current.turns[1].steps).toEqual(["Calling find_claims"]);
+  });
+
   it("removes the agent turn when the stream returns nothing", async () => {
     const streamFn = streamOf([
-      { kind: "status", state: "TASK_STATE_COMPLETED" },
+      { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
     ]);
     const { result } = renderHook(() => useA2AChat({ streamFn }));
 

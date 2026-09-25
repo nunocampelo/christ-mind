@@ -1,21 +1,27 @@
 import { TurnRole, type Turn } from "@/hooks/useA2AChat";
 import CitedAnswer from "@/components/chat/CitedAnswer";
 import MarkdownMessage from "@/components/chat/MarkdownMessage";
+import ReasoningTimeline from "@/components/chat/ReasoningTimeline";
 
 interface TranscriptProps {
   turns: Turn[];
+  busy: boolean;
 }
 
-const AgentTurn = ({ turn }: { turn: Turn }) =>
-  turn.answer ? (
-    <CitedAnswer answer={turn.answer} streamedText={turn.text} />
-  ) : (
-    <MarkdownMessage text={turn.text} />
-  );
+const AgentTurn = ({ turn, busy }: { turn: Turn; busy: boolean }) => (
+  <>
+    <ReasoningTimeline steps={turn.steps} busy={busy} />
+    {turn.answer ? (
+      <CitedAnswer answer={turn.answer} streamedText={turn.text} />
+    ) : (
+      <MarkdownMessage text={turn.text} />
+    )}
+  </>
+);
 
-const Transcript = ({ turns }: TranscriptProps) => (
+const Transcript = ({ turns, busy }: TranscriptProps) => (
   <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8">
-    {turns.map((turn) =>
+    {turns.map((turn, i) =>
       turn.role === TurnRole.user ? (
         <div
           key={turn.id}
@@ -30,7 +36,7 @@ const Transcript = ({ turns }: TranscriptProps) => (
           data-testid="agent-turn"
           className="self-start max-w-[95%] text-foreground"
         >
-          <AgentTurn turn={turn} />
+          <AgentTurn turn={turn} busy={busy && i === turns.length - 1} />
         </div>
       ),
     )}

@@ -56,11 +56,11 @@ describe("eventsFromFrame", () => {
       }),
     );
     expect(events).toEqual([
-      { kind: AgentEventKind.status, state: "TASK_STATE_WORKING" },
+      { kind: AgentEventKind.status, state: "TASK_STATE_WORKING", text: "" },
     ]);
   });
 
-  it("maps a working statusUpdate to a status event", () => {
+  it("maps a working statusUpdate with no message to an empty-text status event", () => {
     const events = eventsFromFrame(
       frame({
         $case: "statusUpdate",
@@ -68,7 +68,28 @@ describe("eventsFromFrame", () => {
       }),
     );
     expect(events).toEqual([
-      { kind: AgentEventKind.status, state: "TASK_STATE_WORKING" },
+      { kind: AgentEventKind.status, state: "TASK_STATE_WORKING", text: "" },
+    ]);
+  });
+
+  it("carries the step label from a working statusUpdate message", () => {
+    const events = eventsFromFrame(
+      frame({
+        $case: "statusUpdate",
+        value: {
+          status: {
+            state: TaskState.TASK_STATE_WORKING,
+            message: { parts: [textPart("Calling find_claims")] },
+          },
+        },
+      }),
+    );
+    expect(events).toEqual([
+      {
+        kind: AgentEventKind.status,
+        state: "TASK_STATE_WORKING",
+        text: "Calling find_claims",
+      },
     ]);
   });
 
@@ -86,7 +107,7 @@ describe("eventsFromFrame", () => {
     );
     expect(events).toEqual([
       { kind: AgentEventKind.error, message: "boom" },
-      { kind: AgentEventKind.status, state: "TASK_STATE_FAILED" },
+      { kind: AgentEventKind.status, state: "TASK_STATE_FAILED", text: "" },
     ]);
   });
 

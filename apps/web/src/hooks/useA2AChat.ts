@@ -23,6 +23,7 @@ interface Turn {
   id: number;
   role: (typeof TurnRole)[keyof typeof TurnRole];
   text: string;
+  steps: string[];
   answer?: AgentAnswer;
 }
 
@@ -64,6 +65,14 @@ const useA2AChat = ({
     );
   }, []);
 
+  const appendStepToTurn = useCallback((id: number, text: string) => {
+    setTurns((prev) =>
+      prev.map((turn) =>
+        turn.id === id ? { ...turn, steps: [...turn.steps, text] } : turn,
+      ),
+    );
+  }, []);
+
   const setAnswerOnTurn = useCallback((id: number, answer: AgentAnswer) => {
     setTurns((prev) =>
       prev.map((turn) => (turn.id === id ? { ...turn, answer } : turn)),
@@ -74,7 +83,12 @@ const useA2AChat = ({
     setTurns((prev) =>
       prev.filter(
         (turn) =>
-          !(turn.id === id && turn.text === "" && turn.answer === undefined),
+          !(
+            turn.id === id &&
+            turn.text === "" &&
+            turn.answer === undefined &&
+            turn.steps.length === 0
+          ),
       ),
     );
   }, []);
@@ -96,12 +110,13 @@ const useA2AChat = ({
             setError(event.message);
             break;
           case AgentEventKind.status:
+            if (event.text) appendStepToTurn(agentTurnId, event.text);
             if (TERMINAL_STATES.has(event.state)) return;
             break;
         }
       }
     },
-    [appendToAgentTurn, setAnswerOnTurn],
+    [appendStepToTurn, appendToAgentTurn, setAnswerOnTurn],
   );
 
   const send = useCallback(
@@ -112,8 +127,12 @@ const useA2AChat = ({
       inFlight.current = true;
       setBusy(true);
       setError(null);
-      appendTurn({ role: TurnRole.user, text: trimmed });
-      const agentTurnId = appendTurn({ role: TurnRole.agent, text: "" });
+      appendTurn({ role: TurnRole.user, text: trimmed, steps: [] });
+      const agentTurnId = appendTurn({
+        role: TurnRole.agent,
+        text: "",
+        steps: [],
+      });
 
       try {
         await consumeStream(streamFn(trimmed), agentTurnId);

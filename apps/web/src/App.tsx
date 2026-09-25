@@ -27,7 +27,11 @@ const App = ({ streamFn }: AppProps = {}) => {
   return (
     <div className="flex h-dvh flex-col bg-background">
       <main className="flex flex-1 flex-col overflow-y-auto">
-        {turns.length === 0 ? <ChatLanding /> : <Transcript turns={turns} />}
+        {turns.length === 0 ? (
+          <ChatLanding />
+        ) : (
+          <Transcript turns={turns} busy={busy} />
+        )}
       </main>
       <div className="sticky bottom-0 border-t border-border bg-background/80 backdrop-blur">
         {error && (

@@ -36,6 +36,24 @@ AGENT_PUBLIC_URL=http://127.0.0.1:8000 .venv/bin/python -m mind_of_christ_a2a.ma
   agent card advertises `<AGENT_PUBLIC_URL>/a2a` as the endpoint.
 - `HOST` (default `127.0.0.1`), `PORT` (default `8000`).
 
+### Hot reload (development)
+
+The `python -m` entrypoint passes the app object to uvicorn directly, which can't reload.
+For a watch-and-restart dev loop, run uvicorn against the import string instead:
+
+```sh
+AGENT_PUBLIC_URL=http://127.0.0.1:8000 \
+  .venv/bin/uvicorn mind_of_christ_a2a.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+`--reload` watches the repo root, so edits to this app, `apps/agent`, `apps/mcp-server`,
+or the shared `src/` all restart the server — the whole path a request exercises. Use the
+`python -m` command above for a normal (non-reloading) run.
+
+**When developing the frontend against this**, set `AGENT_PUBLIC_URL=http://localhost:5173`
+so the agent card advertises the Vite dev origin, which `apps/web`'s proxy forwards here —
+keeping the card fetch and streaming same-origin (no CORS). See `apps/web`.
+
 Needs the Anthropic proxy reachable (the agent's mapper + streaming answer) and the
 `mind_of_christ_mcp` server importable (the agent launches it as a subprocess). No separate
 MCP server to start.

@@ -21,6 +21,7 @@ class CitedClaim(BaseModel):
     predicate: str
     object: str | None
     verb_phrase: str
+    polarity: str
     evidence: str
 
 

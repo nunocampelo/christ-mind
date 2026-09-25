@@ -176,6 +176,32 @@ async def test_answers_immediately_when_no_tool_needed():
 
 
 @pytest.mark.anyio
+async def test_final_with_no_retrieved_claims_still_answers_with_empty_evidence():
+    # The insufficient-evidence case: the model answers without any cited claims. The
+    # prose contract (say so plainly, don't invent advice) is prompt-enforced; here we
+    # lock that the structured answer carries an empty evidence set rather than failing.
+    mcp = _FakeMcpClient(
+        {"find_claims": CallToolResult(content=[], structured_content={"result": []})}
+    )
+    chat_stream = _scripted_stream(
+        '{"final": "I could not find cited claims that address this."}'
+    )
+    orchestrator = Orchestrator(_StubMapper([]), mcp, chat_stream)
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(AgentRequest(situation="help"))
+    ]
+
+    assert events[-1] == FinalEvent(
+        text="I could not find cited claims that address this."
+    )
+    assert orchestrator.last_answer is not None
+    assert orchestrator.last_answer.cited_claims == []
+    assert orchestrator.last_answer.inferred_chains == []
+
+
+@pytest.mark.anyio
 async def test_summarizes_when_the_model_never_answers():
     find_claims_result = CallToolResult(
         content=[TextContent(type="text", text="claim")],

@@ -49,7 +49,7 @@ describe("PR 2 — ask and get a cited answer", () => {
       <App
         streamFn={streamOf([
           { kind: "text", delta: "Forgiveness undoes it." },
-          { kind: "status", state: "TASK_STATE_COMPLETED" },
+          { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
         ])}
       />,
     );
@@ -73,7 +73,7 @@ describe("PR 2 — ask and get a cited answer", () => {
             kind: "answer",
             answer: { ...ANSWER, inferred_chains: [{ inferred: true, links: ANSWER.cited_claims }] },
           },
-          { kind: "status", state: "TASK_STATE_COMPLETED" },
+          { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
         ])}
       />,
     );
@@ -91,7 +91,7 @@ describe("PR 2 — ask and get a cited answer", () => {
       <App
         streamFn={streamOf([
           { kind: "text", delta: "ok" },
-          { kind: "status", state: "TASK_STATE_COMPLETED" },
+          { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
         ])}
       />,
     );
@@ -118,7 +118,7 @@ describe("PR 2 — ask and get a cited answer", () => {
     const user = userEvent.setup();
     render(
       <App
-        streamFn={streamOf([{ kind: "status", state: "TASK_STATE_COMPLETED" }])}
+        streamFn={streamOf([{ kind: "status", state: "TASK_STATE_COMPLETED", text: "" }])}
       />,
     );
 

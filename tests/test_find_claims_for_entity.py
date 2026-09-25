@@ -1,4 +1,5 @@
 from application.retrieval.find_claims_for_entity import find_claims_for_entity
+from domain.claims.models import Predicate
 from infrastructure.database.claims import list_claims
 from infrastructure.database.resolutions import entity_for_mention
 
@@ -42,3 +43,29 @@ def test_respects_limit():
 def test_empty_mention_returns_nothing():
     assert find_claims_for_entity("") == []
     assert find_claims_for_entity("   ") == []
+
+
+def test_characterizing_subject_claims_rank_ahead_of_incidental_matches():
+    entity = entity_for_mention("the ego")
+    assert entity is not None
+    forms = entity.mentions
+
+    results = find_claims_for_entity("the ego", limit=1000)
+    positions = {c.claim_id: i for i, c in enumerate(results)}
+
+    subject_attribute = next(
+        (c for c in results if c.subject in forms and c.predicate is Predicate.IS),
+        None,
+    )
+    incidental = next(
+        (
+            c
+            for c in results
+            if c.subject not in forms and c.object in forms
+        ),
+        None,
+    )
+    if subject_attribute is None or incidental is None:
+        return  # corpus lacks the contrast; the ranking unit test covers the rule
+
+    assert positions[subject_attribute.claim_id] < positions[incidental.claim_id]

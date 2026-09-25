@@ -5,6 +5,9 @@ Run directly for local stdio testing:
     python -m mind_of_christ_mcp.server
 """
 
+import sys
+
+from loguru import logger
 from mcp.server.mcpserver import MCPServer
 
 from application.retrieval.evidence import evidence_text as _evidence_text
@@ -44,7 +47,9 @@ def _to_claim_result(claim: Claim) -> ClaimResult:
 @mcp.tool()
 def find_sources(query: str, limit: int = 5) -> list[SourceResult]:
     """Find source passages relevant to a query (keyword, concept, or theme)."""
+    logger.bind(tool="find_sources", query=query, limit=limit).info("tool call")
     results = _find_sources(query, limit=limit)
+    logger.bind(tool="find_sources", count=len(results)).info("tool result")
     return [
         SourceResult(
             id=source.id,
@@ -67,7 +72,9 @@ def find_claims(query: str, limit: int = 5) -> list[ClaimResult]:
     source_id of the passage it was extracted from. Results are in extraction order,
     not ranked by relevance.
     """
+    logger.bind(tool="find_claims", query=query, limit=limit).info("tool call")
     results = _find_claims(query, limit=limit)
+    logger.bind(tool="find_claims", count=len(results)).info("tool result")
     return [_to_claim_result(claim) for claim in results]
 
 
@@ -78,8 +85,16 @@ def find_claims_for_entity(mention: str, limit: int = 20) -> list[ClaimResult]:
     this returns claims whose subject or object is any of that entity's forms -- not
     just the exact string given. A mention the resolver never merged returns its own
     claims. Each result carries the source_id of the passage it came from.
+
+    Results are characterization-ranked: claims with the entity in subject position,
+    described by an attributive predicate, come first -- so this is the tool for "tell
+    me about X". Ranking only reorders; `limit` alone governs what's dropped.
     """
+    logger.bind(tool="find_claims_for_entity", mention=mention, limit=limit).info(
+        "tool call"
+    )
     results = _find_claims_for_entity(mention, limit=limit)
+    logger.bind(tool="find_claims_for_entity", count=len(results)).info("tool result")
     return [_to_claim_result(claim) for claim in results]
 
 
@@ -112,11 +127,21 @@ def chain_claims(
     and are bounded by max_hops and limit as given (no auto-expansion). Walkable
     predicates: causes, expresses, requires, makes, creates.
     """
+    logger.bind(
+        tool="chain_claims",
+        subject_mention=subject_mention,
+        predicate=predicate,
+        max_hops=max_hops,
+        limit=limit,
+    ).info("tool call")
     try:
         predicate_enum = Predicate(predicate)
     except ValueError:
         predicate_enum = Predicate.OTHER
     if predicate_enum not in _WALKABLE_PREDICATES:
+        logger.bind(tool="chain_claims", predicate_walkable=False, count=0).info(
+            "tool result"
+        )
         return ChainResult(
             inferred=True, subject_mention=subject_mention, predicate=predicate, chains=[]
         )
@@ -124,6 +149,9 @@ def chain_claims(
     domain_chains = _chain_claims(
         subject_mention, predicate_enum, max_hops=max_hops, limit=limit
     )
+    logger.bind(
+        tool="chain_claims", predicate_walkable=True, count=len(domain_chains)
+    ).info("tool result")
     return ChainResult(
         inferred=True,
         subject_mention=subject_mention,
@@ -137,6 +165,18 @@ def _to_claim_chain(chain: _ClaimChain) -> ClaimChain:
 
 
 def main() -> None:
+    # stdout is the MCP JSON-RPC transport, so logs must go to stderr, which the
+    # launching agent inherits (see the agent's mcp_client.stdio_client, errlog default).
+    # {extra} renders the fields bound via logger.bind(...) at each call site.
+    logger.remove()
+    logger.add(
+        sys.stderr,
+        level="INFO",
+        format=(
+            "{time:YYYY-MM-DD HH:mm:ss} {level} {name} {message} {extra}"
+        ),
+    )
+    logger.bind(server="mind-of-christ").info("server starting")
     mcp.run()
 
 

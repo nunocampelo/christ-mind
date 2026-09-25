@@ -8,6 +8,7 @@ computed here, never stored on `Claim` or `Entity`, so re-resolving never invali
 claim id. Kept transport-free so it can be unit tested directly, like `find_claims`.
 """
 
+from application.retrieval.ranking import rank_characterization_claims
 from domain.claims.models import Claim
 from infrastructure.database.claims import list_claims
 from infrastructure.database.resolutions import entity_for_mention
@@ -24,10 +25,10 @@ def find_claims_for_entity(mention: str, limit: int = 20) -> list[Claim]:
         return []
 
     entity = entity_for_mention(mention)
-    forms = entity.mentions if entity is not None else {mention}
+    forms = frozenset(entity.mentions if entity is not None else {mention})
     matches = [
         claim
         for claim in list_claims()
         if claim.subject in forms or (claim.object is not None and claim.object in forms)
     ]
-    return matches[:limit]
+    return rank_characterization_claims(matches, forms)[:limit]

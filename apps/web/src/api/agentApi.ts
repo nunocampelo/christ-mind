@@ -53,7 +53,7 @@ interface AgentAnswer {
 }
 
 type AgentStreamEvent =
-  | { kind: typeof AgentEventKind.status; state: string }
+  | { kind: typeof AgentEventKind.status; state: string; text: string }
   | { kind: typeof AgentEventKind.text; delta: string }
   | { kind: typeof AgentEventKind.answer; answer: AgentAnswer }
   | { kind: typeof AgentEventKind.error; message: string };
@@ -160,6 +160,7 @@ const eventsFromFrame = (frame: StreamResponse): AgentStreamEvent[] => {
       events.push({
         kind: AgentEventKind.status,
         state: TaskState[task.status.state],
+        text: "",
       });
     }
     return events;
@@ -168,19 +169,19 @@ const eventsFromFrame = (frame: StreamResponse): AgentStreamEvent[] => {
   if (payload.$case === PayloadCase.statusUpdate) {
     const update = payload.value;
     const state = update.status?.state;
+    // On `working`, the orchestrator's step label ("Calling find_claims") rides here.
+    const text = messageText(update.status?.message);
 
     if (state === TaskState.TASK_STATE_FAILED) {
-      const failureText =
-        messageText(update.status?.message) || ERR_ASSISTANT_FAILED;
       events.push(
-        { kind: AgentEventKind.error, message: failureText },
-        { kind: AgentEventKind.status, state: TaskState[state] },
+        { kind: AgentEventKind.error, message: text || ERR_ASSISTANT_FAILED },
+        { kind: AgentEventKind.status, state: TaskState[state], text: "" },
       );
       return events;
     }
 
     if (state !== undefined) {
-      events.push({ kind: AgentEventKind.status, state: TaskState[state] });
+      events.push({ kind: AgentEventKind.status, state: TaskState[state], text });
     }
 
     return events;

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "MCP server exposing the Mind of Christ knowledge system as tools"
 requires-python = ">=3.12"
 dependencies = [
+    "loguru==0.7.3",
     "mcp==2.2.0",
     "mind-of-christ==0.1.0",
     "pydantic==2.13.5",

@@ -146,3 +146,72 @@
   align-items: center;
   gap: 0.5rem;
 }
+
+/* Reasoning timeline: the agent's tool-call steps for a turn, collapsible above the
+   answer. Uses the same muted visual language as the cited sections. */
+.reasoning-panel {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-app, 0.5rem);
+  background: color-mix(in oklch, var(--color-muted) 40%, transparent);
+}
+.reasoning-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: 0.8rem;
+  color: var(--color-muted-foreground);
+}
+.reasoning-summary::-webkit-details-marker {
+  display: none;
+}
+.reasoning-summary::before {
+  content: "▸";
+  font-size: 0.7em;
+  transition: transform 150ms ease;
+}
+.reasoning-panel[open] .reasoning-summary::before {
+  transform: rotate(90deg);
+}
+.reasoning-summary-label {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.reasoning-chip {
+  padding: 0.05em 0.5em;
+  border-radius: 999px;
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+  font-size: 0.72rem;
+}
+.reasoning-chip-tool {
+  background: color-mix(in oklch, var(--color-primary) 22%, transparent);
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+.reasoning-steps {
+  margin: 0;
+  padding: 0.25rem 0.7rem 0.6rem;
+  list-style: none;
+  border-top: 1px solid var(--color-border);
+}
+.reasoning-step {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  padding: 0.2rem 0;
+  font-size: 0.82rem;
+  color: var(--color-muted-foreground);
+}
+.reasoning-step-dot {
+  flex: none;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--color-primary);
+  transform: translateY(-0.05rem);
+}

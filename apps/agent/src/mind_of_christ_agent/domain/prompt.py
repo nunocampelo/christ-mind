@@ -34,6 +34,35 @@ this decision protocol in the answer text. Ground the answer in the cited claims
 connect multiple claims to address the situation, but never present such a synthesis as
 though it were a single statement from the Course, and do not introduce Course teachings
 the cited claims don't support.
+
+Every substantive claim in the answer must be supported by a cited claim or a claim
+marked inferred, or else be plainly conversational framing (a greeting, a question back,
+an acknowledgement of the situation). Nothing in between: do not add interpretive framing,
+spiritual commentary, therapeutic guidance, or common-sense psychological observation --
+whether or not you frame it as the Course's -- when the cited claims don't support it,
+even when it sounds fitting. No "the picture that emerges", "the Course would remind us",
+"known more fully through experience than definition", "your steady presence speaks more
+than words", or the like. Prefer the narrowest wording the evidence justifies: do not
+strengthen "God gave them His peace" into "God's nature is peace" unless a cited claim
+says so, and keep the subject, verb, and object of the claim you paraphrase -- never
+introduce a role the claim doesn't carry.
+
+Preserve polarity exactly. A claim marked [NEGATED], or whose evidence contains "not",
+"never", "cannot", or the like, must never be paraphrased as an affirmative -- "God is
+NOT partial" is a claim that God is not partial, never that God is partial. When a claim's
+subject-verb-object reads affirmative but its evidence or [NEGATED] mark says otherwise,
+the evidence span is authoritative: evidence span over structured fields over any label.
+
+Do not transfer a property or relationship from the person's question onto the cited
+claims because the concepts are related. If they ask how to love an enemy and the claims
+speak only of extending forgiveness to others, do not conclude the Course says to love an
+enemy through forgiveness, or that the "others" are enemies -- the claims must themselves
+support that relationship. Answer with what the claims establish, then say plainly which
+part of their framing the cited claims don't reach.
+
+When the cited claims don't sufficiently address the situation, say so plainly. Do not
+fill the gap with uncited knowledge or plausible interpretation. Offer to look further
+given more detail, or stop -- never substitute generic advice for missing citations.
 """
 
 
@@ -52,6 +81,31 @@ as though it were a single statement from the Course.
 
 Do not introduce Course teachings that are not supported by the cited claims.
 Do not add unsupported factual, doctrinal, or psychological claims.
+
+Every substantive claim in the answer must be supported by a cited claim or a
+claim marked inferred, or else be plainly conversational framing (a greeting, a
+question back, an acknowledgement of the situation). Nothing in between: do not add
+interpretive framing, spiritual commentary, therapeutic guidance, or common-sense
+psychological observation -- whether or not you frame it as the Course's -- when the
+cited claims don't support it, even when it sounds fitting. No "the picture that
+emerges", "the Course would remind us", "known more fully through experience than
+definition", "your steady presence speaks more than words", or the like. Prefer the
+narrowest wording the evidence justifies: do not strengthen "God gave them His
+peace" into "God's nature is peace" unless a cited claim says so, and keep the
+subject, verb, and object of the claim you paraphrase -- never introduce a role the
+claim doesn't carry.
+
+Do not transfer a property or relationship from the person's question onto the
+cited claims because the concepts are related. If they ask how to love an enemy and
+the claims speak only of extending forgiveness to others, do not conclude the Course
+says to love an enemy through forgiveness, or that the "others" are enemies -- the
+claims must themselves support that relationship. Answer with what the claims
+establish, then say plainly which part of their framing the cited claims don't reach.
+
+When the cited claims don't sufficiently address the situation, say so plainly. Do
+not fill the gap with uncited knowledge or plausible interpretation. Offer to look
+further given more detail, or stop -- never substitute generic advice for missing
+citations.
 """
 
 
@@ -72,15 +126,21 @@ def decision_user_prompt(
     )
 
 
+def _render_cited_claim(c: CitedClaim) -> str:
+    # A NEGATED claim's subject/verb/object read as an affirmative ("God is partial")
+    # while its evidence says the opposite ("God is NOT partial"). Mark the polarity and
+    # attach the exact evidence span so the reader can never lose the negation.
+    neg = " [NEGATED]" if c.polarity == "negated" else ""
+    proposition = f"{c.subject} {c.verb_phrase} {c.object or ''}".rstrip()
+    return f'- [{c.source_id}]{neg} {proposition} -- evidence: "{c.evidence}"'
+
+
 def answer_user_prompt(
     situation: str,
     cited_claims: list[CitedClaim],
     inferred_chains: list[InferredChain],
 ) -> str:
-    cited = "\n".join(
-        f"- [{c.source_id}] {c.subject} {c.verb_phrase} {c.object or ''}".rstrip()
-        for c in cited_claims
-    )
+    cited = "\n".join(_render_cited_claim(c) for c in cited_claims)
     chains = "\n".join(
         "- inferred: "
         + " -> ".join(f"{link.subject} {link.verb_phrase}".strip() for link in chain.links)

@@ -1,4 +1,8 @@
+import pytest
+
+from application.retrieval import find_sources as find_sources_module
 from application.retrieval.find_sources import find_sources
+from domain.sources.models import Source
 
 
 def test_find_sources_matches_by_concept():
@@ -26,3 +30,18 @@ def test_find_sources_empty_query_returns_nothing():
 
 def test_find_sources_no_match_returns_empty():
     assert find_sources("xyzzy-nonexistent-term") == []
+
+
+def test_find_sources_concept_match_is_case_insensitive(monkeypatch: pytest.MonkeyPatch):
+    tagged = Source(
+        id="cased-concept",
+        book="ACIM",
+        chapter=1,
+        text="unrelated body text",
+        concepts=("Forgiveness",),
+    )
+    monkeypatch.setattr(find_sources_module, "list_sources", lambda: (tagged,))
+
+    results = find_sources("forgiveness")
+
+    assert [s.id for s in results] == ["cased-concept"]

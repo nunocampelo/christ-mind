@@ -255,6 +255,7 @@ def _to_cited_claim(item: object) -> CitedClaim | None:
         predicate=str(item.get("predicate", "")),
         object=item.get("object"),
         verb_phrase=str(item.get("verb_phrase", "")),
+        polarity=str(item.get("polarity", "")),
         evidence=str(item.get("evidence", "")),
     )
 
