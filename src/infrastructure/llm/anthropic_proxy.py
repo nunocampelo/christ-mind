@@ -7,8 +7,9 @@ own scheme (`anthropic--claude-4.8-opus`), not the public one.
 """
 
 import os
+from collections.abc import AsyncIterator, Callable
 
-from anthropic import Anthropic, AnthropicError
+from anthropic import Anthropic, AnthropicError, AsyncAnthropic
 
 from application.extraction.prompt import Complete, PromptedClaimExtractor
 from application.mapping.prompt import PromptedSituationMapper
@@ -26,8 +27,19 @@ class AnthropicProxyError(Exception):
     """
 
 
+type ChatStream = Callable[[str, str], AsyncIterator[str]]
+"""Sends (system prompt, user prompt) and yields the reply's text deltas."""
+
+
 def _client() -> Anthropic:
     return Anthropic(
+        base_url=os.environ.get("ANTHROPIC_BASE_URL", _DEFAULT_BASE_URL),
+        api_key="unused-local-proxy",
+    )
+
+
+def _async_client() -> AsyncAnthropic:
+    return AsyncAnthropic(
         base_url=os.environ.get("ANTHROPIC_BASE_URL", _DEFAULT_BASE_URL),
         api_key="unused-local-proxy",
     )
@@ -64,3 +76,23 @@ def make_resolver() -> PromptedResolver:
 
 def make_mapper() -> PromptedSituationMapper:
     return PromptedSituationMapper(make_complete())
+
+
+def make_chat_stream(model: str | None = None) -> ChatStream:
+    client = _async_client()
+    model = model or os.environ.get("ANTHROPIC_EXTRACTION_MODEL", _DEFAULT_MODEL)
+
+    async def chat_stream(system: str, user: str) -> AsyncIterator[str]:
+        try:
+            async with client.messages.stream(
+                model=model,
+                max_tokens=_MAX_TOKENS,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            ) as stream:
+                async for delta in stream.text_stream:
+                    yield delta
+        except AnthropicError as e:
+            raise AnthropicProxyError("Anthropic proxy request failed") from e
+
+    return chat_stream

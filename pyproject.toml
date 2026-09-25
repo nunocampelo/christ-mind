@@ -23,7 +23,7 @@ where = ["src"]
 include = ["domain*", "application*", "infrastructure*"]
 
 [tool.pyright]
-include = ["src", "tests", "evaluation", "apps/mcp-server/src"]
+include = ["src", "tests", "evaluation", "apps/mcp-server/src", "apps/agent/src", "apps/agent/tests"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"
