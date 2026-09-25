@@ -11,6 +11,7 @@ import os
 from anthropic import Anthropic, AnthropicError
 
 from application.extraction.prompt import Complete, PromptedClaimExtractor
+from application.mapping.prompt import PromptedSituationMapper
 from application.resolution.prompt import PromptedResolver
 
 _DEFAULT_BASE_URL = "http://localhost:6656"
@@ -59,3 +60,7 @@ def make_extractor() -> PromptedClaimExtractor:
 
 def make_resolver() -> PromptedResolver:
     return PromptedResolver(make_complete())
+
+
+def make_mapper() -> PromptedSituationMapper:
+    return PromptedSituationMapper(make_complete())
