@@ -1,0 +1,30 @@
+[project]
+name = "mind-of-christ-a2a"
+version = "0.1.0"
+description = "The A2A/HTTP transport over the Mind of Christ orchestrator agent"
+requires-python = ">=3.12"
+dependencies = [
+    "mind-of-christ-agent==0.1.0",
+    "a2a-sdk==1.1.2",
+    "fastapi==0.141.1",
+    "uvicorn==0.54.0",
+    "sse-starlette==3.4.11",
+    "pydantic==2.13.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "anyio==4.15.1",
+    "httpx==0.28.1",
+]
+
+[project.scripts]
+mind-of-christ-a2a = "mind_of_christ_a2a.main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
