@@ -32,6 +32,7 @@ _CLAIM = CitedClaim(
     predicate="teaches",
     object="attack",
     verb_phrase="teaches",
+    polarity="affirmed",
     evidence="The ego teaches attack.",
 )
 _ANSWER = AgentAnswer(

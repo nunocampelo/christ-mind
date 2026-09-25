@@ -90,6 +90,47 @@ application layer). Existing `test_orchestrator.py` shows the mocking pattern.
 
 ---
 
+## Part A.1 — Polarity preservation (hard grounding invariant; added after review round 3)
+
+**Root cause (confirmed by inspecting the data, not guessed):** the stored corpus is
+correct — `t1-1-86` "God is partial", `t3-4-8` "God is stranger to His Sons", and
+`t4-1-12` "God is author of fear" are all stored `Polarity.NEGATED`. The MCP wire schema
+(`ClaimResult`) carries `polarity`. But the agent's `CitedClaim` DTO **dropped it**, and
+`answer_user_prompt` rendered each claim as bare `subject verb_phrase object` — so the
+model literally saw "God is partial" with the negation surviving only in the (unrendered)
+evidence span. The model faithfully reported the affirmative it was shown. This is a
+data-flow bug, not a prompt bug: no synthesis rule can recover a field that isn't in the
+prompt.
+
+**Fix (implemented):**
+- `apps/agent/.../application/answer.py` — add `polarity: str` to `CitedClaim`.
+- `apps/agent/.../domain/orchestrator.py::_to_cited_claim` — populate it from the tool
+  result (`item.get("polarity")`).
+- `apps/agent/.../domain/prompt.py::answer_user_prompt` — render each claim with a
+  `[NEGATED]` marker and its **exact evidence span** attached, so negation is visible and
+  the evidence (authoritative) travels with the proposition.
+- Both prompts — new rule: *preserve polarity exactly; evidence span > structured fields >
+  label when they conflict; never convert explicit negation to affirmation.*
+- Web parity: `apps/web/.../api/agentApi.ts` (`CitedClaim` type + validator) and
+  `CitedAnswer.tsx::claimGloss` had the **same** bug — the gloss read "God is partial"
+  above a "God is NOT partial" blockquote. Gloss now prefixes negated claims with "Not:".
+
+**Tests (implemented):**
+- Claim-extraction layer — `tests/test_claims_repository.py`: assert the three known
+  negated claims are stored `NEGATED` (locks the data a re-extraction could flip).
+- Agent layer — `apps/agent/tests/test_orchestrator.py`: polarity survives tool result →
+  `CitedClaim`. `apps/agent/tests/test_prompt.py`: negated claim renders with `[NEGATED]`
+  + evidence; affirmed claim has no marker; both prompts carry the polarity rule.
+- Web layer — `CitedAnswer.test.tsx`: negated gloss reads "Not: God is partial", not
+  "God is partial".
+
+**Still open (frontend, not confirmed):** the empty `1. 2. … 14.` ordered-list artifact
+seen before the prose. The reasoning-timeline `<ol>` and the hook both correctly skip
+empty step text (`useA2AChat.ts` gates on `if (event.text)`), so the source is not there.
+It needs a live DOM repro to pin down (likely a markdown quirk in the streamed answer or
+`CitedAnswer`'s inferred-chain `<ol>`). Deferred — a regression test asserting the final
+render has no empty ordered-list items should land once the source is identified.
+
 ## Part B — Deterministic *characterization* ranking (do second)
 
 Goal, scoped tightly to the problem "describe God" revealed: rank claims where the query

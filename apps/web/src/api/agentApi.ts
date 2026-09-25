@@ -37,6 +37,7 @@ interface CitedClaim {
   predicate: string;
   object: string | null;
   verb_phrase: string;
+  polarity: string;
   evidence: string;
 }
 
@@ -97,6 +98,7 @@ const isCitedClaim = (v: unknown): v is CitedClaim => {
     typeof c.predicate === "string" &&
     (typeof c.object === "string" || c.object === null) &&
     typeof c.verb_phrase === "string" &&
+    typeof c.polarity === "string" &&
     typeof c.evidence === "string"
   );
 };

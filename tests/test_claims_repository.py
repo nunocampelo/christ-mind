@@ -22,6 +22,28 @@ def test_list_claims_reconstructs_real_claims():
     assert sample.source_id
 
 
+@pytest.mark.parametrize(
+    "source_id, object",
+    [
+        ("t1-1-86", "partial"),
+        ("t3-4-8", "stranger to His Sons"),
+        ("t4-1-12", "author of fear"),
+    ],
+)
+def test_negated_claims_keep_their_negation_in_the_corpus(source_id: str, object: str):
+    # These three read affirmative as subject-verb-object ("God is partial") but the
+    # passage says the opposite ("God is NOT partial"). If a re-extraction ever stored
+    # them AFFIRMED, the agent would report the negation of the Course -- lock it here.
+    matches = [
+        c
+        for c in list_claims()
+        if c.source_id == source_id and c.subject == "God" and c.object == object
+    ]
+
+    assert matches
+    assert all(c.polarity is Polarity.NEGATED for c in matches)
+
+
 def test_only_claim_lines_are_served_not_rejected_or_failed(tmp_path: Path, monkeypatch):
     data = tmp_path / "corpus.jsonl"
     data.write_text(

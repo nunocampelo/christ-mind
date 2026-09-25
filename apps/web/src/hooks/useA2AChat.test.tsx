@@ -14,6 +14,7 @@ const ANSWER: AgentAnswer = {
       predicate: "teaches",
       object: "attack",
       verb_phrase: "teaches",
+      polarity: "affirmed",
       evidence: "The ego teaches attack.",
     },
   ],

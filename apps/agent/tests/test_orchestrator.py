@@ -176,6 +176,37 @@ async def test_answers_immediately_when_no_tool_needed():
 
 
 @pytest.mark.anyio
+async def test_polarity_survives_from_the_tool_result_into_the_cited_claim():
+    negated = CallToolResult(
+        content=[TextContent(type="text", text="one claim")],
+        structured_content={
+            "result": [
+                _claim_result(
+                    claim_id="neg-1",
+                    subject="God",
+                    object="partial",
+                    polarity="negated",
+                    evidence="God is NOT partial.",
+                )
+            ]
+        },
+    )
+    mcp = _FakeMcpClient({"find_claims": negated})
+    chat_stream = _scripted_stream(
+        '{"tool_call": {"name": "find_claims", "arguments": {"query": "God"}}}',
+        '{"final": "The Course says God is not partial."}',
+    )
+    orchestrator = Orchestrator(_StubMapper(["God"]), mcp, chat_stream)
+
+    async for _ in orchestrator.run_stream(AgentRequest(situation="describe God")):
+        pass
+
+    answer = orchestrator.last_answer
+    assert answer is not None
+    assert [(c.claim_id, c.polarity) for c in answer.cited_claims] == [("neg-1", "negated")]
+
+
+@pytest.mark.anyio
 async def test_final_with_no_retrieved_claims_still_answers_with_empty_evidence():
     # The insufficient-evidence case: the model answers without any cited claims. The
     # prose contract (say so plainly, don't invent advice) is prompt-enforced; here we

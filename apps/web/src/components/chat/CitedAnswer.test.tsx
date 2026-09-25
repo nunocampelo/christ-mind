@@ -10,6 +10,7 @@ const CLAIM = {
   predicate: "teaches",
   object: "attack",
   verb_phrase: "teaches",
+  polarity: "affirmed",
   evidence: "The ego teaches attack.",
 };
 
@@ -48,6 +49,31 @@ describe("CitedAnswer", () => {
     );
     expect(screen.getByTestId("cited-claims")).toBeInTheDocument();
     expect(screen.queryByTestId("inferred-chains")).not.toBeInTheDocument();
+  });
+
+  it("prefixes a negated claim's gloss so it can't read as an affirmation", () => {
+    render(
+      <CitedAnswer
+        answer={{
+          ...ANSWER,
+          inferred_chains: [],
+          cited_claims: [
+            {
+              ...CLAIM,
+              subject: "God",
+              verb_phrase: "is",
+              object: "partial",
+              polarity: "negated",
+              evidence: "God is NOT partial.",
+            },
+          ],
+        }}
+        streamedText=""
+      />,
+    );
+    const cited = screen.getByTestId("cited-claims");
+    expect(within(cited).getByText("Not: God is partial")).toBeInTheDocument();
+    expect(within(cited).getByText("God is NOT partial.")).toBeInTheDocument();
   });
 
   it("does not render the string 'null' for a claim with a null object", () => {

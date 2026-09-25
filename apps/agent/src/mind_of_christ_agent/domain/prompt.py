@@ -95,6 +95,13 @@ peace" into "God's nature is peace" unless a cited claim says so, and keep the
 subject, verb, and object of the claim you paraphrase -- never introduce a role the
 claim doesn't carry.
 
+Preserve polarity exactly. A claim marked [NEGATED], or whose evidence contains
+"not", "never", "cannot", or the like, must never be paraphrased as an affirmative --
+"God is NOT partial" is a claim that God is not partial, never that God is partial.
+When a claim's subject-verb-object reads affirmative but its evidence or [NEGATED]
+mark says otherwise, the evidence span is authoritative: evidence span over structured
+fields over any label.
+
 Do not transfer a property or relationship from the person's question onto the
 cited claims because the concepts are related. If they ask how to love an enemy and
 the claims speak only of extending forgiveness to others, do not conclude the Course

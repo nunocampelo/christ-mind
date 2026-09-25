@@ -7,10 +7,16 @@ interface CitedAnswerProps {
   streamedText: string;
 }
 
-const claimGloss = (claim: CitedClaim): string =>
-  claim.object === null
-    ? `${claim.subject} ${claim.verb_phrase}`
-    : `${claim.subject} ${claim.verb_phrase} ${claim.object}`;
+// A negated claim reads affirmative as subject-verb-object ("God is partial") while its
+// evidence says the opposite ("God is NOT partial"). Flag it so the gloss can't contradict
+// the quote shown right beneath it.
+const claimGloss = (claim: CitedClaim): string => {
+  const core =
+    claim.object === null
+      ? `${claim.subject} ${claim.verb_phrase}`
+      : `${claim.subject} ${claim.verb_phrase} ${claim.object}`;
+  return claim.polarity === "negated" ? `Not: ${core}` : core;
+};
 
 const ClaimEvidence = ({ claim }: { claim: CitedClaim }) => (
   <div className="cited-claim" data-testid="cited-claim">
