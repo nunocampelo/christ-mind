@@ -24,5 +24,7 @@ include = ["domain*", "application*", "infrastructure*"]
 
 [tool.pyright]
 include = ["src", "tests", "evaluation", "apps/mcp-server/src"]
+venvPath = "."
+venv = ".venv"
 pythonVersion = "3.12"
 typeCheckingMode = "standard"

@@ -3,10 +3,11 @@
 The long-running design for turning the ACIM corpus into structured,
 source-anchored claims an agent can reason over. It records *why* the pieces
 look the way they do, and the order they're built in. Detailed plans for
-individual increments live alongside this file. The current one is
-`synthesis-and-interpretation.md` (increment #8, deterministic claim chaining);
-its predecessor `claims-in-retrieval.md` (#7) is complete. Situation→concept
-mapping was split out of #8 into #9.
+individual increments live alongside this file. Increment #8 (deterministic claim
+chaining, `synthesis-and-interpretation.md`) is complete; its predecessor
+`claims-in-retrieval.md` (#7) is complete too. The next one is situation→concept
+mapping (#9), which was split out of #8; its detailed plan is written once #8's
+results are in hand.
 
 ## Origin
 
@@ -85,8 +86,8 @@ re-argued later.
 | 5 | Scale: extract chapters 1–4 into versioned JSONL; second gold batch including `ego` attribution; review the predicate list against recurring `other` verbs | done: `scale-and-second-gold-batch.md` |
 | 6 | Entity resolution: merge surface forms into entities, with the LLM choosing among candidates rather than inventing them | done: `entity-resolution.md` (resolver pair R 0.895 vs baseline 0.789 at P 1.0; residual gap is blocking recall) |
 | 7 | Claims in retrieval: expose claims and their passages to the agent (MCP tool or `find_sources` extension) | done: `claims-in-retrieval.md` (`find_claims` + `find_claims_for_entity` live) |
-| 8 | Deterministic synthesis: cross-passage claim chains computed at answer time (never stored), each chain labelled inferred while its links stay stated and Course-attributed | next: `synthesis-and-interpretation.md` |
-| 9 | Situation → concept mapping: an LLM maps a user's free-text situation to candidate concept mentions (scored against a small gold set), which feed #7 retrieval and #8 chaining; never presented as the Course speaking | later (split out of #8) |
+| 8 | Deterministic synthesis: cross-passage claim chains computed at answer time (never stored), each chain labelled inferred while its links stay stated and Course-attributed | done: `synthesis-and-interpretation.md` (`chain_claims` use case + MCP tool live) |
+| 9 | Situation → concept mapping: an LLM maps a user's free-text situation to candidate concept mentions (scored against a small gold set), which feed #7 retrieval and #8 chaining; never presented as the Course speaking | next (split out of #8) |
 | — | Embeddings and a database, concept dossiers | when retrieval needs them |
 
 Write a detailed plan for each increment only when its predecessor is done, since

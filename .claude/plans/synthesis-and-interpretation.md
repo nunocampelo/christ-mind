@@ -140,15 +140,19 @@ interprets the situation; retrieval and chaining stay deterministic and cited.
 - **Embeddings / a datastore.** Same committed JSONL as #7, read behind the existing
   `list_claims`/resolutions signatures.
 
-## Open questions to resolve while building (not blockers)
+## Open questions — resolved while building
 
-- **Seed attribution.** The extension *rule* requires `course`+`affirmed`; should the
-  **seed** claim (hop 0) be allowed to be non-course so a chain can start from "the ego
-  believes X" and show where the Course's own claims lead? Leaning no for #8 (seed also
-  `course`) to keep the invariant clean; revisit if a real query needs it.
-- **`undoes` direction.** `causes`/`makes`/`creates`/`requires` chain naturally
-  subject→object; confirm `undoes` reads the same direction before including it in the
-  walkable set, or leave it out of #8's default predicates.
+- **Seed attribution.** *Resolved: seed may be non-`course`.* The tentative lean was "seed
+  also `course`", but the walker allows the hop-0 claim to be `ego`/`hypothetical`/`negated`
+  so a query can start from "the ego believes X causes Y" and show where the Course's own
+  claims lead from there. Only the *extensions* (hop 1+) require `affirmed` + `course`; the
+  aggregate is still labelled `inferred` and every extension link stays stated and
+  Course-attributed, so the invariant holds. See the `chain_claims` docstring and the
+  `seed=` branch in `_extensions`.
+- **`undoes` direction.** *Resolved: no per-predicate special-casing.* `chain_claims` walks
+  whatever `Predicate` it is handed subject→object at every hop; it has no hardcoded
+  "default predicate set", so `undoes` (or any predicate) chains the same way. Whether a
+  given predicate is *worth* chaining is left to the caller, not baked into the walker.
 
 ## Results log
 
@@ -157,4 +161,4 @@ registered, example chains produced on the real corpus, and any traversal edge c
 
 | PR | Tool | Notes |
 | -- | ---- | ----- |
-| _(steps 1–2 fill rows as the tool lands)_ | | |
+| `e56563e` (steps 1+2) | `chain_claims` use case (`application/synthesis/chain_claims.py`) + MCP tool (`schemas/chains.py`, `server.py`) | Both steps landed in one commit. On the committed corpus (3984 claims, 425 `causes`), `chain_claims("fear", CAUSES, max_hops=2)` yields multi-hop chains, e.g. `fear → emptiness → "screen for the misuse of projection"`. Both open questions resolved (seed may be non-`course`; no per-predicate special-casing — see above). 161 tests pass; pyright clean. |
