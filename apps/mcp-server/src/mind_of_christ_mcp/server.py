@@ -7,6 +7,7 @@ Run directly for local stdio testing:
 
 from mcp.server.mcpserver import MCPServer
 
+from application.retrieval.evidence import evidence_text as _evidence_text
 from application.retrieval.find_claims import find_claims as _find_claims
 from application.retrieval.find_claims_for_entity import (
     find_claims_for_entity as _find_claims_for_entity,
@@ -34,6 +35,7 @@ def _to_claim_result(claim: Claim) -> ClaimResult:
         polarity=claim.polarity.value,
         mode=claim.mode.value,
         attribution=claim.attribution.value,
+        evidence=_evidence_text(claim),
         evidence_start=claim.evidence_start,
         evidence_end=claim.evidence_end,
     )

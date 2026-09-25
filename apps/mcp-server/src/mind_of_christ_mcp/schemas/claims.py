@@ -11,5 +11,6 @@ class ClaimResult(BaseModel):
     polarity: str
     mode: str
     attribution: str
+    evidence: str
     evidence_start: int
     evidence_end: int

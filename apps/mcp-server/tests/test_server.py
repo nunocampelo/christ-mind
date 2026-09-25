@@ -71,6 +71,18 @@ async def test_find_claims_tool_serializes_enums_as_values_and_carries_source():
 
 
 @pytest.mark.anyio
+async def test_find_claims_tool_carries_resolved_evidence_quote():
+    async with Client(mcp) as client:
+        result = await client.call_tool("find_claims", {"query": "peace", "limit": 5})
+
+    claims = [ClaimResult(**item) for item in result.structured_content["result"]]
+    assert claims
+    for claim in claims:
+        assert claim.evidence
+        assert len(claim.evidence) == claim.evidence_end - claim.evidence_start
+
+
+@pytest.mark.anyio
 async def test_find_claims_tool_respects_limit():
     async with Client(mcp) as client:
         result = await client.call_tool("find_claims", {"query": "the", "limit": 1})
