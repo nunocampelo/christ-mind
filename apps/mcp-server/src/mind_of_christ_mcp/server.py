@@ -12,13 +12,16 @@ from application.retrieval.find_claims import find_claims as _find_claims
 from application.retrieval.find_claims_for_entity import (
     find_claims_for_entity as _find_claims_for_entity,
 )
+from application.mapping.map_situation import map_situation as _map_situation
 from application.retrieval.find_sources import find_sources as _find_sources
 from application.synthesis.chain_claims import ClaimChain as _ClaimChain
 from application.synthesis.chain_claims import chain_claims as _chain_claims
 from domain.claims.models import Claim, Predicate
+from infrastructure.llm.anthropic_proxy import make_mapper as _make_mapper
 
 from mind_of_christ_mcp.schemas.chains import ChainResult, ClaimChain
 from mind_of_christ_mcp.schemas.claims import ClaimResult
+from mind_of_christ_mcp.schemas.situations import SituationConcepts
 from mind_of_christ_mcp.schemas.sources import SourceResult
 
 mcp = MCPServer(name="mind-of-christ")
@@ -134,6 +137,34 @@ def chain_claims(
 
 def _to_claim_chain(chain: _ClaimChain) -> ClaimChain:
     return ClaimChain(links=[_to_claim_result(link) for link in chain.links])
+
+
+# Built on first use, not at import, so registering the tools never needs the proxy
+# reachable (the test client boots `mcp` with no network). Constructing the mapper only
+# builds an SDK client; the proxy is called when the tool runs.
+_mapper = None
+
+
+def _situation_mapper():
+    global _mapper
+    if _mapper is None:
+        _mapper = _make_mapper()
+    return _mapper
+
+
+@mcp.tool()
+def map_situation(situation: str) -> SituationConcepts:
+    """Map a person's free-text situation to Course concept mentions to retrieve on.
+    Returns the concepts that open the relevant space of teaching -- both what the
+    person is experiencing and the concepts the Course would bring to bear, including
+    ones they never named (a situation about lying yields "guilt" and also
+    "forgiveness"). Feed each concept into find_claims_for_entity or chain_claims. The
+    concepts are unordered and unranked, may include ones the corpus doesn't contain
+    (which simply return nothing), and are a reading of the situation -- never presented
+    as the Course speaking. An empty situation returns no concepts.
+    """
+    concepts = _map_situation(_situation_mapper(), situation)
+    return SituationConcepts(situation=situation, concepts=concepts)
 
 
 def main() -> None:
