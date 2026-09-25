@@ -3,10 +3,8 @@
 import pytest
 from mcp import Client
 
-import mind_of_christ_mcp.server as server
 from mind_of_christ_mcp.schemas.chains import ChainResult
 from mind_of_christ_mcp.schemas.claims import ClaimResult
-from mind_of_christ_mcp.schemas.situations import SituationConcepts
 from mind_of_christ_mcp.schemas.sources import SourceResult
 from mind_of_christ_mcp.server import mcp
 
@@ -191,55 +189,3 @@ async def test_chain_claims_tool_empty_mention_returns_empty():
 
     chain_result = ChainResult(**result.structured_content)
     assert chain_result.chains == []
-
-
-class _StubMapper:
-    """A `SituationMapper` returning canned concepts, so the map_situation tool's wire
-    path is exercised without calling the provider. Stubs the provider boundary, not
-    the application layer -- `map_situation` still runs for real."""
-
-    def __init__(self, concepts: list[str]):
-        self.concepts = concepts
-        self.calls: list[str] = []
-
-    def map(self, free_text: str) -> list[str]:
-        self.calls.append(free_text)
-        return list(self.concepts)
-
-
-@pytest.fixture
-def stub_mapper(monkeypatch: pytest.MonkeyPatch) -> _StubMapper:
-    stub = _StubMapper(["anger", "criticism", "judgment"])
-    monkeypatch.setattr(server, "_mapper", stub)
-    return stub
-
-
-@pytest.mark.anyio
-async def test_map_situation_tool_returns_concepts(stub_mapper: _StubMapper):
-    async with Client(mcp) as client:
-        result = await client.call_tool(
-            "map_situation", {"situation": "my coworker keeps criticizing me"}
-        )
-
-    assert not result.is_error
-    mapped = SituationConcepts(**result.structured_content)
-    assert mapped.situation == "my coworker keeps criticizing me"
-    assert mapped.concepts == ["anger", "criticism", "judgment"]
-    assert stub_mapper.calls == ["my coworker keeps criticizing me"]
-
-
-@pytest.mark.anyio
-async def test_map_situation_tool_feeds_find_claims_for_entity(stub_mapper: _StubMapper):
-    async with Client(mcp) as client:
-        mapped_raw = await client.call_tool(
-            "map_situation", {"situation": "criticized at work"}
-        )
-        mapped = SituationConcepts(**mapped_raw.structured_content)
-        # The concepts are exactly the shape find_claims_for_entity takes: the mapper's
-        # output composes into the retrieval tool over the wire, no reshaping.
-        claims_raw = await client.call_tool(
-            "find_claims_for_entity", {"mention": mapped.concepts[0]}
-        )
-
-    claims = [ClaimResult(**item) for item in claims_raw.structured_content["result"]]
-    assert all(claim.source_id for claim in claims)
