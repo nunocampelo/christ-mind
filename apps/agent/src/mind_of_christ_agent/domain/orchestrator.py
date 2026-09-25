@@ -34,7 +34,13 @@ from mind_of_christ_agent.domain.events import (
     StepStatusEvent,
     TokenEvent,
 )
-from mind_of_christ_agent.domain.prompt import DECISION_SYSTEM_PROMPT, decision_user_prompt
+from mind_of_christ_agent.domain.final_stream import FinalValueExtractor
+from mind_of_christ_agent.domain.prompt import (
+    ANSWER_SYSTEM_PROMPT,
+    DECISION_SYSTEM_PROMPT,
+    answer_user_prompt,
+    decision_user_prompt,
+)
 
 _CITED_TOOLS = frozenset({"find_claims", "find_claims_for_entity", "find_sources"})
 
@@ -75,10 +81,24 @@ class Orchestrator:
         inferred_chains: list[InferredChain] = []
 
         for _ in range(request.max_steps):
-            decision_text = await self._decide(
-                request.situation, concepts, tools, observations
-            )
-            decision = _parse_decision(decision_text)
+            # One streaming decision call. The extractor reveals a `final` string's
+            # tokens live (nothing for a `tool_call`); the raw text is parsed after the
+            # stream ends to route the decision.
+            answer_parts: list[str] = []
+            extractor = FinalValueExtractor()
+            chunks: list[str] = []
+            async for delta in self._chat_stream(
+                DECISION_SYSTEM_PROMPT,
+                decision_user_prompt(
+                    request.situation, concepts, tools, observations
+                ),
+            ):
+                chunks.append(delta)
+                revealed = extractor.feed(delta)
+                if revealed:
+                    answer_parts.append(revealed)
+                    yield TokenEvent(delta=revealed)
+            decision = _parse_decision("".join(chunks))
 
             tool_call = decision.get("tool_call")
             if isinstance(tool_call, dict):
@@ -97,83 +117,106 @@ class Orchestrator:
 
             final = decision.get("final")
             if isinstance(final, str):
-                async for event in self._stream_answer(
+                # The `final` tokens already streamed via the extractor; the parsed value
+                # is the authoritative text (it also covers any tail the extractor's
+                # buffering hadn't flushed). Close with it and the structured answer.
+                yield self._final_event(
                     final, concepts, cited_claims, inferred_chains
-                ):
-                    yield event
+                )
                 return
 
-        # Loop exhausted max_steps without a final decision: answer from whatever was
-        # gathered rather than leaving the user with nothing.
-        async for event in self._stream_answer(
-            "", concepts, cited_claims, inferred_chains
-        ):
-            yield event
-
-    async def _decide(
-        self,
-        situation: str,
-        concepts: list[str],
-        tools: list[Tool],
-        observations: list[str],
-    ) -> str:
-        user = decision_user_prompt(situation, concepts, tools, observations)
-        chunks: list[str] = []
-        async for delta in self._chat_stream(DECISION_SYSTEM_PROMPT, user):
-            chunks.append(delta)
-        return "".join(chunks)
-
-    async def _stream_answer(
-        self,
-        final_hint: str,
-        concepts: list[str],
-        cited_claims: list[CitedClaim],
-        inferred_chains: list[InferredChain],
-    ) -> AsyncIterator[OrchestratorEvent]:
+        # Loop exhausted max_steps without the model ever emitting {"final"} (it kept
+        # searching). Force one answer-only call over what was gathered, so the user always
+        # gets prose rather than an empty reply.
         text_parts: list[str] = []
         async for delta in self._chat_stream(
-            DECISION_SYSTEM_PROMPT, _answer_user_prompt(final_hint, cited_claims)
+            ANSWER_SYSTEM_PROMPT,
+            answer_user_prompt(request.situation, cited_claims, inferred_chains),
         ):
             text_parts.append(delta)
             yield TokenEvent(delta=delta)
-        text = "".join(text_parts)
-        # The structured answer travels alongside the streamed prose; a later slice's
-        # A2A artifact carries it, keeping cited claims distinct from inferred chains.
-        # The FinalEvent's text is the whole prose.
+        yield self._final_event(
+            "".join(text_parts), concepts, cited_claims, inferred_chains
+        )
+
+    def _final_event(
+        self,
+        text: str,
+        concepts: list[str],
+        cited_claims: list[CitedClaim],
+        inferred_chains: list[InferredChain],
+    ) -> OrchestratorEvent:
+        # The structured answer travels alongside the streamed prose; the A2A artifact
+        # carries it, keeping cited claims distinct from inferred chains. The FinalEvent's
+        # text is the whole prose.
         self.last_answer = AgentAnswer(
             text=text,
             concepts=concepts,
             cited_claims=cited_claims,
             inferred_chains=inferred_chains,
         )
-        yield FinalEvent(text=text)
-
-
-def _answer_user_prompt(final_hint: str, cited_claims: list[CitedClaim]) -> str:
-    citations = "\n".join(
-        f"- [{c.source_id}] {c.subject} {c.verb_phrase} {c.object or ''}".rstrip()
-        for c in cited_claims
-    )
-    return (
-        "Write the answer to the person's situation. Ground every assertion in the "
-        "cited claims below and attribute them to the Course. Keep what the Course "
-        "says separate from anything you infer.\n\n"
-        f"Draft: {final_hint}\n\nCited claims:\n{citations or '(none)'}"
-    )
+        return FinalEvent(text=text)
 
 
 def _parse_decision(text: str) -> dict[str, object]:
+    """Pull the decision object out of the model's reply.
+
+    The reply is meant to be a bare `{"tool_call": ...}` / `{"final": ...}` object, but a
+    model may wrap it in a ```json fence or emit reasoning prose around it. We try the whole
+    (fence-stripped) text, then scan for a balanced `{...}` object -- preferring one that
+    carries `"tool_call"` so reasoning-then-tool_call resolves to the tool, not the prose.
+    A reply with no JSON object at all yields an empty decision rather than leaking the raw
+    protocol text into the answer stream.
+    """
     stripped = text.strip()
     if stripped.startswith("```"):
         stripped = stripped.removeprefix("```").removeprefix("json").strip()
         stripped = stripped.removesuffix("```").strip()
+
+    whole = _try_object(stripped)
+    if whole is not None:
+        return whole
+
+    if '"tool_call"' in stripped:
+        idx = stripped.find('"tool_call"')
+        brace_start = stripped.rfind("{", 0, idx)
+        if brace_start != -1:
+            candidate = _scan_first_object(stripped[brace_start:])
+            if candidate is not None and "tool_call" in candidate:
+                return candidate
+
+    return _scan_first_object(stripped) or {}
+
+
+def _try_object(s: str) -> dict[str, object] | None:
     try:
-        parsed = json.loads(stripped)
+        parsed = json.loads(s)
     except ValueError:
-        return {"final": text}
-    if not isinstance(parsed, dict):
-        return {"final": text}
-    return parsed
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _scan_first_object(s: str) -> dict[str, object] | None:
+    """Return the first balanced, JSON-parseable `{...}` object in `s`, or None."""
+    search_from = 0
+    while True:
+        start = s.find("{", search_from)
+        if start == -1:
+            return None
+        depth = 0
+        for i in range(start, len(s)):
+            if s[i] == "{":
+                depth += 1
+            elif s[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    obj = _try_object(s[start : i + 1])
+                    if obj is not None:
+                        return obj
+                    search_from = i + 1
+                    break
+        else:
+            return None
 
 
 def _absorb(

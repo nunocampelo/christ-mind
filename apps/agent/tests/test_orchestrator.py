@@ -15,7 +15,7 @@ from mind_of_christ_agent.domain.events import (
     StepStatusEvent,
     TokenEvent,
 )
-from mind_of_christ_agent.domain.orchestrator import Orchestrator
+from mind_of_christ_agent.domain.orchestrator import Orchestrator, _parse_decision
 
 
 @pytest.fixture
@@ -88,11 +88,11 @@ async def test_run_stream_maps_calls_a_cited_tool_then_answers():
         structured_content={"result": [_claim_result()]},
     )
     mcp = _FakeMcpClient({"find_claims": find_claims_result})
-    # Step 1: the LLM picks a tool. Step 2 (decision) + step 3 (answer prose).
+    # Step 1: the LLM picks a tool. Step 2: it answers; the `final` value streams as
+    # tokens via the extractor (no separate answer call).
     chat_stream = _scripted_stream(
         '{"tool_call": {"name": "find_claims", "arguments": {"query": "forgiveness"}}}',
-        '{"final": "draft"}',
-        "Forgiveness brings peace.",
+        '{"final": "Forgiveness brings peace."}',
     )
     orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
 
@@ -138,8 +138,7 @@ async def test_cited_claims_and_inferred_chains_stay_distinct():
     chat_stream = _scripted_stream(
         '{"tool_call": {"name": "find_claims", "arguments": {"query": "fear"}}}',
         '{"tool_call": {"name": "chain_claims", "arguments": {"subject_mention": "fear", "predicate": "causes"}}}',
-        '{"final": "draft"}',
-        "answer",
+        '{"final": "answer"}',
     )
     orchestrator = Orchestrator(_StubMapper(["fear"]), mcp, chat_stream)
 
@@ -164,7 +163,7 @@ async def test_cited_claims_and_inferred_chains_stay_distinct():
 @pytest.mark.anyio
 async def test_answers_immediately_when_no_tool_needed():
     mcp = _FakeMcpClient({"find_claims": CallToolResult(content=[], structured_content={"result": []})})
-    chat_stream = _scripted_stream('{"final": "draft"}', "Peace is already yours.")
+    chat_stream = _scripted_stream('{"final": "Peace is already yours."}')
     orchestrator = Orchestrator(_StubMapper([]), mcp, chat_stream)
 
     events = [
@@ -174,3 +173,86 @@ async def test_answers_immediately_when_no_tool_needed():
 
     assert mcp.calls == []
     assert events[-1] == FinalEvent(text="Peace is already yours.")
+
+
+@pytest.mark.anyio
+async def test_summarizes_when_the_model_never_answers():
+    find_claims_result = CallToolResult(
+        content=[TextContent(type="text", text="claim")],
+        structured_content={"result": [_claim_result()]},
+    )
+    mcp = _FakeMcpClient({"find_claims": find_claims_result})
+    # The model only ever searches; the loop exhausts max_steps. The scripted stream's
+    # last reply is the forced answer-only call, which must become the answer.
+    chat_stream = _scripted_stream(
+        '{"tool_call": {"name": "find_claims", "arguments": {"query": "a"}}}',
+        '{"tool_call": {"name": "find_claims", "arguments": {"query": "b"}}}',
+        "Here is what the Course offers.",
+    )
+    orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation="help", max_steps=2)
+        )
+    ]
+
+    # max_steps=2 tool calls, then the summarize call yields prose.
+    assert len(mcp.calls) == 2
+    token_text = "".join(e.delta for e in events if isinstance(e, TokenEvent))
+    assert token_text == "Here is what the Course offers."
+    assert events[-1] == FinalEvent(text="Here is what the Course offers.")
+    assert orchestrator.last_answer is not None
+    assert orchestrator.last_answer.text == "Here is what the Course offers."
+    # The claims gathered during the loop still ride on the structured answer.
+    assert [c.claim_id for c in orchestrator.last_answer.cited_claims] == ["c1", "c1"]
+
+
+def test_parse_decision_pulls_tool_call_out_of_reasoning_prose():
+    raw = (
+        "I have some claims about freedom. Let me explore.\n\n"
+        '{"tool_call": {"name": "find_claims", "arguments": {"query": "bondage"}}}'
+    )
+    decision = _parse_decision(raw)
+    assert "tool_call" in decision
+    assert "final" not in decision
+
+
+def test_parse_decision_strips_a_code_fence():
+    raw = '```json\n{"final": "Peace."}\n```'
+    assert _parse_decision(raw) == {"final": "Peace."}
+
+
+def test_parse_decision_does_not_leak_raw_prose_as_final():
+    # No JSON object at all: an empty decision, never the raw protocol text as an answer.
+    assert _parse_decision("Let me think about this out loud.") == {}
+
+
+@pytest.mark.anyio
+async def test_reasoning_wrapped_tool_call_routes_to_the_tool_without_leaking():
+    find_claims_result = CallToolResult(
+        content=[TextContent(type="text", text="one claim")],
+        structured_content={"result": [_claim_result()]},
+    )
+    mcp = _FakeMcpClient({"find_claims": find_claims_result})
+    # Step 1: reasoning prose wrapped around the tool_call. Step 2: a clean final.
+    chat_stream = _scripted_stream(
+        'Let me look into freedom.\n{"tool_call": {"name": "find_claims", "arguments": {"query": "freedom"}}}',
+        '{"final": "Freedom is yours."}',
+    )
+    orchestrator = Orchestrator(_StubMapper(["freedom"]), mcp, chat_stream)
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation="she doesn't believe she is free", max_steps=4)
+        )
+    ]
+
+    assert mcp.calls == [("find_claims", {"query": "freedom"})]
+    token_text = "".join(e.delta for e in events if isinstance(e, TokenEvent))
+    # The reasoning prose and the tool_call JSON never leak into the answer stream.
+    assert token_text == "Freedom is yours."
+    assert "tool_call" not in token_text
+    assert events[-1] == FinalEvent(text="Freedom is yours.")
