@@ -31,11 +31,33 @@ interface ConversationDetail {
 }
 
 const ERR_LOAD_FAILED = "Could not load conversation";
+const ERR_RENAME_FAILED = "Could not rename conversation";
+const ERR_DELETE_FAILED = "Could not delete conversation";
 
 const listConversations = async (): Promise<ConversationSummary[]> => {
   const response = await fetch(`${AGENT_BASE_URL}/conversations`);
   if (!response.ok) throw new Error(ERR_LOAD_FAILED);
   return (await response.json()) as ConversationSummary[];
+};
+
+const renameConversation = async (id: string, summary: string): Promise<void> => {
+  const response = await fetch(
+    `${AGENT_BASE_URL}/conversations/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ summary }),
+    },
+  );
+  if (!response.ok) throw new Error(ERR_RENAME_FAILED);
+};
+
+const deleteConversation = async (id: string): Promise<void> => {
+  const response = await fetch(
+    `${AGENT_BASE_URL}/conversations/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) throw new Error(ERR_DELETE_FAILED);
 };
 
 // Resolves to null on 404 (unknown/stale id) so callers can start a fresh conversation
@@ -71,5 +93,11 @@ const turnsFromConversation = (detail: ConversationDetail): Turn[] =>
     };
   });
 
-export { getConversation, listConversations, turnsFromConversation };
+export {
+  deleteConversation,
+  getConversation,
+  listConversations,
+  renameConversation,
+  turnsFromConversation,
+};
 export type { ConversationDetail, ConversationMessageDto, ConversationSummary };

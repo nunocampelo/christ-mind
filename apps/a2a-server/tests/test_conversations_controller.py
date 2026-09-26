@@ -78,6 +78,17 @@ class _FakeConversations:
             raise ConversationNotFoundError
         return conversation
 
+    async def rename(self, conversation_id: str, summary: str) -> None:
+        conversation = self._by_id.get(conversation_id)
+        if conversation is None:
+            raise ConversationNotFoundError
+        self._by_id[conversation_id] = conversation.model_copy(
+            update={"summary": summary}
+        )
+
+    async def delete(self, conversation_id: str) -> None:
+        self._by_id.pop(conversation_id, None)
+
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
@@ -113,3 +124,36 @@ def test_unknown_conversation_is_404(client: TestClient) -> None:
     response = client.get("/conversations/nope")
     assert response.status_code == 404
     assert response.json()["detail"] == "Conversation not found"
+
+
+def test_rename_updates_summary(client: TestClient) -> None:
+    response = client.patch("/conversations/ctx-new", json={"summary": "Renamed"})
+    assert response.status_code == 200
+    assert response.json()["summary"] == "Renamed"
+    # The change is reflected on a subsequent read.
+    assert client.get("/conversations/ctx-new").json()["summary"] == "Renamed"
+
+
+def test_rename_trims_and_rejects_blank(client: TestClient) -> None:
+    assert (
+        client.patch("/conversations/ctx-new", json={"summary": "  spaced  "}).json()[
+            "summary"
+        ]
+        == "spaced"
+    )
+    assert (
+        client.patch("/conversations/ctx-new", json={"summary": "   "}).status_code
+        == 422
+    )
+
+
+def test_rename_unknown_is_404(client: TestClient) -> None:
+    response = client.patch("/conversations/nope", json={"summary": "x"})
+    assert response.status_code == 404
+
+
+def test_delete_removes_and_is_idempotent(client: TestClient) -> None:
+    assert client.delete("/conversations/ctx-old").status_code == 204
+    assert client.get("/conversations/ctx-old").status_code == 404
+    # Deleting an already-gone conversation is still a no-op 204.
+    assert client.delete("/conversations/ctx-old").status_code == 204

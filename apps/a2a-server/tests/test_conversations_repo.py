@@ -169,3 +169,28 @@ async def test_list_conversations_orders_by_most_recently_updated(
         await repo.delete(first)
         await repo.delete(second)
         await engine.dispose()
+
+
+async def test_rename_updates_summary(_require_db: None) -> None:
+    engine = create_db_engine()
+    repo = ConversationRepository(engine)
+    cid = _conversation_id()
+    try:
+        await repo.append_message(cid, MessageRole.user, "auto-derived title")
+        await repo.rename(cid, "My renamed thread")
+
+        conversation = await repo.get(cid)
+        assert conversation.summary == "My renamed thread"
+    finally:
+        await repo.delete(cid)
+        await engine.dispose()
+
+
+async def test_rename_unknown_conversation_raises(_require_db: None) -> None:
+    engine = create_db_engine()
+    repo = ConversationRepository(engine)
+    try:
+        with pytest.raises(ConversationNotFoundError):
+            await repo.rename(_conversation_id(), "no such conversation")
+    finally:
+        await engine.dispose()

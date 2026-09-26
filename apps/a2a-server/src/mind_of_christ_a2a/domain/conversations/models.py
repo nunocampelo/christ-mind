@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class MessageRole(str, Enum):
@@ -43,6 +43,22 @@ class Conversation(BaseModel):
     created_at: datetime
     updated_at: datetime
     messages: tuple[ConversationMessage, ...]
+
+
+class ConversationRename(BaseModel):
+    """PATCH body for renaming a conversation. `summary` must be non-blank after trimming —
+    a blank title is rejected (422) rather than clearing the derived one."""
+
+    model_config = {"frozen": True}
+    summary: str = Field(min_length=1)
+
+    @field_validator("summary")
+    @classmethod
+    def _strip_non_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("summary must not be blank")
+        return stripped
 
 
 class ConversationWriter(Protocol):

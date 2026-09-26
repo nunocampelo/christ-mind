@@ -161,6 +161,15 @@ class ConversationRepository:
             sequence=sequence,
         )
 
+    async def rename(self, conversation_id: str, summary: str) -> None:
+        async with self._session() as session:
+            async with session.begin():
+                conversation = await session.get(ConversationRow, conversation_id)
+                if conversation is None:
+                    raise ConversationNotFoundError
+                conversation.summary = summary
+                conversation.updated_at = _now()
+
     async def delete(self, conversation_id: str) -> None:
         async with self._session() as session:
             async with session.begin():

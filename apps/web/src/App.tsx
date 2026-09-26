@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { AgentStreamEvent } from "@/api/agentApi";
 import {
+  deleteConversation as defaultDeleteConversation,
   getConversation as defaultGetConversation,
   listConversations as defaultListConversations,
+  renameConversation as defaultRenameConversation,
   turnsFromConversation,
   type ConversationDetail,
   type ConversationSummary,
@@ -30,6 +32,8 @@ interface AppProps {
   ) => AsyncGenerator<AgentStreamEvent, void, void>;
   loadConversation?: (id: string) => Promise<ConversationDetail | null>;
   listConversations?: () => Promise<ConversationSummary[]>;
+  renameConversation?: (id: string, summary: string) => Promise<void>;
+  deleteConversation?: (id: string) => Promise<void>;
 }
 
 interface ChatProps {
@@ -137,8 +141,12 @@ const App = ({
   recoverFn,
   loadConversation,
   listConversations,
+  renameConversation,
+  deleteConversation,
 }: AppProps = {}) => {
   const load = loadConversation ?? defaultGetConversation;
+  const rename = renameConversation ?? defaultRenameConversation;
+  const remove = deleteConversation ?? defaultDeleteConversation;
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const { conversations, refetch } = useConversations({
@@ -189,9 +197,32 @@ const App = ({
     [navigate, refetch],
   );
 
+  const onRename = useCallback(
+    (id: string, summary: string) => {
+      void rename(id, summary).then(refetch);
+    },
+    [rename, refetch],
+  );
+
+  const onDelete = useCallback(
+    (id: string) => {
+      void remove(id).then(() => {
+        // Deleting the conversation you're viewing drops you into a fresh chat.
+        if (id === conversationId) navigate("/", { replace: true });
+        return refetch();
+      });
+    },
+    [remove, refetch, conversationId, navigate],
+  );
+
   return (
     <div className="flex h-dvh">
-      <Sidebar conversations={conversations} activeConversationId={conversationId} />
+      <Sidebar
+        conversations={conversations}
+        activeConversationId={conversationId}
+        onRename={onRename}
+        onDelete={onDelete}
+      />
       {seeds === null ? (
         <div className="min-w-0 flex-1 bg-background" />
       ) : (

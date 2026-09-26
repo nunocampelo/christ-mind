@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { AgentAnswer, AgentStreamEvent } from "@/api/agentApi";
@@ -373,6 +373,58 @@ describe("PR D — sidebar, routing, and rehydration by URL", () => {
     await user.click(screen.getByTestId("new-chat"));
 
     // The keyed chat must reseed empty, not carry the previous conversation's turns.
+    expect(
+      await screen.findByRole("heading", { name: "Mind of Christ" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("user-turn")).not.toBeInTheDocument();
+  });
+
+  it("renames a conversation through the sidebar and refreshes the list", async () => {
+    const user = userEvent.setup();
+    const renameConversation = vi.fn(async () => {});
+    let listed = summaries;
+    renderApp(
+      {
+        streamFn: streamOf([]),
+        loadConversation: async () => detail,
+        listConversations: async () => listed,
+        renameConversation,
+      },
+      "/c/ctx-restored",
+    );
+    await screen.findAllByTestId("conversation-item");
+
+    await user.click(screen.getAllByTestId("rename-conversation")[0]);
+    const input = screen.getByTestId("rename-input");
+    await user.clear(input);
+    // Once renamed, a refetch returns the new title.
+    listed = [{ ...summaries[0], summary: "Renamed thread" }, summaries[1]];
+    await user.type(input, "Renamed thread{Enter}");
+
+    expect(renameConversation).toHaveBeenCalledWith("ctx-restored", "Renamed thread");
+    expect(await screen.findByText("Renamed thread")).toBeInTheDocument();
+  });
+
+  it("deleting the active conversation navigates to the landing", async () => {
+    const user = userEvent.setup();
+    const deleteConversation = vi.fn(async () => {});
+    let listed = summaries;
+    renderApp(
+      {
+        streamFn: streamOf([]),
+        loadConversation: async () => detail,
+        listConversations: async () => listed,
+        deleteConversation,
+      },
+      "/c/ctx-restored",
+    );
+    expect(await screen.findByTestId("user-turn")).toBeInTheDocument();
+
+    await user.click(screen.getAllByTestId("delete-conversation")[0]);
+    listed = [summaries[1]]; // the active one is gone after refetch
+    await user.click(screen.getByTestId("confirm-delete"));
+
+    expect(deleteConversation).toHaveBeenCalledWith("ctx-restored");
     expect(
       await screen.findByRole("heading", { name: "Mind of Christ" }),
     ).toBeInTheDocument();
