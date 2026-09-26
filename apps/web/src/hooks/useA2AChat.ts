@@ -13,6 +13,7 @@ import {
 
 const ENTER_KEY = "Enter";
 const ERR_ASSISTANT_FAILED = "Assistant request failed";
+const CONTEXT_KEY = "christ-mind.agent.contextId";
 
 const TurnRole = {
   user: "user",
@@ -29,6 +30,7 @@ interface Turn {
 
 type StreamFn = (
   message: string,
+  contextId: string,
 ) => AsyncGenerator<AgentStreamEvent, void, void>;
 
 const TERMINAL_STATES = new Set([
@@ -48,6 +50,7 @@ const useA2AChat = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<string>("");
+  const contextId = useRef(sessionStorage.getItem(CONTEXT_KEY) ?? "");
   const inFlight = useRef(false);
   const nextTurnId = useRef(0);
 
@@ -109,6 +112,12 @@ const useA2AChat = ({
           case AgentEventKind.error:
             setError(event.message);
             break;
+          case AgentEventKind.contextId:
+            if (event.contextId) {
+              contextId.current = event.contextId;
+              sessionStorage.setItem(CONTEXT_KEY, event.contextId);
+            }
+            break;
           case AgentEventKind.status:
             if (event.text) appendStepToTurn(agentTurnId, event.text);
             if (TERMINAL_STATES.has(event.state)) return;
@@ -135,7 +144,7 @@ const useA2AChat = ({
       });
 
       try {
-        await consumeStream(streamFn(trimmed), agentTurnId);
+        await consumeStream(streamFn(trimmed, contextId.current), agentTurnId);
       } catch (err) {
         setError(err instanceof Error ? err.message : ERR_ASSISTANT_FAILED);
       } finally {

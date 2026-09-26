@@ -12,6 +12,7 @@ const AgentEventKind = {
   text: "text",
   answer: "answer",
   error: "error",
+  contextId: "contextId",
 } as const;
 
 const PayloadCase = {
@@ -57,7 +58,8 @@ type AgentStreamEvent =
   | { kind: typeof AgentEventKind.status; state: string; text: string }
   | { kind: typeof AgentEventKind.text; delta: string }
   | { kind: typeof AgentEventKind.answer; answer: AgentAnswer }
-  | { kind: typeof AgentEventKind.error; message: string };
+  | { kind: typeof AgentEventKind.error; message: string }
+  | { kind: typeof AgentEventKind.contextId; contextId: string };
 
 const ERR_ASSISTANT_FAILED = "Assistant request failed";
 const ERR_MALFORMED_ANSWER = "Malformed answer payload";
@@ -203,6 +205,9 @@ const eventsFromFrame = (frame: StreamResponse): AgentStreamEvent[] => {
 
   if (payload.$case === PayloadCase.task) {
     const task = payload.value;
+    if (task.contextId) {
+      events.push({ kind: AgentEventKind.contextId, contextId: task.contextId });
+    }
     if (task.status?.state !== undefined) {
       events.push({
         kind: AgentEventKind.status,
@@ -262,6 +267,7 @@ const eventsFromFrame = (frame: StreamResponse): AgentStreamEvent[] => {
 
 async function* streamAssistant(
   message: string,
+  contextId = "",
 ): AsyncGenerator<AgentStreamEvent, void, void> {
   const client = await getClient();
 
@@ -278,7 +284,7 @@ async function* streamAssistant(
           mediaType: "",
         },
       ],
-      contextId: "",
+      contextId,
       taskId: "",
       metadata: undefined,
       extensions: [],

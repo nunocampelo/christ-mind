@@ -64,6 +64,37 @@ describe("eventsFromFrame", () => {
     ]);
   });
 
+  it("emits a context id event before the status when the task frame carries one", () => {
+    const events = eventsFromFrame(
+      frame({
+        $case: "task",
+        value: {
+          contextId: "ctx-1",
+          status: { state: TaskState.TASK_STATE_WORKING },
+        },
+      }),
+    );
+    expect(events).toEqual([
+      { kind: AgentEventKind.contextId, contextId: "ctx-1" },
+      { kind: AgentEventKind.status, state: "TASK_STATE_WORKING", text: "" },
+    ]);
+  });
+
+  it("omits the context id event when the task frame has none", () => {
+    const events = eventsFromFrame(
+      frame({
+        $case: "task",
+        value: {
+          contextId: "",
+          status: { state: TaskState.TASK_STATE_WORKING },
+        },
+      }),
+    );
+    expect(events).toEqual([
+      { kind: AgentEventKind.status, state: "TASK_STATE_WORKING", text: "" },
+    ]);
+  });
+
   it("maps a working statusUpdate with no message to an empty-text status event", () => {
     const events = eventsFromFrame(
       frame({

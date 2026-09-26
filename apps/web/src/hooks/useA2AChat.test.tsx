@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentAnswer, AgentStreamEvent } from "@/api/agentApi";
 import useA2AChat, { TurnRole } from "@/hooks/useA2AChat";
 
@@ -28,6 +28,10 @@ const streamOf =
   };
 
 describe("useA2AChat", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
   it("appends a user turn and streams prose into the agent turn", async () => {
     const streamFn = streamOf([
       { kind: "text", delta: "Forgiveness " },
@@ -167,5 +171,58 @@ describe("useA2AChat", () => {
       release();
       await first;
     });
+  });
+
+  it("persists a streamed context id to sessionStorage", async () => {
+    const streamFn = streamOf([
+      { kind: "contextId", contextId: "ctx-1" },
+      { kind: "text", delta: "hi" },
+      { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+    ]);
+    const { result } = renderHook(() => useA2AChat({ streamFn }));
+
+    await act(async () => {
+      await result.current.send("help");
+    });
+
+    expect(sessionStorage.getItem("christ-mind.agent.contextId")).toBe("ctx-1");
+  });
+
+  it("echoes the stored context id on the next turn", async () => {
+    const streamFn = vi.fn((_message: string, _contextId: string) =>
+      streamOf([
+        { kind: "contextId", contextId: "ctx-1" },
+        { kind: "text", delta: "hi" },
+        { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+      ])(),
+    );
+    const { result } = renderHook(() => useA2AChat({ streamFn }));
+
+    await act(async () => {
+      await result.current.send("first");
+    });
+    await act(async () => {
+      await result.current.send("second");
+    });
+
+    expect(streamFn).toHaveBeenNthCalledWith(1, "first", "");
+    expect(streamFn).toHaveBeenNthCalledWith(2, "second", "ctx-1");
+  });
+
+  it("rehydrates the context id from sessionStorage on mount", async () => {
+    sessionStorage.setItem("christ-mind.agent.contextId", "ctx-restored");
+    const streamFn = vi.fn((_message: string, _contextId: string) =>
+      streamOf([
+        { kind: "text", delta: "hi" },
+        { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+      ])(),
+    );
+    const { result } = renderHook(() => useA2AChat({ streamFn }));
+
+    await act(async () => {
+      await result.current.send("first");
+    });
+
+    expect(streamFn).toHaveBeenCalledWith("first", "ctx-restored");
   });
 });
