@@ -8,6 +8,7 @@ interface TranscriptProps {
   busy: boolean;
   canReconnect?: boolean;
   onReconnect?: () => void;
+  spacerHeight?: number;
 }
 
 const ReconnectChip = ({ onReconnect }: { onReconnect?: () => void }) => (
@@ -50,6 +51,7 @@ const Transcript = ({
   busy,
   canReconnect,
   onReconnect,
+  spacerHeight = 0,
 }: TranscriptProps) => (
   <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8">
     {turns.map((turn, i) => {
@@ -57,6 +59,8 @@ const Transcript = ({
         return (
           <div
             key={turn.id}
+            data-turn
+            data-role="user"
             data-testid="user-turn"
             className="self-end max-w-[85%] rounded-[var(--radius-app)] bg-muted px-4 py-2 text-foreground"
           >
@@ -69,6 +73,8 @@ const Transcript = ({
         return (
           <div
             key={turn.id}
+            data-turn
+            data-role="notice"
             data-testid="notice-turn"
             className="flex items-center self-start py-0.5 text-[0.6875rem] italic text-muted-foreground"
           >
@@ -82,6 +88,8 @@ const Transcript = ({
       return (
         <div
           key={turn.id}
+          data-turn
+          data-role="agent"
           data-testid="agent-turn"
           className="self-start max-w-[95%] text-foreground"
         >
@@ -89,6 +97,19 @@ const Transcript = ({
         </div>
       );
     })}
+    <div
+      data-testid="tail-spacer"
+      aria-hidden="true"
+      className={
+        // No transition while streaming: per-chunk shrinks fire rapidly and a height
+        // transition would make the spacer lag the growing reply (rubber-banding/flicker).
+        // Once idle, ease the final collapse to 0 so the short-reply case settles smoothly.
+        busy
+          ? "shrink-0"
+          : "shrink-0 transition-[height] duration-[250ms] ease motion-reduce:transition-none"
+      }
+      style={{ height: spacerHeight }}
+    />
   </div>
 );
 

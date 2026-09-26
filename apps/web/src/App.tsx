@@ -1,8 +1,10 @@
+import { useCallback, useRef } from "react";
 import type { AgentStreamEvent } from "@/api/agentApi";
 import ChatLanding from "@/components/chat/ChatLanding";
 import Composer from "@/components/chat/Composer";
 import Transcript from "@/components/chat/Transcript";
 import useA2AChat from "@/hooks/useA2AChat";
+import useScrollAnchor from "@/hooks/useScrollAnchor";
 
 interface AppProps {
   streamFn?: (
@@ -21,6 +23,8 @@ interface AppProps {
     until the first turn. `streamFn`/`recoverFn` are the test seams (default: the real
     transport). */
 const App = ({ streamFn, recoverFn }: AppProps = {}) => {
+  const anchorRef = useRef<() => void>(() => {});
+  const onSend = useCallback(() => anchorRef.current(), []);
   const {
     turns,
     busy,
@@ -32,11 +36,21 @@ const App = ({ streamFn, recoverFn }: AppProps = {}) => {
     handleInputKeyDown,
     handleCancel,
     handleReconnect,
-  } = useA2AChat({ streamFn, recoverFn });
+  } = useA2AChat({ streamFn, recoverFn, onSend });
+
+  const streamingText = turns.length ? turns[turns.length - 1].text : "";
+  const { scrollRef, spacerHeight, anchorOnSend } = useScrollAnchor(
+    busy,
+    streamingText,
+  );
+  anchorRef.current = anchorOnSend;
 
   return (
     <div className="flex h-dvh flex-col bg-background">
-      <main className="flex flex-1 flex-col overflow-y-auto">
+      <main
+        ref={scrollRef}
+        className="flex flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
+      >
         {turns.length === 0 ? (
           <ChatLanding />
         ) : (
@@ -45,6 +59,7 @@ const App = ({ streamFn, recoverFn }: AppProps = {}) => {
             busy={busy}
             canReconnect={canReconnect}
             onReconnect={() => void handleReconnect()}
+            spacerHeight={spacerHeight}
           />
         )}
       </main>

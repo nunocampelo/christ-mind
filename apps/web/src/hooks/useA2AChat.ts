@@ -51,11 +51,13 @@ const TERMINAL_STATES = new Set([
 interface UseA2AChatOptions {
   streamFn?: StreamFn;
   recoverFn?: RecoverFn;
+  onSend?: () => void;
 }
 
 const useA2AChat = ({
   streamFn = streamAssistant,
   recoverFn = recoverAssistant,
+  onSend,
 }: UseA2AChatOptions = {}) => {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
@@ -165,6 +167,7 @@ const useA2AChat = ({
         steps: [],
       });
       lastAgentTurnId.current = agentTurnId;
+      onSend?.();
 
       try {
         await consumeStream(
@@ -181,7 +184,7 @@ const useA2AChat = ({
         abortRef.current = null;
       }
     },
-    [appendTurn, busy, consumeStream, removeAgentTurnIfEmpty, streamFn],
+    [appendTurn, busy, consumeStream, onSend, removeAgentTurnIfEmpty, streamFn],
   );
 
   const handleCancel = useCallback(() => {
