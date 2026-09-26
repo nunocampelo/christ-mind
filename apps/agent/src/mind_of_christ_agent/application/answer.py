@@ -10,7 +10,7 @@ first slice that produces it.
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CitedClaim(BaseModel):
@@ -34,6 +34,18 @@ class InferredChain(BaseModel):
     links: list[CitedClaim]
 
 
+class CitationDiagnostics(BaseModel):
+    """Soft audit of the inline citation markers the model wrote against the claims it
+    actually gathered. Not an error channel -- the answer ships regardless (the prose has
+    already streamed by the time this is computed). `unknown_ids` are markers citing a
+    claim_id not in `cited_claims` (invented or malformed); `unused_claim_ids` are gathered
+    claims the prose never cited. Both surface drift to evaluation without failing a turn."""
+
+    model_config = {"frozen": True}
+    unknown_ids: list[str] = Field(default_factory=list)
+    unused_claim_ids: list[str] = Field(default_factory=list)
+
+
 class AgentRequest(BaseModel):
     model_config = {"frozen": True}
     situation: str
@@ -46,3 +58,6 @@ class AgentAnswer(BaseModel):
     concepts: list[str]
     cited_claims: list[CitedClaim]
     inferred_chains: list[InferredChain]
+    citation_diagnostics: CitationDiagnostics = Field(
+        default_factory=CitationDiagnostics
+    )

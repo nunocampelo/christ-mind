@@ -266,6 +266,57 @@ async def test_summarizes_when_the_model_never_answers():
     assert [c.claim_id for c in orchestrator.last_answer.cited_claims] == ["c1", "c1"]
 
 
+@pytest.mark.anyio
+async def test_citation_diagnostics_clean_when_prose_cites_a_gathered_claim():
+    find_claims_result = CallToolResult(
+        content=[TextContent(type="text", text="one claim")],
+        structured_content={"result": [_claim_result(claim_id="c1")]},
+    )
+    mcp = _FakeMcpClient({"find_claims": find_claims_result})
+    chat_stream = _scripted_stream(
+        '{"tool_call": {"name": "find_claims", "arguments": {"query": "peace"}}}',
+        '{"final": "Forgiveness brings peace. [c1]"}',
+    )
+    orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
+
+    async for _ in orchestrator.run_stream(AgentRequest(situation="peace", max_steps=4)):
+        pass
+
+    answer = orchestrator.last_answer
+    assert answer is not None
+    assert answer.citation_diagnostics.unknown_ids == []
+    assert answer.citation_diagnostics.unused_claim_ids == []
+
+
+@pytest.mark.anyio
+async def test_citation_diagnostics_record_unknown_and_unused_but_still_answer():
+    find_claims_result = CallToolResult(
+        content=[TextContent(type="text", text="one claim")],
+        structured_content={"result": [_claim_result(claim_id="c1")]},
+    )
+    mcp = _FakeMcpClient({"find_claims": find_claims_result})
+    # The prose cites a claim_id that was never gathered (unknown) and never cites the one
+    # that was (unused). The turn must still complete -- validation is soft.
+    chat_stream = _scripted_stream(
+        '{"tool_call": {"name": "find_claims", "arguments": {"query": "peace"}}}',
+        '{"final": "Forgiveness brings peace. [made-up]"}',
+    )
+    orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation="peace", max_steps=4)
+        )
+    ]
+
+    assert events[-1] == FinalEvent(text="Forgiveness brings peace. [made-up]")
+    answer = orchestrator.last_answer
+    assert answer is not None
+    assert answer.citation_diagnostics.unknown_ids == ["made-up"]
+    assert answer.citation_diagnostics.unused_claim_ids == ["c1"]
+
+
 def test_parse_decision_pulls_tool_call_out_of_reasoning_prose():
     raw = (
         "I have some claims about freedom. Let me explore.\n\n"

@@ -45,6 +45,27 @@ def test_carries_the_polarity_preservation_rule(prompt: str):
     assert "evidence span is authoritative" in prompt
 
 
+@pytest.mark.parametrize("prompt", PROSE_PROMPTS, ids=IDS)
+def test_carries_the_inline_marker_contract(prompt: str):
+    assert "[<claim_id>]" in prompt
+    assert "exact claim_id" in prompt
+
+
+@pytest.mark.parametrize("prompt", PROSE_PROMPTS, ids=IDS)
+def test_bans_the_retrieval_meta_voice(prompt: str):
+    # The voice must not narrate the machinery; these phrases are listed as forbidden.
+    for banned in ("the cited claims", "the retrieved claims", "the evidence supports"):
+        assert banned in prompt
+
+
+@pytest.mark.parametrize("prompt", PROSE_PROMPTS, ids=IDS)
+def test_carries_the_boundary_voice_template(prompt: str):
+    # The epistemic-boundary sentence must stay in the teaching's register, with a positive
+    # example to imitate -- not only phrases to avoid.
+    assert "the teaching speaking for itself" in prompt
+    assert "they don't yet give us enough to describe its nature more fully" in prompt
+
+
 def _cited(polarity: str) -> CitedClaim:
     return CitedClaim(
         claim_id="c1",
@@ -71,3 +92,10 @@ def test_affirmed_claim_renders_without_the_negated_marker():
     rendered = answer_user_prompt("describe God", [_cited("affirmed")], [])
 
     assert "[NEGATED]" not in rendered
+
+
+def test_rendered_claim_line_exposes_the_claim_id_for_citing():
+    # The model cites by claim_id, so it must appear in the rendered evidence line.
+    rendered = answer_user_prompt("describe God", [_cited("affirmed")], [])
+
+    assert "claim_id=c1" in rendered

@@ -25,6 +25,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 from mind_of_christ_agent.application.answer import (
     AgentAnswer,
     AgentRequest,
+    CitationDiagnostics,
     CitedClaim,
     InferredChain,
 )
@@ -34,6 +35,7 @@ from mind_of_christ_agent.domain.events import (
     StepStatusEvent,
     TokenEvent,
 )
+from mind_of_christ_agent.domain.citations import extract_markers
 from mind_of_christ_agent.domain.final_stream import FinalValueExtractor
 from mind_of_christ_agent.domain.prompt import (
     ANSWER_SYSTEM_PROMPT,
@@ -154,8 +156,23 @@ class Orchestrator:
             concepts=concepts,
             cited_claims=cited_claims,
             inferred_chains=inferred_chains,
+            citation_diagnostics=_diagnose_citations(text, cited_claims),
         )
         return FinalEvent(text=text)
+
+
+def _diagnose_citations(
+    text: str, cited_claims: list[CitedClaim]
+) -> CitationDiagnostics:
+    """Soft audit: markers the prose cites vs. claims actually gathered. Never rejects --
+    the prose has already streamed. Inferred-chain links are not part of `cited_claims`, so
+    they are intentionally not counted as citable here; the prose cites Course claims."""
+    marked = set(extract_markers(text))
+    gathered = {c.claim_id for c in cited_claims}
+    return CitationDiagnostics(
+        unknown_ids=sorted(marked - gathered),
+        unused_claim_ids=sorted(gathered - marked),
+    )
 
 
 def _parse_decision(text: str) -> dict[str, object]:

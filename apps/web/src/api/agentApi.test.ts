@@ -5,7 +5,9 @@ import {
   AgentEventKind,
   eventsFromFrame,
   parseAgentAnswer,
+  parseCitedProse,
   type AgentAnswer,
+  type CitedClaim,
 } from "@/api/agentApi";
 
 const textPart = (value: string) => ({
@@ -193,5 +195,49 @@ describe("parseAgentAnswer", () => {
       cited_claims: [{ ...ANSWER.cited_claims[0], object: null }],
     };
     expect(parseAgentAnswer(JSON.stringify(withNull))).toEqual(withNull);
+  });
+});
+
+describe("parseCitedProse", () => {
+  const claim = (claim_id: string): CitedClaim => ({
+    claim_id,
+    source_id: `s-${claim_id}`,
+    subject: "God",
+    predicate: "is",
+    object: "the Giver of life",
+    verb_phrase: "is",
+    polarity: "affirmed",
+    evidence: "God is the Giver of life.",
+  });
+
+  it("resolves a known marker to a numbered citation segment", () => {
+    const segments = parseCitedProse("God is the Giver of life. [c1]", [
+      claim("c1"),
+    ]);
+    expect(segments).toEqual([
+      { kind: "text", text: "God is the Giver of life. " },
+      { kind: "citation", claim: claim("c1"), ordinal: 1 },
+    ]);
+  });
+
+  it("drops an unknown marker rather than showing it literally", () => {
+    const segments = parseCitedProse("Grounded. [nope] More.", [claim("c1")]);
+    const text = segments
+      .filter((s) => s.kind === "text")
+      .map((s) => (s.kind === "text" ? s.text : ""))
+      .join("");
+    expect(text).not.toContain("[nope]");
+    expect(segments.every((s) => s.kind === "text")).toBe(true);
+  });
+
+  it("numbers distinct claims by first appearance and reuses a claim's ordinal", () => {
+    const segments = parseCitedProse("A [c1] B [c2] C [c1]", [
+      claim("c1"),
+      claim("c2"),
+    ]);
+    const ordinals = segments
+      .filter((s) => s.kind === "citation")
+      .map((s) => (s.kind === "citation" ? s.ordinal : 0));
+    expect(ordinals).toEqual([1, 2, 1]);
   });
 });

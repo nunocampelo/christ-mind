@@ -84,7 +84,9 @@
   text-decoration: underline;
 }
 
-/* Cited-vs-inferred: the system invariant, rendered as two visibly distinct regions. */
+/* Cited-vs-inferred: the system invariant, rendered as two visibly distinct regions.
+   The cited evidence lives in a collapsed "Sources" panel so the prose reads directly;
+   inferred chains stay their own always-visible region. */
 .cited-section,
 .inferred-section {
   margin-top: 1.25rem;
@@ -102,6 +104,77 @@
   letter-spacing: 0.08em;
   color: var(--color-muted-foreground);
   margin-bottom: 0.5rem;
+}
+.cited-heading {
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.cited-heading::-webkit-details-marker {
+  display: none;
+}
+.cited-heading::before {
+  content: "▸";
+  font-size: 0.7em;
+  transition: transform 150ms ease;
+}
+.cited-section[open] .cited-heading::before {
+  transform: rotate(90deg);
+}
+
+/* Segmented prose renders plain-text spans between citation markers, so paragraph breaks
+   in the source text must be honored here (no markdown block wrapping in this mode). */
+.cited-prose {
+  white-space: pre-wrap;
+}
+
+/* Inline citation: a bare raised reference number on the grounded statement, linking to
+   its source in the panel. No brackets -- a quiet footnote, not a citation apparatus, in
+   keeping with the teaching voice. The retrieval machinery stays out of the prose; this is
+   all the reader sees of it. */
+/* Scoped under .agent-markdown so it out-specifies the `.agent-markdown a` underline rule;
+   the marker is a link but must not read as an inline text link. */
+.agent-markdown a.cited-marker {
+  text-decoration: none;
+}
+.cited-marker {
+  display: inline-block;
+  margin: 0 0.1em 0 -0.12em;
+  padding: 0 0.15em 0 0;
+  color: var(--color-primary);
+  font-size: 0.68em;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  vertical-align: super;
+  border-radius: 0.3em;
+  font-variant-numeric: tabular-nums;
+  transition: background 120ms ease;
+}
+.cited-marker:hover {
+  background: color-mix(in oklch, var(--color-primary) 18%, transparent);
+  text-decoration: none;
+}
+
+/* The matching number shown against each source in the panel, so the ref in the prose and
+   the entry it points to read as the same number. */
+.cited-ordinal {
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The evidence entry becomes a flow row so its ordinal sits to the left of the gloss. */
+.cited-claim {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: 0.5rem;
+}
+.cited-claim > .cited-ordinal {
+  grid-row: 1 / span 3;
+  margin-top: 0.1rem;
 }
 .inferred-badge {
   padding: 0.05em 0.5em;

@@ -113,6 +113,51 @@ const isInferredChain = (v: unknown): v is InferredChain => {
   );
 };
 
+// A prose segment is either plain text (rendered as markdown) or a citation: an inline
+// [claim_id] marker the agent wrote, resolved to the claim it points at. The ordinal is
+// assigned by first appearance so the reader sees ¹ ² ..., not raw ids. An unknown or
+// malformed marker never becomes a segment -- it is dropped, never shown as literal
+// "[...]" (the agent's soft validation is the strict layer; here we only render).
+type ProseSegment =
+  | { kind: "text"; text: string }
+  | { kind: "citation"; claim: CitedClaim; ordinal: number };
+
+// A claim_id as written in a marker: id chars only, no whitespace (mirrors the agent's
+// definition in domain/citations.py, so both layers agree on what a marker is).
+const MARKER = /\[([A-Za-z0-9][A-Za-z0-9._-]*)\]/g;
+
+const parseCitedProse = (
+  text: string,
+  citedClaims: CitedClaim[],
+): ProseSegment[] => {
+  const byId = new Map(citedClaims.map((c) => [c.claim_id, c]));
+  const ordinals = new Map<string, number>();
+  const segments: ProseSegment[] = [];
+  let cursor = 0;
+
+  for (const match of text.matchAll(MARKER)) {
+    const before = text.slice(cursor, match.index);
+    if (before) segments.push({ kind: "text", text: before });
+    cursor = match.index + match[0].length;
+
+    // Unknown/malformed marker: strip it entirely (the agent's soft audit already
+    // recorded it). Never leave a literal "[id]" in the reader-facing prose.
+    const claim = byId.get(match[1]);
+    if (!claim) continue;
+
+    let ordinal = ordinals.get(claim.claim_id);
+    if (ordinal === undefined) {
+      ordinal = ordinals.size + 1;
+      ordinals.set(claim.claim_id, ordinal);
+    }
+    segments.push({ kind: "citation", claim, ordinal });
+  }
+
+  const tail = text.slice(cursor);
+  if (tail) segments.push({ kind: "text", text: tail });
+  return segments;
+};
+
 const parseAgentAnswer = (json: string): AgentAnswer | null => {
   let parsed: unknown;
   try {
@@ -260,8 +305,15 @@ export {
   ArtifactId,
   eventsFromFrame,
   parseAgentAnswer,
+  parseCitedProse,
   PartCase,
   PayloadCase,
   streamAssistant,
 };
-export type { AgentAnswer, AgentStreamEvent, CitedClaim, InferredChain };
+export type {
+  AgentAnswer,
+  AgentStreamEvent,
+  CitedClaim,
+  InferredChain,
+  ProseSegment,
+};
