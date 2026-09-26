@@ -173,15 +173,9 @@ const parseCitedProse = (
   return segments;
 };
 
-const parseAgentAnswer = (json: string): AgentAnswer | null => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(json);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const a = parsed as Record<string, unknown>;
+const validateAgentAnswer = (value: unknown): AgentAnswer | null => {
+  if (typeof value !== "object" || value === null) return null;
+  const a = value as Record<string, unknown>;
   if (
     typeof a.text !== "string" ||
     !Array.isArray(a.concepts) ||
@@ -193,7 +187,15 @@ const parseAgentAnswer = (json: string): AgentAnswer | null => {
   ) {
     return null;
   }
-  return parsed as AgentAnswer;
+  return value as AgentAnswer;
+};
+
+const parseAgentAnswer = (json: string): AgentAnswer | null => {
+  try {
+    return validateAgentAnswer(JSON.parse(json));
+  } catch {
+    return null;
+  }
 };
 
 const partsText = (parts: Part[] | undefined): string => {
@@ -400,6 +402,7 @@ async function* recoverAssistant(
 }
 
 export {
+  AGENT_BASE_URL,
   AgentEventKind,
   ArtifactId,
   eventsFromFrame,
@@ -410,6 +413,7 @@ export {
   recoverAssistant,
   recoverEventsFromTask,
   streamAssistant,
+  validateAgentAnswer,
 };
 export type {
   AgentAnswer,

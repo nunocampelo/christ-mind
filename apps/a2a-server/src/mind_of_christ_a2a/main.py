@@ -23,7 +23,11 @@ from google.protobuf import json_format
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from infrastructure.config.env import load_env
-from mind_of_christ_a2a.api.controllers import a2a_controller, agent_card_controller
+from mind_of_christ_a2a.api.controllers import (
+    a2a_controller,
+    agent_card_controller,
+    conversations_controller,
+)
 from mind_of_christ_a2a.domain.a2a.agent_card import render_agent_card_v1
 from mind_of_christ_a2a.infrastructure.db.engine import create_db_engine
 from mind_of_christ_a2a.infrastructure.db.repositories.conversations import (
@@ -88,6 +92,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Mind of Christ Agent (A2A)", version="0.1.0", lifespan=lifespan)
     app.include_router(agent_card_controller.router)
     app.include_router(a2a_controller.router)
+    app.include_router(conversations_controller.router)
     return app
 
 

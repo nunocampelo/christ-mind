@@ -15,10 +15,12 @@ export default defineConfig({
   // absolute endpoint URL the card advertises, so BOTH paths must be proxied. Run the
   // backend with AGENT_PUBLIC_URL=http://localhost:5173 so the card advertises this
   // origin — keeping both the card fetch and streaming same-origin (no CORS).
+  // /conversations is the REST history read surface (same-origin fetch from the app).
   server: {
     proxy: {
       "/a2a": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/.well-known": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/conversations": { target: "http://127.0.0.1:8000", changeOrigin: true },
     },
   },
   test: {

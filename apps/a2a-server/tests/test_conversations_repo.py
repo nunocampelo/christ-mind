@@ -144,3 +144,28 @@ async def test_messages_survive_a_fresh_engine(_require_db: None) -> None:
     finally:
         await reader.delete(cid)
         await reader_engine.dispose()
+
+
+async def test_list_conversations_orders_by_most_recently_updated(
+    _require_db: None,
+) -> None:
+    engine = create_db_engine()
+    repo = ConversationRepository(engine)
+    first, second = _conversation_id(), _conversation_id()
+    try:
+        await repo.append_message(first, MessageRole.user, "started first")
+        await repo.append_message(second, MessageRole.user, "started second")
+        # A later append to `first` bumps its updated_at above `second`.
+        await repo.append_message(first, MessageRole.agent, '{"text": "reply"}')
+
+        listed = await repo.list_conversations()
+        by_id = {c.conversation_id: c for c in listed}
+        assert first in by_id and second in by_id
+        # `first` was updated most recently, so it sorts ahead of `second`.
+        order = [c.conversation_id for c in listed if c.conversation_id in {first, second}]
+        assert order == [first, second]
+        assert by_id[first].summary == "started first"
+    finally:
+        await repo.delete(first)
+        await repo.delete(second)
+        await engine.dispose()

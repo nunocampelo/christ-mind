@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from mind_of_christ_a2a.domain.conversations.models import (
     Conversation,
     ConversationMessage,
+    ConversationSummary,
     MessageRole,
 )
 from mind_of_christ_a2a.infrastructure.db.models.conversation import (
@@ -45,6 +46,21 @@ def _summary_from(content: str) -> str:
 class ConversationRepository:
     def __init__(self, engine: AsyncEngine) -> None:
         self._session = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def list_conversations(self) -> tuple[ConversationSummary, ...]:
+        async with self._session() as session:
+            result = await session.execute(
+                select(ConversationRow).order_by(ConversationRow.updated_at.desc())
+            )
+            return tuple(
+                ConversationSummary(
+                    conversation_id=c.conversation_id,
+                    summary=c.summary,
+                    created_at=c.created_at,
+                    updated_at=c.updated_at,
+                )
+                for c in result.scalars()
+            )
 
     async def get(self, conversation_id: str) -> Conversation:
         async with self._session() as session:

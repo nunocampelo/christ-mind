@@ -52,24 +52,33 @@ interface UseA2AChatOptions {
   streamFn?: StreamFn;
   recoverFn?: RecoverFn;
   onSend?: () => void;
+  // Rehydration seeds (default: empty / sessionStorage), so a reload can restore a
+  // conversation. `initialTurns` must carry contiguous ids 0..n-1 (turnsFromConversation
+  // does), since nextTurnId resumes past them.
+  initialContextId?: string;
+  initialTurns?: Turn[];
 }
 
 const useA2AChat = ({
   streamFn = streamAssistant,
   recoverFn = recoverAssistant,
   onSend,
+  initialContextId,
+  initialTurns,
 }: UseA2AChatOptions = {}) => {
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turns, setTurns] = useState<Turn[]>(initialTurns ?? []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<string>("");
-  const contextId = useRef(sessionStorage.getItem(CONTEXT_KEY) ?? "");
+  const contextId = useRef(
+    initialContextId ?? sessionStorage.getItem(CONTEXT_KEY) ?? "",
+  );
   const abortRef = useRef<AbortController | null>(null);
   const lastTaskId = useRef<string | null>(null);
   const lastAgentTurnId = useRef<number | null>(null);
   const turnsRef = useRef<Turn[]>(turns);
   turnsRef.current = turns;
-  const nextTurnId = useRef(0);
+  const nextTurnId = useRef(initialTurns?.length ?? 0);
 
   const appendTurn = useCallback((turn: Omit<Turn, "id">): number => {
     const id = nextTurnId.current++;

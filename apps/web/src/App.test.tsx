@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { AgentAnswer, AgentStreamEvent } from "@/api/agentApi";
 import App from "@/App";
 
@@ -234,6 +234,67 @@ describe("PR 6 — reconnect a dropped answer", () => {
       ),
     );
     expect(screen.queryByTestId("notice-turn")).not.toBeInTheDocument();
+  });
+});
+
+describe("PR C — rehydrate the stored conversation on load", () => {
+  const CONTEXT_KEY = "christ-mind.agent.contextId";
+
+  const detail = {
+    conversation_id: "ctx-restored",
+    summary: "earlier thread",
+    created_at: "2026-01-01T00:00:00",
+    updated_at: "2026-01-01T00:00:00",
+    messages: [
+      {
+        conversation_id: "ctx-restored",
+        role: "user",
+        content: "an earlier question",
+        message_json: null,
+        timestamp: "2026-01-01T00:00:00",
+        sequence: 1,
+      },
+      {
+        conversation_id: "ctx-restored",
+        role: "agent",
+        // content mirrors AgentAnswer.text (what the executor persists); the turn renders
+        // the structured answer's prose + citations.
+        content: ANSWER.text,
+        message_json: ANSWER,
+        timestamp: "2026-01-01T00:00:00",
+        sequence: 2,
+      },
+    ],
+  };
+
+  afterEach(() => sessionStorage.clear());
+
+  it("restores the transcript from the stored conversation", async () => {
+    sessionStorage.setItem(CONTEXT_KEY, "ctx-restored");
+    render(
+      <App streamFn={streamOf([])} loadConversation={async () => detail} />,
+    );
+
+    expect(await screen.findByTestId("agent-turn")).toHaveTextContent(
+      "Forgiveness undoes it.",
+    );
+    expect(screen.getByTestId("user-turn")).toHaveTextContent(
+      "an earlier question",
+    );
+    // The structured answer rehydrated too (citations render, not just prose).
+    expect(screen.getByTestId("cited-claims")).toHaveTextContent("s1");
+  });
+
+  it("starts fresh (landing) when the stored id is unknown (404)", async () => {
+    sessionStorage.setItem(CONTEXT_KEY, "ctx-stale");
+    render(
+      <App streamFn={streamOf([])} loadConversation={async () => null} />,
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Mind of Christ" }),
+    ).toBeInTheDocument();
+    expect(sessionStorage.getItem(CONTEXT_KEY)).toBeNull();
   });
 });
 

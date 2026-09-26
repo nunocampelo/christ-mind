@@ -25,6 +25,17 @@ class ConversationMessage(BaseModel):
     sequence: int
 
 
+class ConversationSummary(BaseModel):
+    """A conversation without its messages — the list-row shape (id + title + timestamps)
+    the sidebar reads, so listing doesn't load every message body."""
+
+    model_config = {"frozen": True}
+    conversation_id: str
+    summary: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class Conversation(BaseModel):
     model_config = {"frozen": True}
     conversation_id: str

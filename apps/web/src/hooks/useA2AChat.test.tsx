@@ -461,4 +461,37 @@ describe("useA2AChat", () => {
     });
     expect(recoverFn).not.toHaveBeenCalled();
   });
+
+  it("seeds turns and the context id from rehydration options", async () => {
+    const initialTurns = [
+      { id: 0, role: TurnRole.user, text: "earlier question", steps: [] },
+      { id: 1, role: TurnRole.agent, text: "earlier answer", steps: [], answer: ANSWER },
+    ];
+    const streamFn = vi.fn(
+      (_message: string, _contextId: string, _signal?: AbortSignal) =>
+        streamOf([{ kind: "status", state: "TASK_STATE_COMPLETED", text: "" }])(),
+    );
+    const { result } = renderHook(() =>
+      useA2AChat({ streamFn, initialContextId: "ctx-restored", initialTurns }),
+    );
+
+    // The restored transcript is present immediately.
+    expect(result.current.turns.map((t) => t.text)).toEqual([
+      "earlier question",
+      "earlier answer",
+    ]);
+
+    // A new send continues the same conversation (echoes the seeded context id) and its
+    // turns get fresh ids past the seeded ones (no id collision).
+    await act(async () => {
+      await result.current.send("next question");
+    });
+    expect(streamFn.mock.calls[0].slice(0, 2)).toEqual([
+      "next question",
+      "ctx-restored",
+    ]);
+    expect(new Set(result.current.turns.map((t) => t.id)).size).toBe(
+      result.current.turns.length,
+    );
+  });
 });
