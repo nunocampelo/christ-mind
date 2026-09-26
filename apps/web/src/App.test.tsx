@@ -1,8 +1,22 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { ComponentProps } from "react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { AgentAnswer, AgentStreamEvent } from "@/api/agentApi";
 import App from "@/App";
+
+// App reads the route param, so every render goes through the router with both routes
+// mounted. `at` sets the starting URL (default "/" = a fresh chat).
+const renderApp = (props: ComponentProps<typeof App> = {}, at = "/") =>
+  render(
+    <MemoryRouter initialEntries={[at]}>
+      <Routes>
+        <Route path="/" element={<App {...props} />} />
+        <Route path="/c/:conversationId" element={<App {...props} />} />
+      </Routes>
+    </MemoryRouter>,
+  );
 
 const ANSWER: AgentAnswer = {
   text: "Forgiveness undoes it.",
@@ -30,7 +44,7 @@ const streamOf =
 
 describe("PR 2 — ask and get a cited answer", () => {
   it("shows the landing screen before any turn", () => {
-    render(<App streamFn={streamOf([])} />);
+    renderApp({ streamFn: streamOf([]) });
     expect(
       screen.getByRole("heading", { name: "Mind of Christ" }),
     ).toBeInTheDocument();
@@ -38,7 +52,7 @@ describe("PR 2 — ask and get a cited answer", () => {
 
   it("keeps send disabled until the composer has text", async () => {
     const user = userEvent.setup();
-    render(<App streamFn={streamOf([])} />);
+    renderApp({ streamFn: streamOf([]) });
     expect(screen.getByTestId("composer-send")).toBeDisabled();
     await user.type(screen.getByTestId("composer-input"), "hi");
     expect(screen.getByTestId("composer-send")).toBeEnabled();
@@ -46,14 +60,12 @@ describe("PR 2 — ask and get a cited answer", () => {
 
   it("posts the message and renders the markdown reply", async () => {
     const user = userEvent.setup();
-    render(
-      <App
-        streamFn={streamOf([
-          { kind: "text", delta: "Forgiveness undoes it." },
-          { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
-        ])}
-      />,
-    );
+    renderApp({
+      streamFn: streamOf([
+        { kind: "text", delta: "Forgiveness undoes it." },
+        { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+      ]),
+    });
 
     await user.type(screen.getByTestId("composer-input"), "I can't forgive");
     await user.click(screen.getByTestId("composer-send"));
@@ -66,18 +78,16 @@ describe("PR 2 — ask and get a cited answer", () => {
 
   it("renders the cited answer, keeping cited distinct from inferred", async () => {
     const user = userEvent.setup();
-    render(
-      <App
-        streamFn={streamOf([
-          { kind: "text", delta: "Forgiveness undoes it." },
-          {
-            kind: "answer",
-            answer: { ...ANSWER, inferred_chains: [{ inferred: true, links: ANSWER.cited_claims }] },
-          },
-          { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
-        ])}
-      />,
-    );
+    renderApp({
+      streamFn: streamOf([
+        { kind: "text", delta: "Forgiveness undoes it." },
+        {
+          kind: "answer",
+          answer: { ...ANSWER, inferred_chains: [{ inferred: true, links: ANSWER.cited_claims }] },
+        },
+        { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+      ]),
+    });
 
     await user.type(screen.getByTestId("composer-input"), "help");
     await user.click(screen.getByTestId("composer-send"));
@@ -88,14 +98,12 @@ describe("PR 2 — ask and get a cited answer", () => {
 
   it("submits on Enter but not Shift+Enter", async () => {
     const user = userEvent.setup();
-    render(
-      <App
-        streamFn={streamOf([
-          { kind: "text", delta: "ok" },
-          { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
-        ])}
-      />,
-    );
+    renderApp({
+      streamFn: streamOf([
+        { kind: "text", delta: "ok" },
+        { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+      ]),
+    });
     const input = screen.getByTestId("composer-input");
 
     await user.type(input, "hi{Shift>}{Enter}{/Shift}");
@@ -107,7 +115,7 @@ describe("PR 2 — ask and get a cited answer", () => {
 
   it("shows an error strip when the stream errors", async () => {
     const user = userEvent.setup();
-    render(<App streamFn={streamOf([{ kind: "error", message: "boom" }])} />);
+    renderApp({ streamFn: streamOf([{ kind: "error", message: "boom" }]) });
 
     await user.type(screen.getByTestId("composer-input"), "help");
     await user.click(screen.getByTestId("composer-send"));
@@ -117,11 +125,9 @@ describe("PR 2 — ask and get a cited answer", () => {
 
   it("removes the empty agent bubble when nothing is returned", async () => {
     const user = userEvent.setup();
-    render(
-      <App
-        streamFn={streamOf([{ kind: "status", state: "TASK_STATE_COMPLETED", text: "" }])}
-      />,
-    );
+    renderApp({
+      streamFn: streamOf([{ kind: "status", state: "TASK_STATE_COMPLETED", text: "" }]),
+    });
 
     await user.type(screen.getByTestId("composer-input"), "help");
     await user.click(screen.getByTestId("composer-send"));
@@ -144,7 +150,7 @@ describe("PR 5 — stop a running answer", () => {
         await gate;
       })();
 
-    render(<App streamFn={streamFn} />);
+    renderApp({ streamFn });
 
     await user.type(screen.getByTestId("composer-input"), "help");
     await user.click(screen.getByTestId("composer-send"));
@@ -175,7 +181,7 @@ describe("PR 5 — stop a running answer", () => {
         await gate;
       })();
 
-    render(<App streamFn={streamFn} />);
+    renderApp({ streamFn });
 
     const input = screen.getByTestId("composer-input");
     await user.type(input, "first");
@@ -218,7 +224,7 @@ describe("PR 6 — reconnect a dropped answer", () => {
         } as AgentStreamEvent;
       })();
 
-    render(<App streamFn={streamFn} recoverFn={recoverFn} />);
+    renderApp({ streamFn, recoverFn });
 
     await user.type(screen.getByTestId("composer-input"), "help");
     await user.click(screen.getByTestId("composer-send"));
@@ -237,9 +243,7 @@ describe("PR 6 — reconnect a dropped answer", () => {
   });
 });
 
-describe("PR C — rehydrate the stored conversation on load", () => {
-  const CONTEXT_KEY = "christ-mind.agent.contextId";
-
+describe("PR D — sidebar, routing, and rehydration by URL", () => {
   const detail = {
     conversation_id: "ctx-restored",
     summary: "earlier thread",
@@ -267,12 +271,48 @@ describe("PR C — rehydrate the stored conversation on load", () => {
     ],
   };
 
-  afterEach(() => sessionStorage.clear());
+  const summaries = [
+    {
+      conversation_id: "ctx-restored",
+      summary: "earlier thread",
+      created_at: "2026-01-01T00:00:00",
+      updated_at: "2026-01-02T00:00:00",
+    },
+    {
+      conversation_id: "ctx-other",
+      summary: "another thread",
+      created_at: "2026-01-01T00:00:00",
+      updated_at: "2026-01-01T00:00:00",
+    },
+  ];
 
-  it("restores the transcript from the stored conversation", async () => {
-    sessionStorage.setItem(CONTEXT_KEY, "ctx-restored");
-    render(
-      <App streamFn={streamOf([])} loadConversation={async () => detail} />,
+  it("lists conversations in the sidebar, highlighting the active one", async () => {
+    renderApp(
+      {
+        streamFn: streamOf([]),
+        loadConversation: async () => detail,
+        listConversations: async () => summaries,
+      },
+      "/c/ctx-restored",
+    );
+
+    const items = await screen.findAllByTestId("conversation-item");
+    expect(items.map((i) => i.textContent)).toEqual([
+      "earlier thread",
+      "another thread",
+    ]);
+    const active = items.find((i) => i.getAttribute("data-active") === "true");
+    expect(active).toHaveTextContent("earlier thread");
+  });
+
+  it("rehydrates the transcript for the conversation in the URL", async () => {
+    renderApp(
+      {
+        streamFn: streamOf([]),
+        loadConversation: async () => detail,
+        listConversations: async () => summaries,
+      },
+      "/c/ctx-restored",
     );
 
     expect(await screen.findByTestId("agent-turn")).toHaveTextContent(
@@ -285,16 +325,58 @@ describe("PR C — rehydrate the stored conversation on load", () => {
     expect(screen.getByTestId("cited-claims")).toHaveTextContent("s1");
   });
 
-  it("starts fresh (landing) when the stored id is unknown (404)", async () => {
-    sessionStorage.setItem(CONTEXT_KEY, "ctx-stale");
-    render(
-      <App streamFn={streamOf([])} loadConversation={async () => null} />,
+  it("shows the landing at the root route (new chat)", async () => {
+    renderApp(
+      {
+        streamFn: streamOf([]),
+        listConversations: async () => summaries,
+      },
+      "/",
     );
 
     expect(
       await screen.findByRole("heading", { name: "Mind of Christ" }),
     ).toBeInTheDocument();
-    expect(sessionStorage.getItem(CONTEXT_KEY)).toBeNull();
+    expect(screen.queryByTestId("user-turn")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the landing when the URL's conversation is unknown (404)", async () => {
+    renderApp(
+      {
+        streamFn: streamOf([]),
+        loadConversation: async () => null,
+        listConversations: async () => summaries,
+      },
+      "/c/ctx-stale",
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Mind of Christ" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the landing (no stale transcript) after New chat from a conversation", async () => {
+    const user = userEvent.setup();
+    renderApp(
+      {
+        streamFn: streamOf([]),
+        loadConversation: async () => detail,
+        listConversations: async () => summaries,
+      },
+      "/c/ctx-restored",
+    );
+    // Start on the conversation.
+    expect(await screen.findByTestId("user-turn")).toHaveTextContent(
+      "an earlier question",
+    );
+
+    await user.click(screen.getByTestId("new-chat"));
+
+    // The keyed chat must reseed empty, not carry the previous conversation's turns.
+    expect(
+      await screen.findByRole("heading", { name: "Mind of Christ" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("user-turn")).not.toBeInTheDocument();
   });
 });
 
@@ -316,14 +398,12 @@ describe("PR 7 — jump-to-bottom button", () => {
 
   it("reveals the button when the transcript is scrolled up, hides it at the bottom", async () => {
     const user = userEvent.setup();
-    render(
-      <App
-        streamFn={streamOf([
-          { kind: "text", delta: "a long answer" },
-          { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
-        ])}
-      />,
-    );
+    renderApp({
+      streamFn: streamOf([
+        { kind: "text", delta: "a long answer" },
+        { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+      ]),
+    });
     await user.type(screen.getByTestId("composer-input"), "hi");
     await user.click(screen.getByTestId("composer-send"));
 

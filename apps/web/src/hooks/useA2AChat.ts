@@ -11,11 +11,11 @@ import {
   type AgentAnswer,
   type AgentStreamEvent,
 } from "@/api/agentApi";
+import { CONTEXT_KEY } from "@/lib/session";
 
 const ENTER_KEY = "Enter";
 const ERR_ASSISTANT_FAILED = "Assistant request failed";
 const NOTICE_STOPPED = "Request stopped";
-const CONTEXT_KEY = "christ-mind.agent.contextId";
 
 const TurnRole = {
   user: "user",
@@ -57,6 +57,9 @@ interface UseA2AChatOptions {
   // does), since nextTurnId resumes past them.
   initialContextId?: string;
   initialTurns?: Turn[];
+  // Fires once the server assigns a conversation's id (the A2A contextId) on the first
+  // turn of a fresh chat, so App can route to /c/:id and refresh the sidebar list.
+  onConversationId?: (conversationId: string) => void;
 }
 
 const useA2AChat = ({
@@ -65,6 +68,7 @@ const useA2AChat = ({
   onSend,
   initialContextId,
   initialTurns,
+  onConversationId,
 }: UseA2AChatOptions = {}) => {
   const [turns, setTurns] = useState<Turn[]>(initialTurns ?? []);
   const [busy, setBusy] = useState(false);
@@ -141,9 +145,13 @@ const useA2AChat = ({
             errored = true;
             break;
           case AgentEventKind.contextId:
-            if (event.contextId) {
+            if (event.contextId && event.contextId !== contextId.current) {
+              // New id: the server just created this conversation (a fresh chat's first
+              // turn). Notify so App can route to it; a turn in an already-routed
+              // conversation echoes the same id and doesn't re-fire.
               contextId.current = event.contextId;
               sessionStorage.setItem(CONTEXT_KEY, event.contextId);
+              onConversationId?.(event.contextId);
             }
             break;
           case AgentEventKind.taskId:
@@ -163,7 +171,7 @@ const useA2AChat = ({
       }
       return errored;
     },
-    [appendStepToTurn, appendToAgentTurn, setAnswerOnTurn],
+    [appendStepToTurn, appendToAgentTurn, onConversationId, setAnswerOnTurn],
   );
 
   const send = useCallback(
