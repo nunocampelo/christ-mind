@@ -49,6 +49,11 @@ from mind_of_christ_agent.application.build import build_orchestrator
 from mind_of_christ_agent.domain.events import FinalEvent, StepStatusEvent, TokenEvent
 from mind_of_christ_agent.infrastructure.mcp_client import connect
 
+from mind_of_christ_a2a.domain.conversations.models import (
+    ConversationWriter,
+    MessageRole,
+)
+
 _ANSWER_ARTIFACT_ID = "answer"
 _EVIDENCE_ARTIFACT_ID = "evidence"
 
@@ -57,10 +62,19 @@ class MindOfChristExecutor(AgentExecutor):
     """Runs the streaming orchestrator inside the SDK's task lifecycle, one MCP
     subprocess per request."""
 
+    def __init__(self, conversations: ConversationWriter) -> None:
+        self._conversations = conversations
+
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         task_id = context.task_id or str(uuid.uuid4())
         context_id = context.context_id or str(uuid.uuid4())
         situation = context.get_user_input()
+
+        # Persist the user turn before the run: a stopped or failed run keeps the user's
+        # message in history and simply writes no answer.
+        await self._conversations.append_message(
+            context_id, MessageRole.user, situation
+        )
 
         await event_queue.enqueue_event(
             Task(
@@ -104,13 +118,15 @@ class MindOfChristExecutor(AgentExecutor):
                 # The structured answer (cited claims kept distinct from inferred
                 # chains) rides as its own artifact so the distinction survives the wire.
                 if orchestrator.last_answer is not None:
+                    answer_json = orchestrator.last_answer.model_dump_json()
                     await updater.add_artifact(
-                        parts=[
-                            Part(text=orchestrator.last_answer.model_dump_json())
-                        ],
+                        parts=[Part(text=answer_json)],
                         artifact_id=_EVIDENCE_ARTIFACT_ID,
                         append=False,
                         last_chunk=True,
+                    )
+                    await self._conversations.append_message(
+                        context_id, MessageRole.agent, answer_json
                     )
         except Exception:
             # Any escaping exception must still emit a terminal event, or the task hangs

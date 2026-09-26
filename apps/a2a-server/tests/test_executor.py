@@ -6,6 +6,7 @@ equality, and that the cited-vs-inferred distinction survives onto the evidence 
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 import pytest
 from a2a.types import Task, TaskArtifactUpdateEvent, TaskState, TaskStatusUpdateEvent
@@ -18,6 +19,10 @@ from mind_of_christ_agent.application.answer import (
 from mind_of_christ_agent.domain.events import FinalEvent, StepStatusEvent, TokenEvent
 from mind_of_christ_a2a.domain.a2a import executor as executor_module
 from mind_of_christ_a2a.domain.a2a.executor import MindOfChristExecutor
+from mind_of_christ_a2a.domain.conversations.models import (
+    ConversationMessage,
+    MessageRole,
+)
 
 _CLAIM = CitedClaim(
     claim_id="c1",
@@ -37,6 +42,23 @@ class _RecordingQueue:
 
     async def enqueue_event(self, event: object) -> None:
         self.events.append(event)
+
+
+class _RecordingConversations:
+    def __init__(self) -> None:
+        self.appended: list[tuple[str, MessageRole, str]] = []
+
+    async def append_message(
+        self, conversation_id: str, role: MessageRole, content: str
+    ) -> ConversationMessage:
+        self.appended.append((conversation_id, role, content))
+        return ConversationMessage(
+            conversation_id=conversation_id,
+            role=role,
+            content=content,
+            timestamp=datetime(2026, 1, 1),
+            sequence=len(self.appended),
+        )
 
 
 class _FakeContext:
@@ -84,7 +106,11 @@ def stubbed(monkeypatch: pytest.MonkeyPatch) -> AgentAnswer:
 @pytest.mark.anyio
 async def test_execute_maps_events_to_frames(stubbed: AgentAnswer) -> None:
     queue = _RecordingQueue()
-    await MindOfChristExecutor().execute(_FakeContext("I can't forgive"), queue)  # type: ignore[arg-type]
+    conversations = _RecordingConversations()
+    await MindOfChristExecutor(conversations=conversations).execute(
+        _FakeContext("I can't forgive"),  # type: ignore[arg-type]
+        queue,  # type: ignore[arg-type]
+    )
 
     kinds = [type(e).__name__ for e in queue.events]
     # Task first (SDK requires it before any status update), then start_work + two status
@@ -118,13 +144,25 @@ async def test_execute_maps_events_to_frames(stubbed: AgentAnswer) -> None:
         "The Course says forgiveness."
     )
 
+    # A successful run persists the user turn then the assistant answer (the same JSON as
+    # the evidence artifact), keyed by context_id.
+    assert [(role, cid) for cid, role, _ in conversations.appended] == [
+        (MessageRole.user, "ctx-1"),
+        (MessageRole.agent, "ctx-1"),
+    ]
+    assert conversations.appended[0][2] == "I can't forgive"
+    assert AgentAnswer.model_validate_json(conversations.appended[1][2]) == stubbed
+
 
 @pytest.mark.anyio
 async def test_evidence_artifact_keeps_cited_distinct_from_inferred(
     stubbed: AgentAnswer,
 ) -> None:
     queue = _RecordingQueue()
-    await MindOfChristExecutor().execute(_FakeContext("I can't forgive"), queue)  # type: ignore[arg-type]
+    await MindOfChristExecutor(conversations=_RecordingConversations()).execute(
+        _FakeContext("I can't forgive"),  # type: ignore[arg-type]
+        queue,  # type: ignore[arg-type]
+    )
 
     evidence = [
         e
@@ -158,7 +196,11 @@ async def test_failure_emits_terminal_failed(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(executor_module, "build_orchestrator", lambda _mcp: _Boom())
 
     queue = _RecordingQueue()
-    await MindOfChristExecutor().execute(_FakeContext("x"), queue)  # type: ignore[arg-type]
+    conversations = _RecordingConversations()
+    await MindOfChristExecutor(conversations=conversations).execute(
+        _FakeContext("x"),  # type: ignore[arg-type]
+        queue,  # type: ignore[arg-type]
+    )
 
     statuses = [e for e in queue.events if isinstance(e, TaskStatusUpdateEvent)]
     terminal = statuses[-1]
@@ -166,3 +208,6 @@ async def test_failure_emits_terminal_failed(monkeypatch: pytest.MonkeyPatch) ->
     text = "".join(p.text for p in terminal.status.message.parts)
     assert text == "Agent request failed"
     assert "secret" not in text
+
+    # A failed run keeps the user turn but persists no assistant answer.
+    assert [role for _, role, _ in conversations.appended] == [MessageRole.user]

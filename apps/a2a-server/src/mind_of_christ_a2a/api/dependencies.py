@@ -19,14 +19,21 @@ from a2a.types import AgentCard as CoreCard
 from fastapi import Request
 
 from mind_of_christ_a2a.domain.a2a.executor import MindOfChristExecutor
+from mind_of_christ_a2a.infrastructure.db.repositories.conversations import (
+    ConversationRepository,
+)
 
 
-def build_executor() -> MindOfChristExecutor:
-    return MindOfChristExecutor()
+def build_executor(conversations: ConversationRepository) -> MindOfChristExecutor:
+    return MindOfChristExecutor(conversations=conversations)
 
 
 def get_a2a_task_store(request: Request) -> TaskStore:
     return cast(TaskStore, request.app.state.a2a_task_store)
+
+
+def get_conversations(request: Request) -> ConversationRepository:
+    return cast(ConversationRepository, request.app.state.conversations)
 
 
 def get_a2a_proto_card(request: Request) -> CoreCard:
@@ -35,7 +42,7 @@ def get_a2a_proto_card(request: Request) -> CoreCard:
 
 def get_a2a_dispatcher(request: Request) -> JsonRpcDispatcher:
     handler = DefaultRequestHandler(
-        agent_executor=build_executor(),
+        agent_executor=build_executor(get_conversations(request)),
         task_store=get_a2a_task_store(request),
         agent_card=get_a2a_proto_card(request),
     )

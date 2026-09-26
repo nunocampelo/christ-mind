@@ -57,6 +57,13 @@ the obvious alternative". Applies equally to both `src/` trees (root and
 `src/infrastructure/database/sources.py` already follows this — its module docstring
 explains *why* it's a placeholder, not what each line does.
 
+**Be sparse — this covers docstrings and module docs too, not just inline comments.**
+Default to no comment. Write one only for what the code genuinely cannot convey: a
+non-obvious *why*, an invariant a reader would otherwise violate, a pitfall/workaround worth
+flagging for the future. Keep module docstrings short — a line or two of intent, not a
+narration of every method and branch below. Do not write multi-paragraph docstrings that
+restate the code; if the prose just re-says what the names and types already say, cut it.
+
 ## Formatting
 
 No formatter or linter is configured yet (no `black`/`ruff`/`flake8` in `pyproject.toml`'s

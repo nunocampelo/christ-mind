@@ -26,6 +26,9 @@ from infrastructure.config.env import load_env
 from mind_of_christ_a2a.api.controllers import a2a_controller, agent_card_controller
 from mind_of_christ_a2a.domain.a2a.agent_card import render_agent_card_v1
 from mind_of_christ_a2a.infrastructure.db.engine import create_db_engine
+from mind_of_christ_a2a.infrastructure.db.repositories.conversations import (
+    ConversationRepository,
+)
 
 load_env()
 
@@ -39,15 +42,12 @@ def _agent_public_url() -> str:
     return url.rstrip("/")
 
 
-async def build_task_store() -> tuple[TaskStore, AsyncEngine | None]:
-    """Durable task store on the one shared engine, plus the engine to dispose on
-    shutdown. create_table=False: Alembic owns the a2a_tasks DDL (see alembic/), so
-    `alembic upgrade head` must run before this process starts. owner_resolver is passed
-    explicitly to mark the per-user scoping seam — it resolves to "" today
-    (unauthenticated), swappable when auth lands. Tests monkeypatch this to return an
-    in-memory store (engine None), so the suite needs no database.
+async def build_task_store(engine: AsyncEngine) -> TaskStore:
+    """Durable task store on the shared engine. create_table=False: Alembic owns the
+    a2a_tasks DDL (see alembic/), so `alembic upgrade head` must run before this process
+    starts. owner_resolver is passed explicitly to mark the per-user scoping seam — it
+    resolves to "" today (unauthenticated), swappable when auth lands.
     """
-    engine = create_db_engine()
     store = DatabaseTaskStore(
         engine,
         create_table=False,
@@ -55,7 +55,17 @@ async def build_task_store() -> tuple[TaskStore, AsyncEngine | None]:
         owner_resolver=resolve_user_scope,
     )
     await store.initialize()
-    return store, engine
+    return store
+
+
+async def build_stores(app: FastAPI) -> AsyncEngine | None:
+    """Create the one shared engine and stash the stores that draw from it (task store +
+    conversation repository) on app.state; returns the engine to dispose on shutdown. Tests
+    monkeypatch this to install in-memory doubles (engine None), so the suite needs no DB."""
+    engine = create_db_engine()
+    app.state.a2a_task_store = await build_task_store(engine)
+    app.state.conversations = ConversationRepository(engine)
+    return engine
 
 
 @asynccontextmanager
@@ -66,8 +76,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.a2a_proto_card = cast(
         CoreCard, json_format.ParseDict(card, CoreCard())
     )
-    store, engine = await build_task_store()
-    app.state.a2a_task_store = store
+    engine = await build_stores(app)
     try:
         yield
     finally:

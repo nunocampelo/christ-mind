@@ -14,11 +14,13 @@ from contextlib import asynccontextmanager
 import pytest
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import Task, TaskState
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from google.protobuf import json_format
 
 import mind_of_christ_a2a.domain.a2a.executor as executor_module
 import mind_of_christ_a2a.main as main_module
+from mind_of_christ_a2a.domain.conversations.models import MessageRole
 from mind_of_christ_a2a.main import app
 from mind_of_christ_agent.application.answer import (
     AgentAnswer,
@@ -55,21 +57,30 @@ class _StubOrchestrator:
         yield FinalEvent(text="Forgiveness undoes it.")
 
 
+class _FakeConversations:
+    async def append_message(
+        self, conversation_id: str, role: MessageRole, content: str
+    ) -> None:
+        return None
+
+
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     @asynccontextmanager
     async def fake_connect() -> AsyncIterator[object]:
         yield object()
 
-    async def in_memory_store() -> tuple[InMemoryTaskStore, None]:
-        return InMemoryTaskStore(), None
+    async def in_memory_stores(app: FastAPI) -> None:
+        app.state.a2a_task_store = InMemoryTaskStore()
+        app.state.conversations = _FakeConversations()
+        return None
 
     monkeypatch.setenv("AGENT_PUBLIC_URL", "http://127.0.0.1:8000")
     monkeypatch.setattr(executor_module, "connect", fake_connect)
     monkeypatch.setattr(
         executor_module, "build_orchestrator", lambda _mcp: _StubOrchestrator()
     )
-    monkeypatch.setattr(main_module, "build_task_store", in_memory_store)
+    monkeypatch.setattr(main_module, "build_stores", in_memory_stores)
     with TestClient(app) as c:
         yield c
 
