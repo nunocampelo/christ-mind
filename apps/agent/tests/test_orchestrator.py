@@ -15,7 +15,12 @@ from mind_of_christ_agent.domain.events import (
     StepStatusEvent,
     TokenEvent,
 )
-from mind_of_christ_agent.domain.orchestrator import Orchestrator, _parse_decision
+from mind_of_christ_agent.domain.orchestrator import (
+    Orchestrator,
+    _call_terms,
+    _normalize_term,
+    _parse_decision,
+)
 
 
 @pytest.fixture
@@ -82,18 +87,16 @@ def _claim_result(**overrides: object) -> dict[str, object]:
 
 
 @pytest.mark.anyio
-async def test_run_stream_maps_calls_a_cited_tool_then_answers():
+async def test_run_stream_seeds_mapped_concepts_then_answers():
     find_claims_result = CallToolResult(
         content=[TextContent(type="text", text="one claim")],
         structured_content={"result": [_claim_result()]},
     )
     mcp = _FakeMcpClient({"find_claims": find_claims_result})
-    # Step 1: the LLM picks a tool. Step 2: it answers; the `final` value streams as
-    # tokens via the extractor (no separate answer call).
-    chat_stream = _scripted_stream(
-        '{"tool_call": {"name": "find_claims", "arguments": {"query": "forgiveness"}}}',
-        '{"final": "Forgiveness brings peace."}',
-    )
+    # The mapped concepts are searched in one deterministic seeded batch before any LLM
+    # decision, so the model's first decision already has the evidence and answers -- the
+    # common path is a single LLM call, not one per concept.
+    chat_stream = _scripted_stream('{"final": "Forgiveness brings peace."}')
     orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
 
     events = [
@@ -103,13 +106,139 @@ async def test_run_stream_maps_calls_a_cited_tool_then_answers():
         )
     ]
 
-    assert mcp.calls == [("find_claims", {"query": "forgiveness"})]
+    assert mcp.calls == [("find_claims", {"queries": ["forgiveness"]})]
     assert events[0] == StepStatusEvent(text="Mapped situation to 1 concept(s)")
-    assert StepStatusEvent(text="Calling find_claims") in events
-    assert StepStatusEvent(text="find_claims returned") in events
+    assert StepStatusEvent(text="Calling find_claims for 1 mapped concept(s)") in events
+    assert StepStatusEvent(text="find_claims returned 1 claim(s)") in events
     token_text = "".join(e.delta for e in events if isinstance(e, TokenEvent))
     assert token_text == "Forgiveness brings peace."
     assert events[-1] == FinalEvent(text="Forgiveness brings peace.")
+    answer = orchestrator.last_answer
+    assert answer is not None
+    assert [c.claim_id for c in answer.cited_claims] == ["c1"]
+
+
+@pytest.mark.anyio
+async def test_run_stream_seeds_all_mapped_concepts_in_one_batch():
+    mcp = _FakeMcpClient(
+        {
+            "find_claims": CallToolResult(
+                content=[TextContent(type="text", text="claims")],
+                structured_content={"result": [_claim_result()]},
+            )
+        }
+    )
+    chat_stream = _scripted_stream('{"final": "answer"}')
+    orchestrator = Orchestrator(
+        _StubMapper(["forgiveness", "fear", "peace"]), mcp, chat_stream
+    )
+
+    async for _ in orchestrator.run_stream(
+        AgentRequest(situation="I can't forgive my friend", max_steps=4)
+    ):
+        pass
+
+    # One seeded batch carrying every mapped concept -- not one call per concept.
+    assert mcp.calls == [("find_claims", {"queries": ["forgiveness", "fear", "peace"]})]
+
+
+@pytest.mark.anyio
+async def test_repeat_tool_call_is_not_re_run():
+    empty = CallToolResult(
+        content=[TextContent(type="text", text="")],
+        structured_content={"result": []},
+    )
+    mcp = _FakeMcpClient({"find_claims_for_entity": empty})
+    # No seed; the model calls the same entity twice (the zero-result retry loop), then
+    # answers. The second identical call must be skipped, not sent to the transport.
+    chat_stream = _scripted_stream(
+        '{"tool_call": {"name": "find_claims_for_entity", "arguments": {"mention": "the Mind of God"}}}',
+        '{"tool_call": {"name": "find_claims_for_entity", "arguments": {"mention": "the Mind of God"}}}',
+        '{"final": "answer"}',
+    )
+    orchestrator = Orchestrator(_StubMapper([]), mcp, chat_stream)
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation="describe the mind of God", max_steps=5)
+        )
+    ]
+
+    # The transport saw the call once, though the model asked twice.
+    assert mcp.calls == [("find_claims_for_entity", {"mention": "the Mind of God"})]
+    status_texts = [e.text for e in events if isinstance(e, StepStatusEvent)]
+    assert "Skipped repeat search via find_claims_for_entity" in status_texts
+    assert events[-1] == FinalEvent(text="answer")
+
+
+@pytest.mark.anyio
+async def test_article_and_tool_variance_of_a_searched_term_is_skipped():
+    empty = CallToolResult(
+        content=[TextContent(type="text", text="")],
+        structured_content={"result": []},
+    )
+    mcp = _FakeMcpClient(
+        {"find_claims": empty, "find_claims_for_entity": empty, "find_sources": empty}
+    )
+    # The seed searches "the Mind of God" (normalizes to "mind of god"). A retry that only
+    # varies the article ("Mind of God") or switches tool for the same normalized target is
+    # a subset of what was already searched, so both are skipped. Article/case/possessive
+    # and ordering variance is what normalization catches; genuine rephrasing is not (that
+    # is the decision prompt's job), so this test deliberately only varies those.
+    chat_stream = _scripted_stream(
+        '{"tool_call": {"name": "find_claims_for_entity", "arguments": {"mention": "Mind of God"}}}',
+        '{"tool_call": {"name": "find_sources", "arguments": {"query": "the Mind of God"}}}',
+        '{"final": "answer"}',
+    )
+    orchestrator = Orchestrator(_StubMapper(["the Mind of God"]), mcp, chat_stream)
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation="the mind of God", max_steps=6)
+        )
+    ]
+
+    # Only the seeded find_claims reached the transport; both variance retries were skipped.
+    assert mcp.calls == [("find_claims", {"queries": ["the Mind of God"]})]
+    status_texts = [e.text for e in events if isinstance(e, StepStatusEvent)]
+    assert sum(t.startswith("Skipped repeat search") for t in status_texts) == 2
+    assert events[-1] == FinalEvent(text="answer")
+
+
+@pytest.mark.anyio
+async def test_status_events_carry_the_call_arguments_and_result_counts():
+    find_claims_result = CallToolResult(
+        content=[TextContent(type="text", text="claims")],
+        structured_content={"result": [_claim_result(claim_id="c1"), _claim_result(claim_id="c2")]},
+    )
+    entity_result = CallToolResult(
+        content=[TextContent(type="text", text="entity")],
+        structured_content={"result": [_claim_result(claim_id="e1")]},
+    )
+    mcp = _FakeMcpClient(
+        {"find_claims": find_claims_result, "find_claims_for_entity": entity_result}
+    )
+    # No seed (empty concepts) so the reactive call's status text is asserted in isolation.
+    chat_stream = _scripted_stream(
+        '{"tool_call": {"name": "find_claims_for_entity", "arguments": {"mention": "the ego", "limit": 8}}}',
+        '{"final": "answer"}',
+    )
+    orchestrator = Orchestrator(_StubMapper([]), mcp, chat_stream)
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation="tell me about the ego", max_steps=4)
+        )
+    ]
+    status_texts = [e.text for e in events if isinstance(e, StepStatusEvent)]
+
+    # The mention rides in the "Calling" label; the limit does not (noise). The result
+    # count rides in the "returned" label.
+    assert 'Calling find_claims_for_entity for "the ego"' in status_texts
+    assert "find_claims_for_entity returned 1 claim(s)" in status_texts
 
 
 @pytest.mark.anyio
@@ -135,8 +264,9 @@ async def test_cited_claims_and_inferred_chains_stay_distinct():
         },
     )
     mcp = _FakeMcpClient({"find_claims": find_claims_result, "chain_claims": chain_result})
+    # The seeded batch retrieves the cited claim; the model only needs the reactive
+    # chain_claims follow-up before answering.
     chat_stream = _scripted_stream(
-        '{"tool_call": {"name": "find_claims", "arguments": {"query": "fear"}}}',
         '{"tool_call": {"name": "chain_claims", "arguments": {"subject_mention": "fear", "predicate": "causes"}}}',
         '{"final": "answer"}',
     )
@@ -192,10 +322,8 @@ async def test_polarity_survives_from_the_tool_result_into_the_cited_claim():
         },
     )
     mcp = _FakeMcpClient({"find_claims": negated})
-    chat_stream = _scripted_stream(
-        '{"tool_call": {"name": "find_claims", "arguments": {"query": "God"}}}',
-        '{"final": "The Course says God is not partial."}',
-    )
+    # The seeded batch retrieves the negated claim; the model answers from it directly.
+    chat_stream = _scripted_stream('{"final": "The Course says God is not partial."}')
     orchestrator = Orchestrator(_StubMapper(["God"]), mcp, chat_stream)
 
     async for _ in orchestrator.run_stream(AgentRequest(situation="describe God")):
@@ -242,11 +370,13 @@ async def test_summarizes_when_the_model_never_answers():
     # The model only ever searches; the loop exhausts max_steps. The scripted stream's
     # last reply is the forced answer-only call, which must become the answer.
     chat_stream = _scripted_stream(
-        '{"tool_call": {"name": "find_claims", "arguments": {"query": "a"}}}',
-        '{"tool_call": {"name": "find_claims", "arguments": {"query": "b"}}}',
+        '{"tool_call": {"name": "find_claims", "arguments": {"queries": ["a"]}}}',
+        '{"tool_call": {"name": "find_claims", "arguments": {"queries": ["b"]}}}',
         "Here is what the Course offers.",
     )
-    orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
+    # No mapped concepts, so no seeded batch -- the loop is driven purely by the model,
+    # exercising the max_steps-exhaustion path in isolation.
+    orchestrator = Orchestrator(_StubMapper([]), mcp, chat_stream)
 
     events = [
         event
@@ -273,10 +403,8 @@ async def test_citation_diagnostics_clean_when_prose_cites_a_gathered_claim():
         structured_content={"result": [_claim_result(claim_id="c1")]},
     )
     mcp = _FakeMcpClient({"find_claims": find_claims_result})
-    chat_stream = _scripted_stream(
-        '{"tool_call": {"name": "find_claims", "arguments": {"query": "peace"}}}',
-        '{"final": "Forgiveness brings peace. [c1]"}',
-    )
+    # Seeded batch gathers c1; the prose then cites it. Diagnostics stay clean.
+    chat_stream = _scripted_stream('{"final": "Forgiveness brings peace. [c1]"}')
     orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
 
     async for _ in orchestrator.run_stream(AgentRequest(situation="peace", max_steps=4)):
@@ -296,11 +424,8 @@ async def test_citation_diagnostics_record_unknown_and_unused_but_still_answer()
     )
     mcp = _FakeMcpClient({"find_claims": find_claims_result})
     # The prose cites a claim_id that was never gathered (unknown) and never cites the one
-    # that was (unused). The turn must still complete -- validation is soft.
-    chat_stream = _scripted_stream(
-        '{"tool_call": {"name": "find_claims", "arguments": {"query": "peace"}}}',
-        '{"final": "Forgiveness brings peace. [made-up]"}',
-    )
+    # the seeded batch did gather (unused). The turn must still complete -- validation is soft.
+    chat_stream = _scripted_stream('{"final": "Forgiveness brings peace. [made-up]"}')
     orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
 
     events = [
@@ -315,6 +440,19 @@ async def test_citation_diagnostics_record_unknown_and_unused_but_still_answer()
     assert answer is not None
     assert answer.citation_diagnostics.unknown_ids == ["made-up"]
     assert answer.citation_diagnostics.unused_claim_ids == ["c1"]
+
+
+def test_normalize_term_folds_case_article_and_possessive():
+    assert _normalize_term("the Mind of God") == _normalize_term("Mind of God")
+    assert _normalize_term("  MIND  of  God ") == "mind of god"
+    # A genuine rephrase does NOT collapse -- that is left to the decision prompt.
+    assert _normalize_term("Christ's mind") != _normalize_term("the mind of Christ")
+
+
+def test_call_terms_is_order_independent_and_ignores_limits():
+    a = _call_terms({"queries": ["fear", "peace"], "global_limit": 12})
+    b = _call_terms({"queries": ["peace", "the fear"], "limit_per_query": 3})
+    assert a == b == frozenset({"fear", "peace"})
 
 
 def test_parse_decision_pulls_tool_call_out_of_reasoning_prose():
@@ -345,11 +483,12 @@ async def test_reasoning_wrapped_tool_call_routes_to_the_tool_without_leaking():
     )
     mcp = _FakeMcpClient({"find_claims": find_claims_result})
     # Step 1: reasoning prose wrapped around the tool_call. Step 2: a clean final.
+    # No mapped concepts, so the only call is the model's own reactive tool_call.
     chat_stream = _scripted_stream(
-        'Let me look into freedom.\n{"tool_call": {"name": "find_claims", "arguments": {"query": "freedom"}}}',
+        'Let me look into freedom.\n{"tool_call": {"name": "find_claims", "arguments": {"queries": ["freedom"]}}}',
         '{"final": "Freedom is yours."}',
     )
-    orchestrator = Orchestrator(_StubMapper(["freedom"]), mcp, chat_stream)
+    orchestrator = Orchestrator(_StubMapper([]), mcp, chat_stream)
 
     events = [
         event
@@ -358,7 +497,7 @@ async def test_reasoning_wrapped_tool_call_routes_to_the_tool_without_leaking():
         )
     ]
 
-    assert mcp.calls == [("find_claims", {"query": "freedom"})]
+    assert mcp.calls == [("find_claims", {"queries": ["freedom"]})]
     token_text = "".join(e.delta for e in events if isinstance(e, TokenEvent))
     # The reasoning prose and the tool_call JSON never leak into the answer stream.
     assert token_text == "Freedom is yours."

@@ -25,8 +25,16 @@ def test_carries_the_evidence_boundary_rule(prompt: str):
 
 @pytest.mark.parametrize("prompt", PROSE_PROMPTS, ids=IDS)
 def test_carries_the_insufficient_evidence_contract(prompt: str):
-    assert "don't sufficiently address" in prompt
+    assert "don't directly address" in prompt
     assert "never substitute generic advice" in prompt
+
+
+@pytest.mark.parametrize("prompt", PROSE_PROMPTS, ids=IDS)
+def test_forbids_offering_to_look_further(prompt: str):
+    # The agent has already searched; it must not close by offering to search more.
+    assert "Do not\noffer to look further" in prompt or "Do not offer to look further" in prompt.replace(
+        "\n", " "
+    )
 
 
 @pytest.mark.parametrize("prompt", PROSE_PROMPTS, ids=IDS)
@@ -64,6 +72,13 @@ def test_carries_the_boundary_voice_template(prompt: str):
     # example to imitate -- not only phrases to avoid.
     assert "the teaching speaking for itself" in prompt
     assert "they don't yet give us enough to describe its nature more fully" in prompt
+
+
+def test_decision_prompt_forbids_repeating_a_zero_result_call():
+    # Only the decision prompt governs tool-calling; the answer prompt doesn't call tools.
+    flat = DECISION_SYSTEM_PROMPT.replace("\n", " ")
+    assert "the corpus does not hold that target" in flat
+    assert "do NOT chase it with reworded terms" in flat
 
 
 def _cited(polarity: str) -> CitedClaim:

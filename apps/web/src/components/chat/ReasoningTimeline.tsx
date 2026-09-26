@@ -9,11 +9,15 @@ interface ReasoningTimelineProps {
 const CALLING_PREFIX = "Calling ";
 
 /** The last tool the agent named, for the collapsed summary — derived from the
-    orchestrator's "Calling X" step labels. */
+    orchestrator's "Calling X for …" step labels. The chip shows just the tool name; the
+    argument (" for …") stays in the expanded step list. */
 const latestTool = (steps: string[]): string | null => {
   for (let i = steps.length - 1; i >= 0; i--) {
-    if (steps[i].startsWith(CALLING_PREFIX))
-      return steps[i].slice(CALLING_PREFIX.length);
+    if (steps[i].startsWith(CALLING_PREFIX)) {
+      const rest = steps[i].slice(CALLING_PREFIX.length);
+      const forIdx = rest.indexOf(" for ");
+      return forIdx === -1 ? rest : rest.slice(0, forIdx);
+    }
   }
   return null;
 };

@@ -140,10 +140,16 @@ const useA2AChat = ({
           case AgentEventKind.taskId:
             if (event.taskId) lastTaskId.current = event.taskId;
             break;
-          case AgentEventKind.status:
-            if (event.text) appendStepToTurn(agentTurnId, event.text);
-            if (TERMINAL_STATES.has(event.state)) return errored;
+          case AgentEventKind.status: {
+            // Only `working`-state labels are reasoning steps. The terminal `complete`
+            // message re-carries the full answer prose (for non-streaming clients); the
+            // streaming client already has it as prose + the structured answer, so
+            // appending it here would render the whole answer a second time as a step.
+            const terminal = TERMINAL_STATES.has(event.state);
+            if (event.text && !terminal) appendStepToTurn(agentTurnId, event.text);
+            if (terminal) return errored;
             break;
+          }
         }
       }
       return errored;

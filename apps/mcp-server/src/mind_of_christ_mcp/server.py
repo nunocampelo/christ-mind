@@ -11,7 +11,7 @@ from loguru import logger
 from mcp.server.mcpserver import MCPServer
 
 from application.retrieval.evidence import evidence_text as _evidence_text
-from application.retrieval.find_claims import find_claims as _find_claims
+from application.retrieval.find_claims import find_claims_batch as _find_claims_batch
 from application.retrieval.find_claims_for_entity import (
     find_claims_for_entity as _find_claims_for_entity,
 )
@@ -66,14 +66,22 @@ def find_sources(query: str, limit: int = 5) -> list[SourceResult]:
 
 
 @mcp.tool()
-def find_claims(query: str, limit: int = 5) -> list[ClaimResult]:
+def find_claims(
+    queries: list[str], limit_per_query: int = 5, global_limit: int = 12
+) -> list[ClaimResult]:
     """Find claims (subject/predicate/object assertions extracted from the Course)
-    whose subject, object, or verb phrase matches a query. Each result carries the
-    source_id of the passage it was extracted from. Results are in extraction order,
-    not ranked by relevance.
+    whose subject, object, or verb phrase matches any of the given queries. Pass several
+    queries at once (e.g. the concepts a situation maps to); one query is just a
+    one-element list. Results are merged across queries, deduped by claim_id, and
+    interleaved round-robin so no single query consumes the whole `global_limit`. Each
+    result carries the source_id of the passage it was extracted from.
     """
-    logger.bind(tool="find_claims", query=query, limit=limit).info("tool call")
-    results = _find_claims(query, limit=limit)
+    logger.bind(
+        tool="find_claims", query_count=len(queries), global_limit=global_limit
+    ).info("tool call")
+    results = _find_claims_batch(
+        queries, limit_per_query=limit_per_query, global_limit=global_limit
+    )
     logger.bind(tool="find_claims", count=len(results)).info("tool result")
     return [_to_claim_result(claim) for claim in results]
 

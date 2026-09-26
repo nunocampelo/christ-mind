@@ -15,6 +15,7 @@ model's, but the structured evidence beneath it keeps "the Course says X" separa
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
@@ -45,6 +46,13 @@ from mind_of_christ_agent.domain.prompt import (
 )
 
 _CITED_TOOLS = frozenset({"find_claims", "find_claims_for_entity", "find_sources"})
+
+# Tools that *retrieve* by a search term, so a repeat for an already-searched term is
+# redundant. Currently identical to _CITED_TOOLS, but kept separate on purpose: the
+# repeat-search guard is about retrieval, not about whether a result is cited, and a future
+# retrieval tool whose output isn't a cited claim would still belong here. chain_claims is
+# deliberately absent -- it walks edges from an already-retrieved subject (see the guard).
+_RETRIEVAL_TOOLS = frozenset({"find_claims", "find_claims_for_entity", "find_sources"})
 
 
 class ToolClient(Protocol):
@@ -82,6 +90,32 @@ class Orchestrator:
         cited_claims: list[CitedClaim] = []
         inferred_chains: list[InferredChain] = []
 
+        # Every normalized search term already looked for this turn, across any tool. The
+        # model is prone to chasing a zero-result target with reworded terms and different
+        # tools ("the mind of Christ" -> "Christ's mind" -> find_sources -> for_entity); a
+        # call whose terms are all already covered is answered from this set instead of
+        # re-run, which is what actually breaks the loop (the prompt rule alone doesn't hold).
+        searched_terms: set[str] = set()
+
+        # The concepts to search are already known from the mapping, so retrieve them in
+        # one deterministic batch rather than spending an LLM decision call per concept.
+        # The model still gets `find_claims` for reactive follow-up when this is thin.
+        if concepts:
+            yield StepStatusEvent(
+                text=f"Calling find_claims for {len(concepts)} mapped concept(s)"
+            )
+            searched_terms.update(_call_terms({"queries": concepts}))
+            result = await self._mcp_client.call_tool(
+                "find_claims", {"queries": concepts}
+            )
+            _absorb("find_claims", result, cited_claims, inferred_chains)
+            observations.append(
+                f"Tool 'find_claims' returned: {_result_text(result)[:3000]}"
+            )
+            yield StepStatusEvent(
+                text=f"find_claims returned {_result_summary('find_claims', result)}"
+            )
+
         for _ in range(request.max_steps):
             # One streaming decision call. The extractor reveals a `final` string's
             # tokens live (nothing for a `tool_call`); the raw text is parsed after the
@@ -108,13 +142,30 @@ class Orchestrator:
                 arguments = tool_call.get("arguments")
                 if not isinstance(arguments, dict):
                     arguments = {}
-                yield StepStatusEvent(text=f"Calling {name}")
+                # The guard is about redundant *retrieval*. chain_claims is synthesis -- it
+                # walks edges from an already-retrieved subject, so operating on a term
+                # that's been searched is its normal use, not a repeat.
+                terms = _call_terms(arguments) if name in _RETRIEVAL_TOOLS else frozenset()
+                if terms and terms <= searched_terms:
+                    # Every term this retrieval looks for has already been searched this
+                    # turn (under any wording or tool). Don't re-run it; tell the model so
+                    # it stops chasing the same target and answers.
+                    observations.append(
+                        f"Tool '{name}' looks for terms already searched this turn with no "
+                        "new results -- do not search them again; answer with what you have."
+                    )
+                    yield StepStatusEvent(text=f"Skipped repeat search via {name}")
+                    continue
+                searched_terms.update(terms)
+                yield StepStatusEvent(text=f"Calling {name}{_arg_summary(arguments)}")
                 result = await self._mcp_client.call_tool(name, arguments)
                 _absorb(name, result, cited_claims, inferred_chains)
                 observations.append(
                     f"Tool '{name}' returned: {_result_text(result)[:3000]}"
                 )
-                yield StepStatusEvent(text=f"{name} returned")
+                yield StepStatusEvent(
+                    text=f"{name} returned {_result_summary(name, result)}"
+                )
                 continue
 
             final = decision.get("final")
@@ -281,3 +332,59 @@ def _result_text(result: CallToolResult) -> str:
     return "".join(
         block.text for block in result.content if isinstance(block, TextContent)
     )
+
+
+# The one argument worth showing in the trace per tool -- the query/mention/subject that
+# names what the call is looking for. Anything else (limits) is noise in a status line.
+_ARG_KEYS = ("queries", "query", "mention", "subject_mention")
+
+
+def _arg_summary(arguments: dict[str, Any]) -> str:
+    for key in _ARG_KEYS:
+        value = arguments.get(key)
+        if isinstance(value, list):
+            shown = ", ".join(str(v) for v in value)
+            return f" for {shown}" if shown else ""
+        if isinstance(value, str) and value:
+            return f' for "{value}"'
+    return ""
+
+
+_LEADING_ARTICLE = re.compile(r"^(the|a|an)\s+")
+
+
+def _normalize_term(term: str) -> str:
+    """Fold a search term to its core so reworded retries collide: lowercased, leading
+    article dropped, possessive 's stripped, whitespace collapsed. "the Mind of God",
+    "Mind of God", and "God's mind" all reduce toward the same core."""
+    t = " ".join(term.lower().split())
+    t = _LEADING_ARTICLE.sub("", t)
+    return t.replace("'s ", " ").replace("' ", " ").strip()
+
+
+def _call_terms(arguments: dict[str, Any]) -> frozenset[str]:
+    """The normalized search terms a call is looking for, order-independent, so a repeat is
+    recognized regardless of key order or how the terms are reworded/reordered."""
+    terms: set[str] = set()
+    for key in _ARG_KEYS:
+        value = arguments.get(key)
+        if isinstance(value, list):
+            terms.update(_normalize_term(str(v)) for v in value)
+        elif isinstance(value, str) and value:
+            terms.add(_normalize_term(value))
+    return frozenset(t for t in terms if t)
+
+
+def _result_summary(name: str, result: CallToolResult) -> str:
+    """A short count for the trace: how many claims (or chains) a tool call yielded, so the
+    reasoning timeline reads 'find_claims returned 8 claims' rather than a bare 'returned'."""
+    payload = result.structured_content
+    if not isinstance(payload, dict):
+        return ""
+    if name == "chain_claims":
+        chains = payload.get("chains")
+        n = len(chains) if isinstance(chains, list) else 0
+        return f"{n} chain(s)"
+    items = payload.get("result")
+    n = len(items) if isinstance(items, list) else 0
+    return f"{n} claim(s)"

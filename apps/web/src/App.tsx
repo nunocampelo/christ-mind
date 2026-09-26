@@ -67,7 +67,7 @@ const App = ({ streamFn, recoverFn }: AppProps = {}) => {
           />
         )}
       </main>
-      <div className="sticky bottom-0 border-t border-border bg-background/80 backdrop-blur">
+      <div className="sticky bottom-0 border-t border-border bg-background/80 pt-3 backdrop-blur">
         {error && (
           <div
             data-testid="error-strip"

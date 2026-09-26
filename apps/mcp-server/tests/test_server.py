@@ -45,7 +45,7 @@ async def test_find_sources_tool_no_match_returns_empty():
 @pytest.mark.anyio
 async def test_find_claims_tool_matches_by_subject_or_object():
     async with Client(mcp) as client:
-        result = await client.call_tool("find_claims", {"query": "forgiveness"})
+        result = await client.call_tool("find_claims", {"queries": ["forgiveness"]})
 
     assert not result.is_error
     claims = [ClaimResult(**item) for item in result.structured_content["result"]]
@@ -59,9 +59,26 @@ async def test_find_claims_tool_matches_by_subject_or_object():
 
 
 @pytest.mark.anyio
+async def test_find_claims_tool_merges_and_dedupes_across_queries():
+    async with Client(mcp) as client:
+        single = await client.call_tool("find_claims", {"queries": ["forgiveness"]})
+        multi = await client.call_tool(
+            "find_claims", {"queries": ["forgiveness", "forgiveness"]}
+        )
+
+    single_ids = [item["claim_id"] for item in single.structured_content["result"]]
+    multi_ids = [item["claim_id"] for item in multi.structured_content["result"]]
+    # A repeated query adds no duplicates: the merged set dedupes by claim_id.
+    assert multi_ids == list(dict.fromkeys(multi_ids))
+    assert set(multi_ids) == set(single_ids)
+
+
+@pytest.mark.anyio
 async def test_find_claims_tool_serializes_enums_as_values_and_carries_source():
     async with Client(mcp) as client:
-        result = await client.call_tool("find_claims", {"query": "forgiveness", "limit": 1})
+        result = await client.call_tool(
+            "find_claims", {"queries": ["forgiveness"], "global_limit": 1}
+        )
 
     item = result.structured_content["result"][0]
     # Enum fields cross the wire as their lowercase values, never Python member names.
@@ -73,7 +90,9 @@ async def test_find_claims_tool_serializes_enums_as_values_and_carries_source():
 @pytest.mark.anyio
 async def test_find_claims_tool_carries_resolved_evidence_quote():
     async with Client(mcp) as client:
-        result = await client.call_tool("find_claims", {"query": "peace", "limit": 5})
+        result = await client.call_tool(
+            "find_claims", {"queries": ["peace"], "global_limit": 5}
+        )
 
     claims = [ClaimResult(**item) for item in result.structured_content["result"]]
     assert claims
@@ -85,7 +104,9 @@ async def test_find_claims_tool_carries_resolved_evidence_quote():
 @pytest.mark.anyio
 async def test_find_claims_tool_respects_limit():
     async with Client(mcp) as client:
-        result = await client.call_tool("find_claims", {"query": "the", "limit": 1})
+        result = await client.call_tool(
+            "find_claims", {"queries": ["the"], "global_limit": 1}
+        )
 
     claims = [ClaimResult(**item) for item in result.structured_content["result"]]
     assert len(claims) <= 1
@@ -94,7 +115,9 @@ async def test_find_claims_tool_respects_limit():
 @pytest.mark.anyio
 async def test_find_claims_tool_no_match_returns_empty():
     async with Client(mcp) as client:
-        result = await client.call_tool("find_claims", {"query": "xyzzy-nonexistent-term"})
+        result = await client.call_tool(
+            "find_claims", {"queries": ["xyzzy-nonexistent-term"]}
+        )
 
     assert result.structured_content["result"] == []
 
@@ -106,7 +129,7 @@ async def test_find_claims_for_entity_tool_spans_the_entitys_forms():
             "find_claims_for_entity", {"mention": "the ego", "limit": 1000}
         )
         exact_result = await client.call_tool(
-            "find_claims", {"query": "the ego", "limit": 1000}
+            "find_claims", {"queries": ["the ego"], "global_limit": 1000}
         )
 
     assert not entity_result.is_error

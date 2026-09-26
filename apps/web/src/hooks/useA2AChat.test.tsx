@@ -107,6 +107,25 @@ describe("useA2AChat", () => {
     ]);
   });
 
+  it("does not render the terminal completion message as a reasoning step", async () => {
+    // The a2a `complete` re-carries the full answer prose for non-streaming clients. The
+    // streaming client already has it as prose; appending it as a step would duplicate the
+    // whole answer in the trace.
+    const streamFn = streamOf([
+      { kind: "status", state: "TASK_STATE_WORKING", text: "Calling find_claims" },
+      { kind: "text", delta: "Forgiveness undoes it." },
+      { kind: "status", state: "TASK_STATE_COMPLETED", text: "Forgiveness undoes it." },
+    ]);
+    const { result } = renderHook(() => useA2AChat({ streamFn }));
+
+    await act(async () => {
+      await result.current.send("help");
+    });
+
+    expect(result.current.turns[1].steps).toEqual(["Calling find_claims"]);
+    expect(result.current.turns[1].text).toBe("Forgiveness undoes it.");
+  });
+
   it("keeps a turn that only ran tools even with no prose or answer", async () => {
     const streamFn = streamOf([
       { kind: "status", state: "TASK_STATE_WORKING", text: "Calling find_claims" },

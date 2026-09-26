@@ -38,6 +38,25 @@ describe("ReasoningTimeline", () => {
     expect(screen.getByText("chain_claims")).toBeInTheDocument();
   });
 
+  it("shows the argument in the step list but only the tool name in the chip", () => {
+    render(
+      <ReasoningTimeline
+        steps={[
+          'Calling find_claims_for_entity for "the ego"',
+          "find_claims_for_entity returned 8 claim(s)",
+        ]}
+        busy={false}
+      />,
+    );
+    const steps = screen.getAllByTestId("reasoning-step");
+    expect(steps.map((s) => s.textContent)).toEqual([
+      'Calling find_claims_for_entity for "the ego"',
+      "find_claims_for_entity returned 8 claim(s)",
+    ]);
+    // The collapsed chip shows the bare tool name, not the argument.
+    expect(screen.getByText("find_claims_for_entity")).toBeInTheDocument();
+  });
+
   it("singularizes the count for one step", () => {
     render(<ReasoningTimeline steps={["Calling find_claims"]} busy={false} />);
     expect(screen.getByText("1 step")).toBeInTheDocument();
