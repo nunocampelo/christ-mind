@@ -60,4 +60,12 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
+  /* The chat shell is h-dvh and scrolls internally; keep the page itself from
+     scrolling so the transcript's own overflow is the only scroll container. */
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
 }

@@ -1,38 +1,40 @@
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import AutoGrowTextarea from "@/components/chat/AutoGrowTextarea";
 import { Button } from "@/components/ui/button";
 
 interface ComposerProps {
   value: string;
-  disabled?: boolean;
   busy?: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
   onCancel?: () => void;
   onKeyDown?: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  /** Floating overlay (the jump-to-bottom button) positioned above the input row. */
+  overlay?: ReactNode;
 }
 
-/** The sticky bottom input. While a request streams, the send button becomes a stop
-    button that aborts it (PR 5). */
+/** The sticky bottom input. The textarea stays usable while a request streams (the user can
+    draft their next message); only sending is suppressed — the send button becomes a stop
+    button that aborts the run (PR 5), and Enter no-ops via the hook's busy guard. */
 const Composer = ({
   value,
-  disabled,
   busy,
   onChange,
   onSubmit,
   onCancel,
   onKeyDown,
+  overlay,
 }: ComposerProps) => {
-  const canSend = !disabled && value.trim().length > 0;
+  const canSend = value.trim().length > 0;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-6">
-      <div className="flex items-end gap-2 rounded-[var(--radius-app)] border border-border bg-muted/40 p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring">
+      <div className="relative flex items-end gap-2 rounded-[var(--radius-app)] border border-border bg-muted/40 p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring">
+        {overlay}
         <AutoGrowTextarea
           testId="composer-input"
           value={value}
           placeholder="Describe a situation…"
-          disabled={disabled}
           onChange={onChange}
           onKeyDown={onKeyDown ?? (() => {})}
           className="flex-1 resize-none bg-transparent px-2 py-1.5 text-base leading-6 text-foreground placeholder:text-muted-foreground focus:outline-none"

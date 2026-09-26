@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface ScrollAnchor {
   scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -12,33 +6,25 @@ interface ScrollAnchor {
   anchorOnSend: () => void;
 }
 
-// Anchors the newest user turn ~1/3 down the viewport on send (ChatGPT-style): a tail
-// spacer reserves just enough room — up to 2/3 of a viewport, minus whatever already
-// follows the turn — so the answer streams into the space below while the previous answer
-// stays visible above. Because the reserve targets 2/3 (not a full screen) and subtracts
-// content already there, a short exchange whose content already exceeds 2/3 reserves 0 —
-// no transient overflow, no scrollbar flicker. Ported from gcm's proven exp_agent_chat.
-// `active` is the streaming flag; `contentVersion` changes as tokens arrive so the spacer
-// recomputes synchronously (pre-paint) in step with the growing reply — no lag frame where
-// content has grown but the spacer hasn't shrunk yet, which is what flashed the scrollbar.
-const useScrollAnchor = (active: boolean, contentVersion: unknown): ScrollAnchor => {
+// On send, reserve a tail spacer below the transcript and scroll the newest user turn to
+// ~1/3 down the viewport, so the previous answer is pushed up and there's empty room below
+// for the incoming reply to stream into. The spacer is what makes that scroll possible —
+// without reserved space the container isn't tall enough to move the turn up. It holds
+// through the stream and collapses when idle. The scrollbar is hidden (App), so the
+// transient overflow the spacer creates is never seen; a jump-to-bottom button handles
+// catching up. `active` is the streaming flag. Anchor math ported from gcm's exp_agent_chat.
+const useScrollAnchor = (active: boolean): ScrollAnchor => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [spacerHeight, setSpacerHeight] = useState(0);
 
   const recomputeSpacer = useCallback(() => {
     const container = scrollRef.current;
-    if (!container) {
-      setSpacerHeight(0);
-      return;
-    }
+    if (!container) return;
     const userTurns = container.querySelectorAll<HTMLElement>("[data-role='user']");
     const userTurn = userTurns[userTurns.length - 1];
     const turnNodes = container.querySelectorAll<HTMLElement>("[data-turn]");
     const lastTurn = turnNodes[turnNodes.length - 1];
-    if (!userTurn || !lastTurn) {
-      setSpacerHeight(0);
-      return;
-    }
+    if (!userTurn || !lastTurn) return;
     const userTop = userTurn.getBoundingClientRect().top;
     const contentBottom = lastTurn.getBoundingClientRect().bottom;
     const contentBelow = contentBottom - userTop;
@@ -59,6 +45,8 @@ const useScrollAnchor = (active: boolean, contentVersion: unknown): ScrollAnchor
     container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   }, []);
 
+  // Double rAF: the first waits for React to commit the new turns to the DOM, the second
+  // for the browser to lay the spacer out, so the anchor scroll measures real positions.
   const anchorOnSend = useCallback(() => {
     requestAnimationFrame(() => {
       recomputeSpacer();
@@ -66,25 +54,9 @@ const useScrollAnchor = (active: boolean, contentVersion: unknown): ScrollAnchor
     });
   }, [anchorNewestUserTurn, recomputeSpacer]);
 
-  // Shrink the spacer in the same commit the reply grows, before the browser paints, so a
-  // new token never overshoots the viewport for a frame. The ResizeObserver below is the
-  // backstop for growth React can't see (images, async layout, viewport resize).
-  useLayoutEffect(() => {
-    if (!active) return;
-    recomputeSpacer();
-  }, [active, contentVersion, recomputeSpacer]);
-
   useEffect(() => {
-    if (!active) {
-      setSpacerHeight(0);
-      return;
-    }
-    const container = scrollRef.current;
-    if (!container) return;
-    const observer = new ResizeObserver(() => recomputeSpacer());
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [active, recomputeSpacer]);
+    if (!active) setSpacerHeight(0);
+  }, [active]);
 
   return { scrollRef, spacerHeight, anchorOnSend };
 };

@@ -101,9 +101,8 @@ const Transcript = ({
       data-testid="tail-spacer"
       aria-hidden="true"
       className={
-        // No transition while streaming: per-chunk shrinks fire rapidly and a height
-        // transition would make the spacer lag the growing reply (rubber-banding/flicker).
-        // Once idle, ease the final collapse to 0 so the short-reply case settles smoothly.
+        // Ease the collapse to 0 once idle so the reserved room settles smoothly; no
+        // transition mid-stream (the spacer only changes on send, not per token).
         busy
           ? "shrink-0"
           : "shrink-0 transition-[height] duration-[250ms] ease motion-reduce:transition-none"

@@ -2,9 +2,11 @@ import { useCallback, useRef } from "react";
 import type { AgentStreamEvent } from "@/api/agentApi";
 import ChatLanding from "@/components/chat/ChatLanding";
 import Composer from "@/components/chat/Composer";
+import ScrollToBottomButton from "@/components/chat/ScrollToBottomButton";
 import Transcript from "@/components/chat/Transcript";
 import useA2AChat from "@/hooks/useA2AChat";
 import useScrollAnchor from "@/hooks/useScrollAnchor";
+import useScrollToBottom from "@/hooks/useScrollToBottom";
 
 interface AppProps {
   streamFn?: (
@@ -38,18 +40,20 @@ const App = ({ streamFn, recoverFn }: AppProps = {}) => {
     handleReconnect,
   } = useA2AChat({ streamFn, recoverFn, onSend });
 
-  const streamingText = turns.length ? turns[turns.length - 1].text : "";
-  const { scrollRef, spacerHeight, anchorOnSend } = useScrollAnchor(
-    busy,
-    streamingText,
-  );
+  const { scrollRef, spacerHeight, anchorOnSend } = useScrollAnchor(busy);
   anchorRef.current = anchorOnSend;
+
+  const streamingText = turns.length ? turns[turns.length - 1].text : "";
+  const { isAtBottom, scrollToBottom } = useScrollToBottom(
+    scrollRef,
+    `${streamingText.length}:${spacerHeight}`,
+  );
 
   return (
     <div className="flex h-dvh flex-col bg-background">
       <main
         ref={scrollRef}
-        className="flex flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {turns.length === 0 ? (
           <ChatLanding />
@@ -75,12 +79,16 @@ const App = ({ streamFn, recoverFn }: AppProps = {}) => {
         )}
         <Composer
           value={draft}
-          disabled={busy}
           busy={busy}
           onChange={setDraft}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
           onKeyDown={handleInputKeyDown}
+          overlay={
+            turns.length > 0 ? (
+              <ScrollToBottomButton visible={!isAtBottom} onClick={scrollToBottom} />
+            ) : null
+          }
         />
       </div>
     </div>
