@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { AgentAnswer, AgentStreamEvent } from "@/api/agentApi";
@@ -161,5 +161,47 @@ describe("PR 5 — stop a running answer", () => {
     expect(screen.getByTestId("agent-turn")).toHaveTextContent("partial");
     expect(screen.getByTestId("composer-send")).toBeInTheDocument();
     expect(screen.queryByTestId("error-strip")).not.toBeInTheDocument();
+  });
+});
+
+describe("PR 6 — reconnect a dropped answer", () => {
+  it("shows a reconnect chip on the tail notice and refills the bubble", async () => {
+    const user = userEvent.setup();
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const streamFn = () =>
+      (async function* () {
+        yield { kind: "taskId", taskId: "task-1" } as AgentStreamEvent;
+        yield { kind: "text", delta: "partial" } as AgentStreamEvent;
+        await gate;
+      })();
+    const recoverFn = () =>
+      (async function* () {
+        yield { kind: "text", delta: " and the rest." } as AgentStreamEvent;
+        yield {
+          kind: "status",
+          state: "TASK_STATE_COMPLETED",
+          text: "",
+        } as AgentStreamEvent;
+      })();
+
+    render(<App streamFn={streamFn} recoverFn={recoverFn} />);
+
+    await user.type(screen.getByTestId("composer-input"), "help");
+    await user.click(screen.getByTestId("composer-send"));
+    await user.click(await screen.findByTestId("composer-stop"));
+    release();
+
+    const chip = await screen.findByTestId("reconnect-chip");
+    await user.click(chip);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agent-turn")).toHaveTextContent(
+        "partial and the rest.",
+      ),
+    );
+    expect(screen.queryByTestId("notice-turn")).not.toBeInTheDocument();
   });
 });

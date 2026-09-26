@@ -1,4 +1,4 @@
-import type { Artifact, Message, Part, StreamResponse } from "@a2a-js/sdk";
+import type { Artifact, Message, Part, StreamResponse, Task } from "@a2a-js/sdk";
 import { Role, TaskState } from "@a2a-js/sdk";
 import {
   ClientFactory,
@@ -13,6 +13,7 @@ const AgentEventKind = {
   answer: "answer",
   error: "error",
   contextId: "contextId",
+  taskId: "taskId",
 } as const;
 
 const PayloadCase = {
@@ -59,10 +60,22 @@ type AgentStreamEvent =
   | { kind: typeof AgentEventKind.text; delta: string }
   | { kind: typeof AgentEventKind.answer; answer: AgentAnswer }
   | { kind: typeof AgentEventKind.error; message: string }
-  | { kind: typeof AgentEventKind.contextId; contextId: string };
+  | { kind: typeof AgentEventKind.contextId; contextId: string }
+  | { kind: typeof AgentEventKind.taskId; taskId: string };
 
 const ERR_ASSISTANT_FAILED = "Assistant request failed";
 const ERR_MALFORMED_ANSWER = "Malformed answer payload";
+const ERR_RECOVER_TIMEOUT = "Could not recover the answer";
+
+const RECOVER_POLL_MS = 500;
+const RECOVER_MAX_POLLS = 40;
+const RECOVER_CHUNK = 24;
+
+const TERMINAL_STATES = new Set([
+  TaskState.TASK_STATE_COMPLETED,
+  TaskState.TASK_STATE_FAILED,
+  TaskState.TASK_STATE_CANCELED,
+]);
 
 const AGENT_BASE_URL =
   import.meta.env.VITE_AGENT_BASE_URL || globalThis.location.origin;
@@ -208,6 +221,9 @@ const eventsFromFrame = (frame: StreamResponse): AgentStreamEvent[] => {
     if (task.contextId) {
       events.push({ kind: AgentEventKind.contextId, contextId: task.contextId });
     }
+    if (task.id) {
+      events.push({ kind: AgentEventKind.taskId, taskId: task.id });
+    }
     if (task.status?.state !== undefined) {
       events.push({
         kind: AgentEventKind.status,
@@ -308,6 +324,81 @@ async function* streamAssistant(
   }
 }
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const findArtifact = (task: Task, id: string): Artifact | undefined =>
+  task.artifacts.find((a) => a.artifactId === id);
+
+// Map a *terminal* task into the events that refill a dropped bubble: only the answer
+// suffix past what already streamed (`textSoFar`), then the parsed evidence, then the
+// terminal status. FAILED maps to an error. The polling in `recoverAssistant` calls this
+// once the task settles; kept pure (no client) so it is unit-testable in isolation.
+function* recoverEventsFromTask(
+  task: Task,
+  textSoFar: string,
+): Generator<AgentStreamEvent, void, void> {
+  const state = task.status?.state;
+  if (state === undefined) return;
+
+  if (state === TaskState.TASK_STATE_FAILED) {
+    const message = messageText(task.status?.message);
+    yield { kind: AgentEventKind.error, message: message || ERR_ASSISTANT_FAILED };
+    yield { kind: AgentEventKind.status, state: TaskState[state], text: "" };
+    return;
+  }
+
+  const full = artifactText(findArtifact(task, ArtifactId.answer));
+  const suffix = full.startsWith(textSoFar) ? full.slice(textSoFar.length) : full;
+  for (let i = 0; i < suffix.length; i += RECOVER_CHUNK) {
+    yield { kind: AgentEventKind.text, delta: suffix.slice(i, i + RECOVER_CHUNK) };
+  }
+
+  const evidence = findArtifact(task, ArtifactId.evidence);
+  if (evidence) {
+    const answer = parseAgentAnswer(artifactText(evidence));
+    yield answer
+      ? { kind: AgentEventKind.answer, answer }
+      : { kind: AgentEventKind.error, message: ERR_MALFORMED_ANSWER };
+  }
+
+  yield { kind: AgentEventKind.status, state: TaskState[state], text: "" };
+}
+
+// Replay a dropped stream's finished answer by polling GetTask until the task reaches a
+// terminal state, then emitting its recovered events (see `recoverEventsFromTask`), so the
+// reconnect refills the same bubble rather than duplicating its prose.
+async function* recoverAssistant(
+  taskId: string,
+  textSoFar: string,
+): AsyncGenerator<AgentStreamEvent, void, void> {
+  const client = await getClient();
+
+  for (let poll = 0; poll < RECOVER_MAX_POLLS; poll++) {
+    let task: Task;
+    try {
+      task = await client.getTask({ tenant: "", id: taskId });
+    } catch (err) {
+      yield {
+        kind: AgentEventKind.error,
+        message: err instanceof Error ? err.message : ERR_ASSISTANT_FAILED,
+      };
+      return;
+    }
+
+    const state = task.status?.state;
+    if (state === undefined || !TERMINAL_STATES.has(state)) {
+      await sleep(RECOVER_POLL_MS);
+      continue;
+    }
+
+    yield* recoverEventsFromTask(task, textSoFar);
+    return;
+  }
+
+  yield { kind: AgentEventKind.error, message: ERR_RECOVER_TIMEOUT };
+}
+
 export {
   AgentEventKind,
   ArtifactId,
@@ -316,6 +407,8 @@ export {
   parseCitedProse,
   PartCase,
   PayloadCase,
+  recoverAssistant,
+  recoverEventsFromTask,
   streamAssistant,
 };
 export type {

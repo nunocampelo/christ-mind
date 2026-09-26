@@ -10,22 +10,29 @@ interface AppProps {
     contextId: string,
     signal?: AbortSignal,
   ) => AsyncGenerator<AgentStreamEvent, void, void>;
+  recoverFn?: (
+    taskId: string,
+    textSoFar: string,
+  ) => AsyncGenerator<AgentStreamEvent, void, void>;
 }
 
 /** PR 2: typing a situation posts it to the agent; the streamed markdown answer and
     the cited-vs-inferred structure render in the transcript. The landing screen shows
-    until the first turn. `streamFn` is the test seam (default: the real transport). */
-const App = ({ streamFn }: AppProps = {}) => {
+    until the first turn. `streamFn`/`recoverFn` are the test seams (default: the real
+    transport). */
+const App = ({ streamFn, recoverFn }: AppProps = {}) => {
   const {
     turns,
     busy,
     error,
     draft,
+    canReconnect,
     setDraft,
     handleSubmit,
     handleInputKeyDown,
     handleCancel,
-  } = useA2AChat({ streamFn });
+    handleReconnect,
+  } = useA2AChat({ streamFn, recoverFn });
 
   return (
     <div className="flex h-dvh flex-col bg-background">
@@ -33,7 +40,12 @@ const App = ({ streamFn }: AppProps = {}) => {
         {turns.length === 0 ? (
           <ChatLanding />
         ) : (
-          <Transcript turns={turns} busy={busy} />
+          <Transcript
+            turns={turns}
+            busy={busy}
+            canReconnect={canReconnect}
+            onReconnect={() => void handleReconnect()}
+          />
         )}
       </main>
       <div className="sticky bottom-0 border-t border-border bg-background/80 backdrop-blur">

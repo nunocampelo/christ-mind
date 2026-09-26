@@ -6,6 +6,7 @@ import {
 } from "react";
 import {
   AgentEventKind,
+  recoverAssistant,
   streamAssistant,
   type AgentAnswer,
   type AgentStreamEvent,
@@ -36,6 +37,11 @@ type StreamFn = (
   signal?: AbortSignal,
 ) => AsyncGenerator<AgentStreamEvent, void, void>;
 
+type RecoverFn = (
+  taskId: string,
+  textSoFar: string,
+) => AsyncGenerator<AgentStreamEvent, void, void>;
+
 const TERMINAL_STATES = new Set([
   "TASK_STATE_COMPLETED",
   "TASK_STATE_FAILED",
@@ -44,10 +50,12 @@ const TERMINAL_STATES = new Set([
 
 interface UseA2AChatOptions {
   streamFn?: StreamFn;
+  recoverFn?: RecoverFn;
 }
 
 const useA2AChat = ({
   streamFn = streamAssistant,
+  recoverFn = recoverAssistant,
 }: UseA2AChatOptions = {}) => {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
@@ -55,6 +63,10 @@ const useA2AChat = ({
   const [draft, setDraft] = useState<string>("");
   const contextId = useRef(sessionStorage.getItem(CONTEXT_KEY) ?? "");
   const abortRef = useRef<AbortController | null>(null);
+  const lastTaskId = useRef<string | null>(null);
+  const lastAgentTurnId = useRef<number | null>(null);
+  const turnsRef = useRef<Turn[]>(turns);
+  turnsRef.current = turns;
   const nextTurnId = useRef(0);
 
   const appendTurn = useCallback((turn: Omit<Turn, "id">): number => {
@@ -103,7 +115,8 @@ const useA2AChat = ({
     async (
       events: AsyncGenerator<AgentStreamEvent, void, void>,
       agentTurnId: number,
-    ) => {
+    ): Promise<boolean> => {
+      let errored = false;
       for await (const event of events) {
         switch (event.kind) {
           case AgentEventKind.text:
@@ -114,6 +127,7 @@ const useA2AChat = ({
             break;
           case AgentEventKind.error:
             setError(event.message);
+            errored = true;
             break;
           case AgentEventKind.contextId:
             if (event.contextId) {
@@ -121,12 +135,16 @@ const useA2AChat = ({
               sessionStorage.setItem(CONTEXT_KEY, event.contextId);
             }
             break;
+          case AgentEventKind.taskId:
+            if (event.taskId) lastTaskId.current = event.taskId;
+            break;
           case AgentEventKind.status:
             if (event.text) appendStepToTurn(agentTurnId, event.text);
-            if (TERMINAL_STATES.has(event.state)) return;
+            if (TERMINAL_STATES.has(event.state)) return errored;
             break;
         }
       }
+      return errored;
     },
     [appendStepToTurn, appendToAgentTurn, setAnswerOnTurn],
   );
@@ -146,6 +164,7 @@ const useA2AChat = ({
         text: "",
         steps: [],
       });
+      lastAgentTurnId.current = agentTurnId;
 
       try {
         await consumeStream(
@@ -172,6 +191,37 @@ const useA2AChat = ({
     appendTurn({ role: TurnRole.notice, text: NOTICE_STOPPED, steps: [] });
   }, [appendTurn]);
 
+  const removeTrailingNotices = useCallback(() => {
+    setTurns((prev) => {
+      let end = prev.length;
+      while (end > 0 && prev[end - 1].role === TurnRole.notice) end--;
+      return end === prev.length ? prev : prev.slice(0, end);
+    });
+  }, []);
+
+  const handleReconnect = useCallback(async () => {
+    const taskId = lastTaskId.current;
+    const agentTurnId = lastAgentTurnId.current;
+    if (!taskId || agentTurnId === null || busy || abortRef.current) return;
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setBusy(true);
+    setError(null);
+    const textSoFar =
+      turnsRef.current.find((t) => t.id === agentTurnId)?.text ?? "";
+
+    try {
+      const errored = await consumeStream(recoverFn(taskId, textSoFar), agentTurnId);
+      if (!errored) removeTrailingNotices();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : ERR_ASSISTANT_FAILED);
+    } finally {
+      setBusy(false);
+      abortRef.current = null;
+    }
+  }, [busy, consumeStream, recoverFn, removeTrailingNotices]);
+
   const handleSubmit = useCallback(() => {
     if (busy) return;
     const value = draft;
@@ -189,17 +239,21 @@ const useA2AChat = ({
     [handleSubmit],
   );
 
+  const canReconnect = !busy && lastTaskId.current !== null;
+
   return {
     turns,
     busy,
     error,
     draft,
+    canReconnect,
     setDraft,
     setError,
     send,
     handleSubmit,
     handleInputKeyDown,
     handleCancel,
+    handleReconnect,
   };
 };
 

@@ -297,4 +297,96 @@ describe("useA2AChat", () => {
       true,
     );
   });
+
+  const stopAfterPartial = () => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const streamFn = () =>
+      (async function* () {
+        yield { kind: "taskId", taskId: "task-1" } as AgentStreamEvent;
+        yield { kind: "text", delta: "partial" } as AgentStreamEvent;
+        await gate;
+      })();
+    return { streamFn, release: () => release() };
+  };
+
+  it("reconnects: refills the same bubble and removes the tail notice", async () => {
+    const { streamFn, release } = stopAfterPartial();
+    const recoverFn = vi.fn((_taskId: string, _textSoFar: string) =>
+      streamOf([
+        { kind: "text", delta: " and the rest." },
+        { kind: "answer", answer: ANSWER },
+        { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+      ])(),
+    );
+    const { result } = renderHook(() => useA2AChat({ streamFn, recoverFn }));
+
+    let sending: Promise<void>;
+    act(() => {
+      sending = result.current.send("help");
+    });
+    await waitFor(() => expect(result.current.turns[1]?.text).toBe("partial"));
+    act(() => {
+      result.current.handleCancel();
+    });
+    await act(async () => {
+      release();
+      await sending;
+    });
+
+    expect(result.current.canReconnect).toBe(true);
+
+    await act(async () => {
+      await result.current.handleReconnect();
+    });
+
+    expect(recoverFn).toHaveBeenCalledWith("task-1", "partial");
+    const agent = result.current.turns.find((t) => t.role === TurnRole.agent);
+    expect(agent?.text).toBe("partial and the rest.");
+    expect(agent?.answer).toEqual(ANSWER);
+    expect(result.current.turns.some((t) => t.role === TurnRole.notice)).toBe(
+      false,
+    );
+  });
+
+  it("keeps the notice and surfaces an error when the reconnect fails", async () => {
+    const { streamFn, release } = stopAfterPartial();
+    const recoverFn = () => streamOf([{ kind: "error", message: "gone" }])();
+    const { result } = renderHook(() => useA2AChat({ streamFn, recoverFn }));
+
+    let sending: Promise<void>;
+    act(() => {
+      sending = result.current.send("help");
+    });
+    await waitFor(() => expect(result.current.turns[1]?.text).toBe("partial"));
+    act(() => {
+      result.current.handleCancel();
+    });
+    await act(async () => {
+      release();
+      await sending;
+    });
+
+    await act(async () => {
+      await result.current.handleReconnect();
+    });
+
+    expect(result.current.error).toBe("gone");
+    expect(result.current.turns.some((t) => t.role === TurnRole.notice)).toBe(
+      true,
+    );
+  });
+
+  it("does not reconnect before any task id is known", async () => {
+    const recoverFn = vi.fn();
+    const { result } = renderHook(() => useA2AChat({ recoverFn }));
+
+    expect(result.current.canReconnect).toBe(false);
+    await act(async () => {
+      await result.current.handleReconnect();
+    });
+    expect(recoverFn).not.toHaveBeenCalled();
+  });
 });

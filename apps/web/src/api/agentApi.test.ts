@@ -1,11 +1,13 @@
 import type { StreamResponse } from "@a2a-js/sdk";
 import { TaskState } from "@a2a-js/sdk";
 import { describe, expect, it } from "vitest";
+import type { Task } from "@a2a-js/sdk";
 import {
   AgentEventKind,
   eventsFromFrame,
   parseAgentAnswer,
   parseCitedProse,
+  recoverEventsFromTask,
   type AgentAnswer,
   type CitedClaim,
 } from "@/api/agentApi";
@@ -76,6 +78,22 @@ describe("eventsFromFrame", () => {
     );
     expect(events).toEqual([
       { kind: AgentEventKind.contextId, contextId: "ctx-1" },
+      { kind: AgentEventKind.status, state: "TASK_STATE_WORKING", text: "" },
+    ]);
+  });
+
+  it("emits a task id event from the task frame, before the status", () => {
+    const events = eventsFromFrame(
+      frame({
+        $case: "task",
+        value: {
+          id: "task-1",
+          status: { state: TaskState.TASK_STATE_WORKING },
+        },
+      }),
+    );
+    expect(events).toEqual([
+      { kind: AgentEventKind.taskId, taskId: "task-1" },
       { kind: AgentEventKind.status, state: "TASK_STATE_WORKING", text: "" },
     ]);
   });
@@ -204,6 +222,88 @@ describe("eventsFromFrame", () => {
       frame({ $case: "message", value: { parts: [textPart("hi")] } }),
     );
     expect(events).toEqual([{ kind: AgentEventKind.text, delta: "hi" }]);
+  });
+});
+
+const task = (
+  state: TaskState,
+  artifacts: { artifactId: string; text: string }[],
+  message?: string,
+): Task =>
+  ({
+    id: "t1",
+    contextId: "c1",
+    status: {
+      state,
+      message: message ? { parts: [textPart(message)] } : undefined,
+    },
+    artifacts: artifacts.map((a) => ({
+      artifactId: a.artifactId,
+      parts: [textPart(a.text)],
+    })),
+    history: [],
+  }) as unknown as Task;
+
+describe("recoverEventsFromTask", () => {
+  it("emits only the answer suffix past what already streamed, then evidence + status", () => {
+    const events = [
+      ...recoverEventsFromTask(
+        task(TaskState.TASK_STATE_COMPLETED, [
+          { artifactId: "answer", text: "Forgiveness undoes it." },
+          { artifactId: "evidence", text: JSON.stringify(ANSWER) },
+        ]),
+        "Forgiveness ",
+      ),
+    ];
+    const prose = events
+      .filter((e) => e.kind === AgentEventKind.text)
+      .map((e) => (e.kind === AgentEventKind.text ? e.delta : ""))
+      .join("");
+    expect(prose).toBe("undoes it.");
+    expect(events.at(-2)).toEqual({ kind: AgentEventKind.answer, answer: ANSWER });
+    expect(events.at(-1)).toEqual({
+      kind: AgentEventKind.status,
+      state: "TASK_STATE_COMPLETED",
+      text: "",
+    });
+  });
+
+  it("replays the full answer when the streamed prefix does not match", () => {
+    const events = [
+      ...recoverEventsFromTask(
+        task(TaskState.TASK_STATE_COMPLETED, [
+          { artifactId: "answer", text: "A fresh answer." },
+        ]),
+        "stale partial that never matched",
+      ),
+    ];
+    const prose = events
+      .filter((e) => e.kind === AgentEventKind.text)
+      .map((e) => (e.kind === AgentEventKind.text ? e.delta : ""))
+      .join("");
+    expect(prose).toBe("A fresh answer.");
+  });
+
+  it("maps a FAILED task to an error then a status event", () => {
+    const events = [
+      ...recoverEventsFromTask(
+        task(TaskState.TASK_STATE_FAILED, [], "it broke"),
+        "",
+      ),
+    ];
+    expect(events).toEqual([
+      { kind: AgentEventKind.error, message: "it broke" },
+      { kind: AgentEventKind.status, state: "TASK_STATE_FAILED", text: "" },
+    ]);
+  });
+
+  it("emits only a terminal status when there is no answer artifact", () => {
+    const events = [
+      ...recoverEventsFromTask(task(TaskState.TASK_STATE_COMPLETED, []), ""),
+    ];
+    expect(events).toEqual([
+      { kind: AgentEventKind.status, state: "TASK_STATE_COMPLETED", text: "" },
+    ]);
   });
 });
 
