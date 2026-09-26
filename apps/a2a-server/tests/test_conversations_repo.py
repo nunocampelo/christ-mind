@@ -1,22 +1,40 @@
 """ConversationRepository against a live Postgres, gated on a reachable DB (same
-connection-probe pattern as test_task_store_durability.py, since .env always sets
-DATABASE_URL). Proves sequence ordering, the concurrent-append guard, CASCADE delete, and
-restart survival."""
+connection-probe pattern as test_task_store_durability.py). conftest's session-wide
+load_env() sets DATABASE_URL from .env, so `_require_db` gates on a live connection rather
+than erroring on import order. Proves sequence ordering, the concurrent-append guard,
+CASCADE delete, and restart survival.
+
+The repository is now a session-consumer, so these tests drive it through the same seams
+production does: a unit of work per operation via SessionProvider. `_append` mirrors the
+executor's per-append retry (a rolled-back session can't be reused, so IntegrityError
+re-enters a fresh unit of work); `_read` and `_mutate` wrap a single read/write."""
 
 import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
-from mind_of_christ_a2a.domain.conversations.models import MessageRole
+from mind_of_christ_a2a.domain.conversations.models import (
+    Conversation,
+    ConversationMessage,
+    ConversationSummary,
+    MessageRole,
+)
 from mind_of_christ_a2a.infrastructure.db.engine import create_db_engine
 from mind_of_christ_a2a.infrastructure.db.repositories.conversations import (
     ConversationNotFoundError,
     ConversationRepository,
 )
+from mind_of_christ_a2a.infrastructure.db.session import SessionProvider
 
 pytestmark = pytest.mark.anyio
+
+_T = TypeVar("_T")
+_MAX_SEQUENCE_RETRIES = 8
 
 
 @pytest.fixture
@@ -35,20 +53,45 @@ def _conversation_id() -> str:
     return str(uuid.uuid4())
 
 
+async def _append(
+    provider: SessionProvider,
+    conversation_id: str,
+    role: MessageRole,
+    content: str,
+    message_json: dict[str, Any] | None = None,
+) -> ConversationMessage:
+    for _ in range(_MAX_SEQUENCE_RETRIES):
+        try:
+            async with provider.unit_of_work() as session:
+                return await ConversationRepository(session).append_message(
+                    conversation_id, role, content, message_json
+                )
+        except IntegrityError:
+            continue
+    raise RuntimeError("append_message could not allocate a unique sequence")
+
+
+async def _read(
+    provider: SessionProvider,
+    read: Callable[[ConversationRepository], Awaitable[_T]],
+) -> _T:
+    async with provider.unit_of_work() as session:
+        return await read(ConversationRepository(session))
+
+
 async def test_get_returns_messages_in_seq_order_and_derives_title(
     _require_db: None,
 ) -> None:
-    engine = create_db_engine()
-    repo = ConversationRepository(engine)
+    provider = SessionProvider(create_db_engine())
     cid = _conversation_id()
     answer = {"text": "Forgiveness undoes it.", "cited_claims": []}
     try:
-        await repo.append_message(cid, MessageRole.user, "I cannot forgive my brother")
-        await repo.append_message(
-            cid, MessageRole.agent, "Forgiveness undoes it.", message_json=answer
+        await _append(provider, cid, MessageRole.user, "I cannot forgive my brother")
+        await _append(
+            provider, cid, MessageRole.agent, "Forgiveness undoes it.", answer
         )
 
-        conversation = await repo.get(cid)
+        conversation = await _read(provider, lambda r: r.get(cid))
         assert [(m.role, m.sequence) for m in conversation.messages] == [
             (MessageRole.user, 1),
             (MessageRole.agent, 2),
@@ -64,101 +107,83 @@ async def test_get_returns_messages_in_seq_order_and_derives_title(
         assert agent_msg.content == "Forgiveness undoes it."
         assert agent_msg.message_json == answer
     finally:
-        await repo.delete(cid)
-        await engine.dispose()
+        await _read(provider, lambda r: r.delete(cid))
 
 
 async def test_concurrent_appends_get_contiguous_unique_seqs(_require_db: None) -> None:
-    engine = create_db_engine()
-    repo = ConversationRepository(engine)
+    provider = SessionProvider(create_db_engine())
     cid = _conversation_id()
     try:
         n = 12
         await asyncio.gather(
-            *(
-                repo.append_message(cid, MessageRole.user, f"message {i}")
-                for i in range(n)
-            )
+            *(_append(provider, cid, MessageRole.user, f"message {i}") for i in range(n))
         )
-        conversation = await repo.get(cid)
+        conversation = await _read(provider, lambda r: r.get(cid))
         sequences = sorted(m.sequence for m in conversation.messages)
         assert sequences == list(range(1, n + 1))
         assert len(conversation.messages) == n
     finally:
-        await repo.delete(cid)
-        await engine.dispose()
+        await _read(provider, lambda r: r.delete(cid))
 
 
 async def test_delete_cascades_and_get_raises_after(_require_db: None) -> None:
     engine = create_db_engine()
-    repo = ConversationRepository(engine)
+    provider = SessionProvider(engine)
     cid = _conversation_id()
-    try:
-        await repo.append_message(cid, MessageRole.user, "a situation")
-        await repo.delete(cid)
+    await _append(provider, cid, MessageRole.user, "a situation")
+    await _read(provider, lambda r: r.delete(cid))
 
-        with pytest.raises(ConversationNotFoundError):
-            await repo.get(cid)
+    with pytest.raises(ConversationNotFoundError):
+        await _read(provider, lambda r: r.get(cid))
 
-        async with engine.connect() as connection:
-            remaining = await connection.scalar(
-                text(
-                    "SELECT count(*) FROM conversation_messages "
-                    "WHERE conversation_id = :cid"
-                ),
-                {"cid": cid},
-            )
-        assert remaining == 0
-    finally:
-        await engine.dispose()
+    async with engine.connect() as connection:
+        remaining = await connection.scalar(
+            text(
+                "SELECT count(*) FROM conversation_messages "
+                "WHERE conversation_id = :cid"
+            ),
+            {"cid": cid},
+        )
+    assert remaining == 0
 
 
 async def test_get_raises_for_unknown_conversation(_require_db: None) -> None:
-    engine = create_db_engine()
-    repo = ConversationRepository(engine)
-    try:
-        with pytest.raises(ConversationNotFoundError):
-            await repo.get(_conversation_id())
-    finally:
-        await engine.dispose()
+    provider = SessionProvider(create_db_engine())
+    with pytest.raises(ConversationNotFoundError):
+        await _read(provider, lambda r: r.get(_conversation_id()))
 
 
 async def test_messages_survive_a_fresh_engine(_require_db: None) -> None:
     cid = _conversation_id()
-    writer_engine = create_db_engine()
-    writer = ConversationRepository(writer_engine)
-    try:
-        await writer.append_message(cid, MessageRole.user, "persisted situation")
-        await writer.append_message(cid, MessageRole.agent, '{"text": "answer"}')
-    finally:
-        await writer_engine.dispose()
+    writer = SessionProvider(create_db_engine())
+    await _append(writer, cid, MessageRole.user, "persisted situation")
+    await _append(writer, cid, MessageRole.agent, '{"text": "answer"}')
 
-    reader_engine = create_db_engine()
-    reader = ConversationRepository(reader_engine)
+    reader = SessionProvider(create_db_engine())
     try:
-        conversation = await reader.get(cid)
+        conversation = await _read(reader, lambda r: r.get(cid))
         assert [m.content for m in conversation.messages] == [
             "persisted situation",
             '{"text": "answer"}',
         ]
     finally:
-        await reader.delete(cid)
-        await reader_engine.dispose()
+        await _read(reader, lambda r: r.delete(cid))
 
 
 async def test_list_conversations_orders_by_most_recently_updated(
     _require_db: None,
 ) -> None:
-    engine = create_db_engine()
-    repo = ConversationRepository(engine)
+    provider = SessionProvider(create_db_engine())
     first, second = _conversation_id(), _conversation_id()
     try:
-        await repo.append_message(first, MessageRole.user, "started first")
-        await repo.append_message(second, MessageRole.user, "started second")
+        await _append(provider, first, MessageRole.user, "started first")
+        await _append(provider, second, MessageRole.user, "started second")
         # A later append to `first` bumps its updated_at above `second`.
-        await repo.append_message(first, MessageRole.agent, '{"text": "reply"}')
+        await _append(provider, first, MessageRole.agent, '{"text": "reply"}')
 
-        listed = await repo.list_conversations()
+        listed: tuple[ConversationSummary, ...] = await _read(
+            provider, lambda r: r.list_conversations()
+        )
         by_id = {c.conversation_id: c for c in listed}
         assert first in by_id and second in by_id
         # `first` was updated most recently, so it sorts ahead of `second`.
@@ -166,31 +191,24 @@ async def test_list_conversations_orders_by_most_recently_updated(
         assert order == [first, second]
         assert by_id[first].summary == "started first"
     finally:
-        await repo.delete(first)
-        await repo.delete(second)
-        await engine.dispose()
+        await _read(provider, lambda r: r.delete(first))
+        await _read(provider, lambda r: r.delete(second))
 
 
 async def test_rename_updates_summary(_require_db: None) -> None:
-    engine = create_db_engine()
-    repo = ConversationRepository(engine)
+    provider = SessionProvider(create_db_engine())
     cid = _conversation_id()
     try:
-        await repo.append_message(cid, MessageRole.user, "auto-derived title")
-        await repo.rename(cid, "My renamed thread")
+        await _append(provider, cid, MessageRole.user, "auto-derived title")
+        await _read(provider, lambda r: r.rename(cid, "My renamed thread"))
 
-        conversation = await repo.get(cid)
+        conversation: Conversation = await _read(provider, lambda r: r.get(cid))
         assert conversation.summary == "My renamed thread"
     finally:
-        await repo.delete(cid)
-        await engine.dispose()
+        await _read(provider, lambda r: r.delete(cid))
 
 
 async def test_rename_unknown_conversation_raises(_require_db: None) -> None:
-    engine = create_db_engine()
-    repo = ConversationRepository(engine)
-    try:
-        with pytest.raises(ConversationNotFoundError):
-            await repo.rename(_conversation_id(), "no such conversation")
-    finally:
-        await engine.dispose()
+    provider = SessionProvider(create_db_engine())
+    with pytest.raises(ConversationNotFoundError):
+        await _read(provider, lambda r: r.rename(_conversation_id(), "no such thread"))

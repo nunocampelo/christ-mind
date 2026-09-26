@@ -1,5 +1,15 @@
 # Durable conversation history (ConversationRepository) + ChatGPT-style sidebar
 
+> **STATUS: COMPLETE (2026-09-26).** All five slices A–E implemented and committed. Full
+> stack: durable Postgres task store + Alembic; `ConversationRepository` over own tables with
+> `content`/`message_json` split; REST read surface (`GET /conversations`, `/conversations/{id}`);
+> `react-router-dom` sidebar with URL routing (`/`, `/c/:conversationId`), new-chat/switch;
+> rename (`PATCH`) + delete (`DELETE`, idempotent). Per-slice plan files (harness):
+> `pr-b-conversation-repository.md`, `pr-c-conversation-read-path.md`,
+> `pr-d-conversation-sidebar.md`, `pr-e-rename-delete.md` (PR A folded into the "added alembic"
+> commit). One deferred item: deleting a conversation does NOT prune its `a2a_tasks` rows
+> (harmless orphans). Deferred UX: collapsible sidebar (built fixed for now).
+
 ## Context
 
 The frontend chat port (PR 1–7) is complete but single-conversation: identity is one
@@ -77,7 +87,7 @@ the one engine: the SDK owns the `a2a_tasks` table; the `ConversationRepository`
 
 ## Slices (repo's PR-per-slice style; each ships with tests, pyright + vitest green)
 
-### PR A — Alembic harness + durable task store
+### PR A — Alembic harness + durable task store ✅ DONE
 Mirrors gcm's Story-1 structure, adapted to async Postgres.
 - `apps/a2a-server/`: `alembic.ini` (`script_location`, `prepend_sys_path = src`, dummy
   `sqlalchemy.url`), `alembic/env.py` **async** (`create_async_engine` +
@@ -97,7 +107,10 @@ Mirrors gcm's Story-1 structure, adapted to async Postgres.
   Add a durability test gated on `DATABASE_URL` (skipped otherwise) against the compose
   Postgres: save task → GetTask/ListTasks-by-contextId round-trip across a fresh store.
 
-### PR B — ConversationRepository + tables
+### PR B — ConversationRepository + tables ✅ DONE
+(Shipped `content` + `message_json` split — `content` is always the user-facing text, agent
+prose; `message_json` is JSONB, the full AgentAnswer, null for user turns. Columns spelled
+`timestamp`/`sequence`.)
 - `alembic/versions/0002_add_conversation_tables.py` (hand-written; depends on 0001):
   `conversations` + `conversation_messages` with FK CASCADE + `(conversation_id, seq)`
   index + `UNIQUE(conversation_id, seq)`.
@@ -115,7 +128,8 @@ Mirrors gcm's Story-1 structure, adapted to async Postgres.
   appends (no seq collision), CASCADE delete, `ConversationNotFoundError`, restart
   survival, atomic trim (no torn read).
 
-### PR C — history read path (transport) + rehydration
+### PR C — history read path (transport) + rehydration ✅ DONE
+(Chose the REST controller. Also added the `/conversations` Vite dev-proxy rule.)
 - Decide the read surface: either an A2A-side method or a thin `GET /conversations/{id}`
   and `GET /conversations` controller returning `Conversation` DTOs (404 → `ErrorResponse`,
   no exception leak, per CLAUDE.md). **Recommend** the small REST controller — it's the
@@ -127,7 +141,10 @@ Mirrors gcm's Story-1 structure, adapted to async Postgres.
 - Tests: pure rebuild fns with injected DTOs, like the existing `recoverEventsFromTask`
   tests.
 
-### PR D — sidebar UI + switching
+### PR D — sidebar UI + switching ✅ DONE
+(Went further than remount-on-key alone: added `react-router-dom` so the **URL is the source
+of truth** — routes `/` and `/c/:conversationId`; frontend speaks `conversationId`, the A2A
+`contextId` stays internal to `useA2AChat`. Switching remounts the keyed `<Chat>`.)
 - **State:** keep `useA2AChat` single-conversation; **remount on switch via React
   `key={activeConversationId}`** + a new `useConversations` hook. Preserves the
   `streamFn`/`recoverFn` DI seam and every existing hook test. Hook gains `initialContextId`
@@ -141,7 +158,10 @@ Mirrors gcm's Story-1 structure, adapted to async Postgres.
 - Tests: `useConversations` + switching via injected seams; `Sidebar` with `data-testid` +
   `userEvent`.
 
-### PR E — rename + delete
+### PR E — rename + delete ✅ DONE
+(Inline pencil-rename + two-step delete-confirm; delete-active → navigate to `/`. Blank
+rename → 422; delete idempotent → 204. Open decision resolved: `a2a_tasks` rows are NOT
+pruned on conversation delete — left as harmless orphans.)
 - **Rename:** `summarize`/title override — server-side update to `conversations.summary`
   via the repository (a small `PATCH`/method), hand-rolled inline-edit in the sidebar.
 - **Delete:** `DELETE /conversations/{id}` → `ConversationRepository.delete` (FK CASCADE
@@ -172,14 +192,24 @@ Mirrors gcm's Story-1 structure, adapted to async Postgres.
   (both persist + rehydrate from the repo), switch (turns restore, reconnect still works),
   rename, delete (404 after).
 
-## Risks / unknowns
-- Exact `a2a-sdk` extra name for asyncpg — verify before pinning.
-- `seq` concurrency: the `UNIQUE(conversation_id, seq)` + retry is the guard; confirm the
-  repository's allocate-and-insert is one transaction with a retry on unique-violation.
-- JS `deleteTask` shape unverified (only needed if PR E deletes tasks too; conversation
-  delete goes through the repository, not the task store — decide whether stale
-  `a2a_tasks` rows for a deleted conversation are also pruned).
-- owner `""` = all local conversations in one bucket (fine now; resolver swappable at auth).
-- jsdom has no real layout/scroll — sidebar logic is unit-testable; row-layout feel needs
-  the browser check above.
-- No-self-commit: implement and stage each slice; the user commits.
+## Risks / unknowns — how they resolved
+- asyncpg extra: pinned `a2a-sdk[postgresql]==1.1.2` + `asyncpg==0.31.0`, `sqlalchemy==2.1.1`,
+  `alembic==1.20.0` (PR A).
+- `seq` (shipped as **`sequence`**) concurrency: `UNIQUE(conversation_id, sequence)` +
+  bounded retry on `IntegrityError`, allocate-and-insert in one transaction. Proven by a
+  12-way concurrent-append test (contiguous unique 1..12).
+- `a2a_tasks` pruning on conversation delete: **decided NO** — task rows are left as harmless
+  orphans keyed by the same context_id; not pruned. (JS `deleteTask` never needed — delete
+  goes through the repository, not the task store.)
+- owner `""` = all local conversations in one bucket (still fine; resolver swappable at auth).
+- jsdom has no real layout — sidebar/rename/delete logic is unit-tested; row-layout feel
+  verified in the browser.
+- No-self-commit honored throughout: each slice implemented + staged; the user committed.
+
+## Post-completion bug fixes (during testing)
+- **Retry-after-stop:** stopping before the first token dropped the empty agent bubble, then
+  reconnect wrote the recovered reply into the missing turn id (vanished). `handleReconnect`
+  now recreates the bubble; `handleCancel` clears in-flight guards synchronously. Also fixed
+  PR A's durability test (UUID column overflow + two-store model-redefinition + honest DB gate).
+- **New-chat stale transcript (PR D):** `seeds` lagged the route change so the keyed `<Chat>`
+  seeded from the previous conversation. Now reset **during render** on `conversationId` change.

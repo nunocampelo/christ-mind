@@ -30,9 +30,7 @@ from mind_of_christ_a2a.api.controllers import (
 )
 from mind_of_christ_a2a.domain.a2a.agent_card import render_agent_card_v1
 from mind_of_christ_a2a.infrastructure.db.engine import create_db_engine
-from mind_of_christ_a2a.infrastructure.db.repositories.conversations import (
-    ConversationRepository,
-)
+from mind_of_christ_a2a.infrastructure.db.session import SessionProvider
 
 load_env()
 
@@ -64,11 +62,12 @@ async def build_task_store(engine: AsyncEngine) -> TaskStore:
 
 async def build_stores(app: FastAPI) -> AsyncEngine | None:
     """Create the one shared engine and stash the stores that draw from it (task store +
-    conversation repository) on app.state; returns the engine to dispose on shutdown. Tests
-    monkeypatch this to install in-memory doubles (engine None), so the suite needs no DB."""
+    the session provider that backs the conversation repository and the executor's writes)
+    on app.state; returns the engine to dispose on shutdown. Tests monkeypatch this to
+    install in-memory doubles (engine None), so the suite needs no DB."""
     engine = create_db_engine()
     app.state.a2a_task_store = await build_task_store(engine)
-    app.state.conversations = ConversationRepository(engine)
+    app.state.session_provider = SessionProvider(engine)
     return engine
 
 

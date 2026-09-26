@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import mind_of_christ_a2a.main as main_module
+from mind_of_christ_a2a.api.dependencies import get_conversations
 from mind_of_christ_a2a.domain.conversations.models import (
     Conversation,
     ConversationMessage,
@@ -94,13 +95,17 @@ class _FakeConversations:
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("AGENT_PUBLIC_URL", "http://127.0.0.1:8000")
 
-    async def in_memory_stores(app_: object) -> None:
-        app_.state.conversations = _FakeConversations(_OLDER, _NEWER)  # type: ignore[attr-defined]
+    async def no_stores(app_: object) -> None:
         return None
 
-    monkeypatch.setattr(main_module, "build_stores", in_memory_stores)
+    monkeypatch.setattr(main_module, "build_stores", no_stores)
+    # get_conversations is a per-request unit-of-work dependency; override it with the
+    # in-memory fake so no SessionProvider (and no DB) is touched.
+    fake = _FakeConversations(_OLDER, _NEWER)
+    app.dependency_overrides[get_conversations] = lambda: fake
     with TestClient(app) as c:
         yield c
+    app.dependency_overrides.clear()
 
 
 def test_list_returns_summaries_newest_first(client: TestClient) -> None:

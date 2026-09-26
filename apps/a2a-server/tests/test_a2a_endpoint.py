@@ -68,6 +68,15 @@ class _FakeConversations:
         return None
 
 
+class _FakeSessionProvider:
+    """Yields the no-op conversations fake as the "session"; paired with a pass-through
+    ConversationRepository patch so the executor persists without a DB."""
+
+    @asynccontextmanager
+    async def unit_of_work(self) -> AsyncIterator[_FakeConversations]:
+        yield _FakeConversations()
+
+
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     @asynccontextmanager
@@ -76,7 +85,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
 
     async def in_memory_stores(app: FastAPI) -> None:
         app.state.a2a_task_store = InMemoryTaskStore()
-        app.state.conversations = _FakeConversations()
+        app.state.session_provider = _FakeSessionProvider()
         return None
 
     monkeypatch.setenv("AGENT_PUBLIC_URL", "http://127.0.0.1:8000")
@@ -84,6 +93,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setattr(
         executor_module, "build_orchestrator", lambda _mcp: _StubOrchestrator()
     )
+    monkeypatch.setattr(executor_module, "ConversationRepository", lambda session: session)
     monkeypatch.setattr(main_module, "build_stores", in_memory_stores)
     with TestClient(app) as c:
         yield c

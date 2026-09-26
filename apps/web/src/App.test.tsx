@@ -379,6 +379,54 @@ describe("PR D — sidebar, routing, and rehydration by URL", () => {
     expect(screen.queryByTestId("user-turn")).not.toBeInTheDocument();
   });
 
+  it("keeps the streamed answer when a fresh chat self-assigns its id mid-stream", async () => {
+    const user = userEvent.setup();
+    // The server mints the contextId on the first frame, so the stream emits it before the
+    // answer. If the refetch races the still-in-progress run, history has only the user
+    // message (the agent turn isn't persisted until the stream ends) — this loader models
+    // that race. The answer must survive it.
+    const loadConversation = vi.fn(async () => ({
+      conversation_id: "ctx-fresh",
+      summary: "I can't forgive",
+      created_at: "2026-01-01T00:00:00",
+      updated_at: "2026-01-01T00:00:00",
+      messages: [
+        {
+          conversation_id: "ctx-fresh",
+          role: "user",
+          content: "I can't forgive",
+          message_json: null,
+          timestamp: "2026-01-01T00:00:00",
+          sequence: 1,
+        },
+      ],
+    }));
+    renderApp(
+      {
+        streamFn: streamOf([
+          { kind: "contextId", contextId: "ctx-fresh" },
+          { kind: "text", delta: "Forgiveness undoes it." },
+          { kind: "answer", answer: ANSWER },
+          { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+        ]),
+        loadConversation,
+        listConversations: async () => summaries,
+      },
+      "/",
+    );
+
+    await user.type(screen.getByTestId("composer-input"), "I can't forgive");
+    await user.click(screen.getByTestId("composer-send"));
+
+    // The bubble that streamed in place is not torn down by the self-navigation.
+    expect(await screen.findByTestId("agent-turn")).toHaveTextContent(
+      "Forgiveness undoes it.",
+    );
+    expect(screen.getByTestId("cited-claims")).toHaveTextContent("s1");
+    // The live chat must not refetch its own in-flight conversation (that's the race).
+    expect(loadConversation).not.toHaveBeenCalled();
+  });
+
   it("renames a conversation through the sidebar and refreshes the list", async () => {
     const user = userEvent.setup();
     const renameConversation = vi.fn(async () => {});

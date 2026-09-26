@@ -38,11 +38,14 @@ distinction survives to the frontend rather than collapsing into the prose strea
 """
 
 import uuid
+from typing import Any
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import Part, Task, TaskState, TaskStatus
+
+from sqlalchemy.exc import IntegrityError
 
 from mind_of_christ_agent.application.answer import AgentRequest
 from mind_of_christ_agent.application.build import build_orchestrator
@@ -50,20 +53,45 @@ from mind_of_christ_agent.domain.events import FinalEvent, StepStatusEvent, Toke
 from mind_of_christ_agent.infrastructure.mcp_client import connect
 
 from mind_of_christ_a2a.domain.conversations.models import (
-    ConversationWriter,
+    ConversationMessage,
     MessageRole,
 )
+from mind_of_christ_a2a.infrastructure.db.repositories.conversations import (
+    ConversationRepository,
+)
+from mind_of_christ_a2a.infrastructure.db.session import SessionProvider
 
 _ANSWER_ARTIFACT_ID = "answer"
 _EVIDENCE_ARTIFACT_ID = "evidence"
+_MAX_SEQUENCE_RETRIES = 8
 
 
 class MindOfChristExecutor(AgentExecutor):
     """Runs the streaming orchestrator inside the SDK's task lifecycle, one MCP
-    subprocess per request."""
+    subprocess per request. Not an HTTP request, so it opens its own short unit of work per
+    persisted turn rather than borrowing a request-scoped session."""
 
-    def __init__(self, conversations: ConversationWriter) -> None:
-        self._conversations = conversations
+    def __init__(self, sessions: SessionProvider) -> None:
+        self._sessions = sessions
+
+    async def _append_message(
+        self,
+        conversation_id: str,
+        role: MessageRole,
+        content: str,
+        message_json: dict[str, Any] | None = None,
+    ) -> ConversationMessage:
+        for _ in range(_MAX_SEQUENCE_RETRIES):
+            try:
+                async with self._sessions.unit_of_work() as session:
+                    return await ConversationRepository(session).append_message(
+                        conversation_id, role, content, message_json
+                    )
+            except IntegrityError:
+                # A concurrent append won this sequence; the rolled-back session can't be
+                # reused, so retry against a fresh unit of work and a now-higher max.
+                continue
+        raise RuntimeError("append_message could not allocate a unique sequence")
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         task_id = context.task_id or str(uuid.uuid4())
@@ -72,9 +100,7 @@ class MindOfChristExecutor(AgentExecutor):
 
         # Persist the user turn before the run: a stopped or failed run keeps the user's
         # message in history and simply writes no answer.
-        await self._conversations.append_message(
-            context_id, MessageRole.user, situation
-        )
+        await self._append_message(context_id, MessageRole.user, situation)
 
         await event_queue.enqueue_event(
             Task(
@@ -127,7 +153,7 @@ class MindOfChristExecutor(AgentExecutor):
                     )
                     # content = the prose (what a reader renders); message_json = the full
                     # structured answer for richer clients.
-                    await self._conversations.append_message(
+                    await self._append_message(
                         context_id,
                         MessageRole.agent,
                         answer.text,

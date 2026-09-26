@@ -46,6 +46,11 @@ class _RecordingQueue:
 
 
 class _RecordingConversations:
+    """Records appends and hands back the executor a SessionProvider double whose unit of
+    work yields a repository bound to this recorder. Substitutes for the real
+    SessionProvider + ConversationRepository so the executor's persistence is observed
+    without a DB."""
+
     def __init__(self) -> None:
         self.appended: list[tuple[str, MessageRole, str, dict[str, Any] | None]] = []
 
@@ -65,6 +70,18 @@ class _RecordingConversations:
             timestamp=datetime(2026, 1, 1),
             sequence=len(self.appended),
         )
+
+    def as_session_provider(self) -> "_FakeSessionProvider":
+        return _FakeSessionProvider(self)
+
+
+class _FakeSessionProvider:
+    def __init__(self, conversations: _RecordingConversations) -> None:
+        self._conversations = conversations
+
+    @asynccontextmanager
+    async def unit_of_work(self) -> AsyncIterator[_RecordingConversations]:
+        yield self._conversations
 
 
 class _FakeContext:
@@ -106,6 +123,9 @@ def stubbed(monkeypatch: pytest.MonkeyPatch) -> AgentAnswer:
     monkeypatch.setattr(
         executor_module, "build_orchestrator", lambda _mcp: _StubOrchestrator(answer)
     )
+    # The fake unit of work yields the recorder as the "session"; passing it straight
+    # through stands in for ConversationRepository(session), so appends land on the recorder.
+    monkeypatch.setattr(executor_module, "ConversationRepository", lambda session: session)
     return answer
 
 
@@ -113,7 +133,9 @@ def stubbed(monkeypatch: pytest.MonkeyPatch) -> AgentAnswer:
 async def test_execute_maps_events_to_frames(stubbed: AgentAnswer) -> None:
     queue = _RecordingQueue()
     conversations = _RecordingConversations()
-    await MindOfChristExecutor(conversations=conversations).execute(
+    await MindOfChristExecutor(
+        sessions=conversations.as_session_provider()  # type: ignore[arg-type]
+    ).execute(
         _FakeContext("I can't forgive"),  # type: ignore[arg-type]
         queue,  # type: ignore[arg-type]
     )
@@ -171,7 +193,9 @@ async def test_evidence_artifact_keeps_cited_distinct_from_inferred(
     stubbed: AgentAnswer,
 ) -> None:
     queue = _RecordingQueue()
-    await MindOfChristExecutor(conversations=_RecordingConversations()).execute(
+    await MindOfChristExecutor(
+        sessions=_RecordingConversations().as_session_provider()  # type: ignore[arg-type]
+    ).execute(
         _FakeContext("I can't forgive"),  # type: ignore[arg-type]
         queue,  # type: ignore[arg-type]
     )
@@ -206,10 +230,13 @@ async def test_failure_emits_terminal_failed(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(executor_module, "connect", fake_connect)
     monkeypatch.setattr(executor_module, "build_orchestrator", lambda _mcp: _Boom())
+    monkeypatch.setattr(executor_module, "ConversationRepository", lambda session: session)
 
     queue = _RecordingQueue()
     conversations = _RecordingConversations()
-    await MindOfChristExecutor(conversations=conversations).execute(
+    await MindOfChristExecutor(
+        sessions=conversations.as_session_provider()  # type: ignore[arg-type]
+    ).execute(
         _FakeContext("x"),  # type: ignore[arg-type]
         queue,  # type: ignore[arg-type]
     )

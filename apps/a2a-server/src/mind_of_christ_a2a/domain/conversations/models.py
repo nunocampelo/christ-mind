@@ -5,7 +5,7 @@ conversation from `content` alone without deserializing the answer schema."""
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Protocol
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -59,16 +59,3 @@ class ConversationRename(BaseModel):
         if not stripped:
             raise ValueError("summary must not be blank")
         return stripped
-
-
-class ConversationWriter(Protocol):
-    """What the executor needs to persist a turn — narrower than the full repository, so a
-    test double satisfies it structurally."""
-
-    async def append_message(
-        self,
-        conversation_id: str,
-        role: MessageRole,
-        content: str,
-        message_json: dict[str, Any] | None = None,
-    ) -> ConversationMessage: ...

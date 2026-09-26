@@ -153,6 +153,13 @@ const App = ({
     listFn: listConversations ?? defaultListConversations,
   });
 
+  // The id a *live* chat minted for itself on its first turn. When the route catches up to
+  // this id, the chat that owns it is already mounted and mid-stream — so we must NOT treat
+  // the route change as navigation-to-another-conversation (which resets seeds, remounts,
+  // and refetches history, tearing down the in-flight answer before it renders).
+  const selfAssignedId = useRef<string | undefined>(undefined);
+  const isSelfAssigned = conversationId !== undefined && conversationId === selfAssignedId.current;
+
   // Seeds resolve per active conversation: null while a detail fetch is in flight.
   const [seeds, setSeeds] = useState<Seeds | null>(
     conversationId ? null : { turns: [] },
@@ -160,14 +167,18 @@ const App = ({
   // Reset seeds *during render* the moment the route changes, not in the effect: the keyed
   // Chat remounts on the new conversationId, and it must never seed from the previous
   // conversation's turns for even one render (that's the stale-transcript / no-landing bug).
+  // The self-assigned transition is the exception: keep the live chat's own turns.
   const [seededFor, setSeededFor] = useState<string | undefined>(conversationId);
-  if (seededFor !== conversationId) {
+  if (seededFor !== conversationId && !isSelfAssigned) {
     setSeededFor(conversationId);
     setSeeds(conversationId ? null : { turns: [] });
+    // Genuine navigation away from the self-assigned id: it's now a normal past
+    // conversation, so a later return to it must rehydrate from history like any other.
+    selfAssignedId.current = undefined;
   }
 
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId || isSelfAssigned) return;
     let active = true;
     void (async () => {
       try {
@@ -185,12 +196,15 @@ const App = ({
     return () => {
       active = false;
     };
-  }, [conversationId, load, navigate]);
+  }, [conversationId, isSelfAssigned, load, navigate]);
 
   const onConversationId = useCallback(
     (id: string) => {
       // A fresh chat's first turn just got its server id: route to it (replace, so Back
       // doesn't return to the blank "/") and refresh the sidebar so the new row appears.
+      // Record it as self-assigned first so the route change keeps this live chat mounted
+      // rather than remounting it and refetching (still-unpersisted) history.
+      selfAssignedId.current = id;
       navigate(`/c/${id}`, { replace: true });
       void refetch();
     },
@@ -227,7 +241,7 @@ const App = ({
         <div className="min-w-0 flex-1 bg-background" />
       ) : (
         <Chat
-          key={conversationId ?? "new"}
+          key={isSelfAssigned ? "new" : (conversationId ?? "new")}
           streamFn={streamFn}
           recoverFn={recoverFn}
           initialContextId={conversationId ?? ""}
