@@ -26,15 +26,46 @@ From the repo root (install the shared package, mcp-server, and agent first — 
 .venv/bin/python -m pytest apps/a2a-server/tests -q   # from the repo root
 ```
 
-## Run the server
+The suite needs no database — the endpoint test overrides the store with an in-memory one.
+`test_task_store_durability.py` is skipped unless `DATABASE_URL` points at a migrated
+Postgres (see Database); set it to run the real save → get/list round-trip.
 
-```sh
-AGENT_PUBLIC_URL=http://127.0.0.1:8000 .venv/bin/python -m mind_of_christ_a2a.main
-```
+## Database
+
+Tasks (and, from PR B on, conversation history) persist to Postgres through one shared
+async SQLAlchemy engine. **Alembic owns all DDL** — the app runs the store with
+`create_table=False`, so `alembic upgrade head` must run before the server starts (never at
+FastAPI startup).
+
+## Configuration (`.env`)
+
+Copy `.env.example` (at the repo root) to `.env` and fill it in — every command below reads
+its config from there, so nothing needs to be passed on the command line. Each entrypoint
+loads it (via `infrastructure.config.env`); a var set in the actual environment always wins
+over the file, so production need not ship one, and you can still override any single var
+inline (`VAR=… <command>`). `.env` is gitignored.
 
 - `AGENT_PUBLIC_URL` (**required**, fails loud at boot) — the base URL clients reach; the
   agent card advertises `<AGENT_PUBLIC_URL>/a2a` as the endpoint.
+- `DATABASE_URL` (**required**, fails loud at boot) — the async SQLAlchemy URL, e.g.
+  `postgresql+asyncpg://christ:christ@127.0.0.1:5432/christ_mind`. Used by both the app
+  lifespan and Alembic's `env.py`, so migrations and the running app never disagree.
 - `HOST` (default `127.0.0.1`), `PORT` (default `8000`).
+
+## Database
+
+With `DATABASE_URL` in `.env`, bring up local Postgres and apply migrations:
+
+```sh
+docker compose -f apps/a2a-server/docker-compose.yml up -d
+.venv/bin/alembic -c apps/a2a-server/alembic.ini upgrade head
+```
+
+## Run the server
+
+```sh
+.venv/bin/python -m mind_of_christ_a2a.main
+```
 
 ### Hot reload (development)
 
@@ -42,8 +73,7 @@ The `python -m` entrypoint passes the app object to uvicorn directly, which can'
 For a watch-and-restart dev loop, run uvicorn against the import string instead:
 
 ```sh
-AGENT_PUBLIC_URL=http://localhost:5173 \
-  .venv/bin/uvicorn mind_of_christ_a2a.main:app --reload --host 127.0.0.1 --port 8000
+.venv/bin/uvicorn mind_of_christ_a2a.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 `--reload` watches the repo root, so edits to this app, `apps/agent`, `apps/mcp-server`,
@@ -51,8 +81,8 @@ or the shared `src/` all restart the server — the whole path a request exercis
 `python -m` command above for a normal (non-reloading) run.
 
 **When developing the frontend against this**, set `AGENT_PUBLIC_URL=http://localhost:5173`
-so the agent card advertises the Vite dev origin, which `apps/web`'s proxy forwards here —
-keeping the card fetch and streaming same-origin (no CORS). See `apps/web`.
+in `.env` so the agent card advertises the Vite dev origin, which `apps/web`'s proxy
+forwards here — keeping the card fetch and streaming same-origin (no CORS). See `apps/web`.
 
 Needs the Anthropic proxy reachable (the agent's mapper + streaming answer) and the
 `mind_of_christ_mcp` server importable (the agent launches it as a subprocess). No separate

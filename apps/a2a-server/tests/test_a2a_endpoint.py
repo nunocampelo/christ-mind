@@ -12,11 +12,13 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 
 import pytest
+from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import Task, TaskState
 from fastapi.testclient import TestClient
 from google.protobuf import json_format
 
 import mind_of_christ_a2a.domain.a2a.executor as executor_module
+import mind_of_christ_a2a.main as main_module
 from mind_of_christ_a2a.main import app
 from mind_of_christ_agent.application.answer import (
     AgentAnswer,
@@ -59,11 +61,15 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     async def fake_connect() -> AsyncIterator[object]:
         yield object()
 
+    async def in_memory_store() -> tuple[InMemoryTaskStore, None]:
+        return InMemoryTaskStore(), None
+
     monkeypatch.setenv("AGENT_PUBLIC_URL", "http://127.0.0.1:8000")
     monkeypatch.setattr(executor_module, "connect", fake_connect)
     monkeypatch.setattr(
         executor_module, "build_orchestrator", lambda _mcp: _StubOrchestrator()
     )
+    monkeypatch.setattr(main_module, "build_task_store", in_memory_store)
     with TestClient(app) as c:
         yield c
 

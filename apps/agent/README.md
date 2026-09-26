@@ -37,6 +37,10 @@ Needs the Anthropic proxy reachable (`ANTHROPIC_BASE_URL`, default
 mind-of-christ-mcp as a subprocess for the deterministic tools — no separate server to
 start. Status goes to stderr; the answer streams to stdout.
 
+Config is read from a repo-root `.env` if present (copy `.env.example`), so vars like
+`ANTHROPIC_BASE_URL` need not be exported per-command; a real environment variable still
+overrides the file. See the root `.env.example`.
+
 ## Layout
 
 - `domain/orchestrator.py` — the ReAct loop (`run_stream` → `OrchestratorEvent`s).

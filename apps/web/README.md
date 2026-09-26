@@ -17,7 +17,9 @@ npm install
 ## Run (full stack)
 
 Two processes. **Start the backend first**, and — this is the load-bearing detail — set
-`AGENT_PUBLIC_URL` to the **Vite dev origin**, not the backend's own port:
+`AGENT_PUBLIC_URL` to the **Vite dev origin**, not the backend's own port. Put it in the
+repo-root `.env` (`AGENT_PUBLIC_URL=http://localhost:5173`, see `apps/a2a-server`), or
+override inline for this run:
 
 ```sh
 # repo root — the a2a-server (see apps/a2a-server for install + hot reload)

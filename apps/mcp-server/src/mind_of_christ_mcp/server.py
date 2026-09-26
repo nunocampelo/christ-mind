@@ -19,6 +19,7 @@ from application.retrieval.find_sources import find_sources as _find_sources
 from application.synthesis.chain_claims import ClaimChain as _ClaimChain
 from application.synthesis.chain_claims import chain_claims as _chain_claims
 from domain.claims.models import Claim, Predicate
+from infrastructure.config.env import load_env
 
 from mind_of_christ_mcp.schemas.chains import ChainResult, ClaimChain
 from mind_of_christ_mcp.schemas.claims import ClaimResult
@@ -173,6 +174,7 @@ def _to_claim_chain(chain: _ClaimChain) -> ClaimChain:
 
 
 def main() -> None:
+    load_env()
     # stdout is the MCP JSON-RPC transport, so logs must go to stderr, which the
     # launching agent inherits (see the agent's mcp_client.stdio_client, errlog default).
     # {extra} renders the fields bound via logger.bind(...) at each call site.

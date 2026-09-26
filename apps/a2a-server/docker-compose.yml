@@ -1,0 +1,20 @@
+# Local Postgres for the a2a-server. Matches the DATABASE_URL used in development:
+#   postgresql+asyncpg://christ:christ@127.0.0.1:5432/christ_mind
+# Bring it up, apply migrations, then run the server:
+#   docker compose -f apps/a2a-server/docker-compose.yml up -d
+#   DATABASE_URL=postgresql+asyncpg://christ:christ@127.0.0.1:5432/christ_mind \
+#     .venv/bin/alembic -c apps/a2a-server/alembic.ini upgrade head
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: christ
+      POSTGRES_PASSWORD: christ
+      POSTGRES_DB: christ_mind
+    ports:
+      - "5432:5432"
+    volumes:
+      - christ_mind_pg:/var/lib/postgresql/data
+
+volumes:
+  christ_mind_pg:

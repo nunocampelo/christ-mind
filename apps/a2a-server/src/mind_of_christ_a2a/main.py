@@ -15,13 +15,21 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
 
-from a2a.server.tasks import InMemoryTaskStore
+from a2a.server.owner_resolver import resolve_user_scope
+from a2a.server.tasks import DatabaseTaskStore, TaskStore
 from a2a.types import AgentCard as CoreCard
 from fastapi import FastAPI
 from google.protobuf import json_format
+from sqlalchemy.ext.asyncio import AsyncEngine
 
+from infrastructure.config.env import load_env
 from mind_of_christ_a2a.api.controllers import a2a_controller, agent_card_controller
 from mind_of_christ_a2a.domain.a2a.agent_card import render_agent_card_v1
+from mind_of_christ_a2a.infrastructure.db.engine import create_db_engine
+
+load_env()
+
+A2A_TASKS_TABLE = "a2a_tasks"
 
 
 def _agent_public_url() -> str:
@@ -29,6 +37,25 @@ def _agent_public_url() -> str:
     if not url:
         raise RuntimeError("AGENT_PUBLIC_URL environment variable is not set")
     return url.rstrip("/")
+
+
+async def build_task_store() -> tuple[TaskStore, AsyncEngine | None]:
+    """Durable task store on the one shared engine, plus the engine to dispose on
+    shutdown. create_table=False: Alembic owns the a2a_tasks DDL (see alembic/), so
+    `alembic upgrade head` must run before this process starts. owner_resolver is passed
+    explicitly to mark the per-user scoping seam — it resolves to "" today
+    (unauthenticated), swappable when auth lands. Tests monkeypatch this to return an
+    in-memory store (engine None), so the suite needs no database.
+    """
+    engine = create_db_engine()
+    store = DatabaseTaskStore(
+        engine,
+        create_table=False,
+        table_name=A2A_TASKS_TABLE,
+        owner_resolver=resolve_user_scope,
+    )
+    await store.initialize()
+    return store, engine
 
 
 @asynccontextmanager
@@ -39,10 +66,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.a2a_proto_card = cast(
         CoreCard, json_format.ParseDict(card, CoreCard())
     )
-    # In-memory task store, app-lifetime, so a completed stream's task is retrievable
-    # via GetTask. A durable store lands with a real deployment (roadmap).
-    app.state.a2a_task_store = InMemoryTaskStore()
-    yield
+    store, engine = await build_task_store()
+    app.state.a2a_task_store = store
+    try:
+        yield
+    finally:
+        if engine is not None:
+            await engine.dispose()
 
 
 def create_app() -> FastAPI:

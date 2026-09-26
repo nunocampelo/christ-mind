@@ -11,6 +11,7 @@ UI is built.
 import asyncio
 import sys
 
+from infrastructure.config.env import load_env
 from mind_of_christ_agent.application.answer import AgentRequest
 from mind_of_christ_agent.application.build import build_orchestrator
 from mind_of_christ_agent.domain.events import FinalEvent, StepStatusEvent, TokenEvent
@@ -30,6 +31,7 @@ async def _run(situation: str) -> None:
 
 
 def main() -> None:
+    load_env()
     if len(sys.argv) < 2 or not sys.argv[1].strip():
         print('usage: python -m mind_of_christ_agent "<situation>"', file=sys.stderr)
         raise SystemExit(2)
