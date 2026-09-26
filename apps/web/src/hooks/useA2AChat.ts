@@ -185,9 +185,14 @@ const useA2AChat = ({
           setError(err instanceof Error ? err.message : ERR_ASSISTANT_FAILED);
         }
       } finally {
-        removeAgentTurnIfEmpty(agentTurnId);
-        setBusy(false);
-        abortRef.current = null;
+        // handleCancel clears the in-flight guards synchronously and may already have
+        // started a newer run; only tear down if this run still owns them, so a stopped
+        // stream unwinding late can't clobber the run that replaced it.
+        if (abortRef.current === controller) {
+          removeAgentTurnIfEmpty(agentTurnId);
+          setBusy(false);
+          abortRef.current = null;
+        }
       }
     },
     [appendTurn, busy, consumeStream, onSend, removeAgentTurnIfEmpty, streamFn],
@@ -197,8 +202,17 @@ const useA2AChat = ({
     const controller = abortRef.current;
     if (!controller) return;
     controller.abort();
+    // Clear the in-flight guards here rather than waiting for the aborted stream to
+    // unwind: the A2A client's iterator may not react to the signal promptly, and a hung
+    // generator would leave `busy`/`abortRef` stuck and block every retry. Dropping the
+    // empty bubble mirrors what the run's `finally` would have done.
+    abortRef.current = null;
+    setBusy(false);
+    if (lastAgentTurnId.current !== null) {
+      removeAgentTurnIfEmpty(lastAgentTurnId.current);
+    }
     appendTurn({ role: TurnRole.notice, text: NOTICE_STOPPED, steps: [] });
-  }, [appendTurn]);
+  }, [appendTurn, removeAgentTurnIfEmpty]);
 
   const removeTrailingNotices = useCallback(() => {
     setTurns((prev) => {
@@ -210,15 +224,30 @@ const useA2AChat = ({
 
   const handleReconnect = useCallback(async () => {
     const taskId = lastTaskId.current;
-    const agentTurnId = lastAgentTurnId.current;
-    if (!taskId || agentTurnId === null || busy || abortRef.current) return;
+    if (!taskId || busy || abortRef.current) return;
 
     const controller = new AbortController();
     abortRef.current = controller;
     setBusy(true);
     setError(null);
-    const textSoFar =
-      turnsRef.current.find((t) => t.id === agentTurnId)?.text ?? "";
+
+    // Stopping before the first token removes the empty agent bubble, so the turn the run
+    // recorded may no longer exist. Recreate it here (with empty `textSoFar`, since nothing
+    // streamed) or the recovered reply would be written to a missing id and never render.
+    // Strip the trailing "Request stopped" notice first, so the recreated bubble takes its
+    // place instead of landing below it.
+    const existing = turnsRef.current.find(
+      (t) => t.id === lastAgentTurnId.current && t.role === TurnRole.agent,
+    );
+    let agentTurnId: number;
+    if (existing) {
+      agentTurnId = existing.id;
+    } else {
+      removeTrailingNotices();
+      agentTurnId = appendTurn({ role: TurnRole.agent, text: "", steps: [] });
+    }
+    lastAgentTurnId.current = agentTurnId;
+    const textSoFar = existing?.text ?? "";
 
     try {
       const errored = await consumeStream(recoverFn(taskId, textSoFar), agentTurnId);
@@ -226,10 +255,12 @@ const useA2AChat = ({
     } catch (err) {
       setError(err instanceof Error ? err.message : ERR_ASSISTANT_FAILED);
     } finally {
-      setBusy(false);
-      abortRef.current = null;
+      if (abortRef.current === controller) {
+        setBusy(false);
+        abortRef.current = null;
+      }
     }
-  }, [busy, consumeStream, recoverFn, removeTrailingNotices]);
+  }, [appendTurn, busy, consumeStream, recoverFn, removeTrailingNotices]);
 
   const handleSubmit = useCallback(() => {
     if (busy) return;

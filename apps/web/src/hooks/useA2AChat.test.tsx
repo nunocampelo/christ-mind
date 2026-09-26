@@ -370,6 +370,59 @@ describe("useA2AChat", () => {
     );
   });
 
+  it("reconnects after stopping before the first token: recreates the dropped bubble", async () => {
+    // Stopping right after send (a taskId has arrived but no prose) removes the empty agent
+    // bubble. Reconnect must recreate it, or the recovered reply is written to a missing
+    // turn id and never renders — the "I get the retry but it doesn't load" case.
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const streamFn = () =>
+      (async function* () {
+        yield { kind: "taskId", taskId: "task-1" } as AgentStreamEvent;
+        await gate;
+      })();
+    const recoverFn = vi.fn((_taskId: string, _textSoFar: string) =>
+      streamOf([
+        { kind: "text", delta: "Forgiveness undoes it." },
+        { kind: "answer", answer: ANSWER },
+        { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+      ])(),
+    );
+    const { result } = renderHook(() => useA2AChat({ streamFn, recoverFn }));
+
+    let sending: Promise<void>;
+    act(() => {
+      sending = result.current.send("help");
+    });
+    await waitFor(() => expect(result.current.busy).toBe(true));
+    act(() => {
+      result.current.handleCancel();
+    });
+    await act(async () => {
+      release();
+      await sending;
+    });
+
+    // The empty agent bubble was dropped; only the user turn and the notice remain.
+    expect(result.current.turns.some((t) => t.role === TurnRole.agent)).toBe(false);
+    expect(result.current.canReconnect).toBe(true);
+
+    await act(async () => {
+      await result.current.handleReconnect();
+    });
+
+    // Nothing had streamed, so recovery replays the full answer into the recreated bubble.
+    expect(recoverFn).toHaveBeenCalledWith("task-1", "");
+    const agent = result.current.turns.find((t) => t.role === TurnRole.agent);
+    expect(agent?.text).toBe("Forgiveness undoes it.");
+    expect(agent?.answer).toEqual(ANSWER);
+    expect(result.current.turns.some((t) => t.role === TurnRole.notice)).toBe(
+      false,
+    );
+  });
+
   it("keeps the notice and surfaces an error when the reconnect fails", async () => {
     const { streamFn, release } = stopAfterPartial();
     const recoverFn = () => streamOf([{ kind: "error", message: "gone" }])();
