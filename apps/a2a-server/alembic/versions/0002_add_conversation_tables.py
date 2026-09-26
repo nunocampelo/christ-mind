@@ -1,11 +1,14 @@
-"""Conversation history tables (hand-written; target_metadata is None). The
-(conversation_id, sequence) UNIQUE constraint is append_message's concurrency guard; the FK
-is ON DELETE CASCADE so deleting a conversation drops its messages."""
+"""Conversation history tables (hand-written; target_metadata is None). `content` is always
+the user-facing turn text (user's message, or the agent's prose); `message_json` holds the
+full AgentAnswer for agent turns and is null for user turns. The (conversation_id, sequence)
+UNIQUE constraint is append_message's concurrency guard; the FK is ON DELETE CASCADE so
+deleting a conversation drops its messages."""
 
 from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "0002"
 down_revision: str | Sequence[str] | None = "0001"
@@ -37,6 +40,7 @@ def upgrade() -> None:
         ),
         sa.Column("role", sa.String(16), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
+        sa.Column("message_json", JSONB(), nullable=True),
         sa.Column("timestamp", sa.DateTime(), nullable=False),
         sa.Column("sequence", sa.Integer(), nullable=False),
         sa.UniqueConstraint(

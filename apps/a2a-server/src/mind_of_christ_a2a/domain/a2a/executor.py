@@ -118,15 +118,20 @@ class MindOfChristExecutor(AgentExecutor):
                 # The structured answer (cited claims kept distinct from inferred
                 # chains) rides as its own artifact so the distinction survives the wire.
                 if orchestrator.last_answer is not None:
-                    answer_json = orchestrator.last_answer.model_dump_json()
+                    answer = orchestrator.last_answer
                     await updater.add_artifact(
-                        parts=[Part(text=answer_json)],
+                        parts=[Part(text=answer.model_dump_json())],
                         artifact_id=_EVIDENCE_ARTIFACT_ID,
                         append=False,
                         last_chunk=True,
                     )
+                    # content = the prose (what a reader renders); message_json = the full
+                    # structured answer for richer clients.
                     await self._conversations.append_message(
-                        context_id, MessageRole.agent, answer_json
+                        context_id,
+                        MessageRole.agent,
+                        answer.text,
+                        message_json=answer.model_dump(mode="json"),
                     )
         except Exception:
             # Any escaping exception must still emit a terminal event, or the task hangs

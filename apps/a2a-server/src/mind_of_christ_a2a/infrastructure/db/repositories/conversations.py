@@ -3,6 +3,7 @@ reconstructed from A2A Tasks — Tasks are executions, messages are history, and
 two would tie history to the task lifecycle."""
 
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -60,6 +61,7 @@ class ConversationRepository:
                     conversation_id=m.conversation_id,
                     role=MessageRole(m.role),
                     content=m.content,
+                    message_json=m.message_json,
                     timestamp=m.timestamp,
                     sequence=m.sequence,
                 )
@@ -74,11 +76,17 @@ class ConversationRepository:
         )
 
     async def append_message(
-        self, conversation_id: str, role: MessageRole, content: str
+        self,
+        conversation_id: str,
+        role: MessageRole,
+        content: str,
+        message_json: dict[str, Any] | None = None,
     ) -> ConversationMessage:
         for _ in range(_MAX_SEQUENCE_RETRIES):
             try:
-                return await self._append_once(conversation_id, role, content)
+                return await self._append_once(
+                    conversation_id, role, content, message_json
+                )
             except IntegrityError:
                 # A concurrent append won this sequence. Retry the allocate-and-insert
                 # against the now-higher max; the UNIQUE constraint, not a read lock, guards.
@@ -86,7 +94,11 @@ class ConversationRepository:
         raise RuntimeError("append_message could not allocate a unique sequence")
 
     async def _append_once(
-        self, conversation_id: str, role: MessageRole, content: str
+        self,
+        conversation_id: str,
+        role: MessageRole,
+        content: str,
+        message_json: dict[str, Any] | None,
     ) -> ConversationMessage:
         now = _now()
         async with self._session() as session:
@@ -119,6 +131,7 @@ class ConversationRepository:
                         conversation_id=conversation_id,
                         role=role.value,
                         content=content,
+                        message_json=message_json,
                         timestamp=now,
                         sequence=sequence,
                     )
@@ -127,6 +140,7 @@ class ConversationRepository:
             conversation_id=conversation_id,
             role=role,
             content=content,
+            message_json=message_json,
             timestamp=now,
             sequence=sequence,
         )

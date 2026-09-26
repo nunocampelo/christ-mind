@@ -41,9 +41,12 @@ async def test_get_returns_messages_in_seq_order_and_derives_title(
     engine = create_db_engine()
     repo = ConversationRepository(engine)
     cid = _conversation_id()
+    answer = {"text": "Forgiveness undoes it.", "cited_claims": []}
     try:
         await repo.append_message(cid, MessageRole.user, "I cannot forgive my brother")
-        await repo.append_message(cid, MessageRole.agent, '{"text": "Forgiveness…"}')
+        await repo.append_message(
+            cid, MessageRole.agent, "Forgiveness undoes it.", message_json=answer
+        )
 
         conversation = await repo.get(cid)
         assert [(m.role, m.sequence) for m in conversation.messages] == [
@@ -51,6 +54,15 @@ async def test_get_returns_messages_in_seq_order_and_derives_title(
             (MessageRole.agent, 2),
         ]
         assert conversation.summary == "I cannot forgive my brother"
+
+        user_msg, agent_msg = conversation.messages
+        # content is the user-facing text for both; message_json only rides on the agent.
+        assert (user_msg.content, user_msg.message_json) == (
+            "I cannot forgive my brother",
+            None,
+        )
+        assert agent_msg.content == "Forgiveness undoes it."
+        assert agent_msg.message_json == answer
     finally:
         await repo.delete(cid)
         await engine.dispose()

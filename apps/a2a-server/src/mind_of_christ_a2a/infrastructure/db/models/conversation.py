@@ -4,6 +4,8 @@ guard `append_message` leans on so two concurrent appends can't share a sequence
 
 from datetime import datetime
 
+from typing import Any
+
 from sqlalchemy import (
     BigInteger,
     DateTime,
@@ -14,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mind_of_christ_a2a.infrastructure.db.models.base import Base
@@ -58,6 +61,7 @@ class ConversationMessageRow(Base):
     )
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    message_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
 

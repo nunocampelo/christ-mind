@@ -59,7 +59,11 @@ class _StubOrchestrator:
 
 class _FakeConversations:
     async def append_message(
-        self, conversation_id: str, role: MessageRole, content: str
+        self,
+        conversation_id: str,
+        role: MessageRole,
+        content: str,
+        message_json: dict[str, object] | None = None,
     ) -> None:
         return None
 

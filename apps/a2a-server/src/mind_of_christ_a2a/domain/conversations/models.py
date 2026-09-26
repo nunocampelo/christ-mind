@@ -1,9 +1,11 @@
-"""Conversation-history DTOs the repository returns (never ORM rows). Agent `content` is
-the `AgentAnswer` JSON stored verbatim, so history matches the A2A `evidence` artifact."""
+"""Conversation-history DTOs the repository returns (never ORM rows). `content` is always
+the user-facing turn text (user's message, or the agent's prose); `message_json` carries the
+full AgentAnswer for agent turns and is None for user turns, so a reader can render a
+conversation from `content` alone without deserializing the answer schema."""
 
 from datetime import datetime
 from enum import Enum
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel
 
@@ -18,6 +20,7 @@ class ConversationMessage(BaseModel):
     conversation_id: str
     role: MessageRole
     content: str
+    message_json: dict[str, Any] | None
     timestamp: datetime
     sequence: int
 
@@ -36,5 +39,9 @@ class ConversationWriter(Protocol):
     test double satisfies it structurally."""
 
     async def append_message(
-        self, conversation_id: str, role: MessageRole, content: str
+        self,
+        conversation_id: str,
+        role: MessageRole,
+        content: str,
+        message_json: dict[str, Any] | None = None,
     ) -> ConversationMessage: ...

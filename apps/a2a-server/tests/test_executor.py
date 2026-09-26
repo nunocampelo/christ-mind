@@ -7,6 +7,7 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import Any
 
 import pytest
 from a2a.types import Task, TaskArtifactUpdateEvent, TaskState, TaskStatusUpdateEvent
@@ -46,16 +47,21 @@ class _RecordingQueue:
 
 class _RecordingConversations:
     def __init__(self) -> None:
-        self.appended: list[tuple[str, MessageRole, str]] = []
+        self.appended: list[tuple[str, MessageRole, str, dict[str, Any] | None]] = []
 
     async def append_message(
-        self, conversation_id: str, role: MessageRole, content: str
+        self,
+        conversation_id: str,
+        role: MessageRole,
+        content: str,
+        message_json: dict[str, Any] | None = None,
     ) -> ConversationMessage:
-        self.appended.append((conversation_id, role, content))
+        self.appended.append((conversation_id, role, content, message_json))
         return ConversationMessage(
             conversation_id=conversation_id,
             role=role,
             content=content,
+            message_json=message_json,
             timestamp=datetime(2026, 1, 1),
             sequence=len(self.appended),
         )
@@ -144,14 +150,20 @@ async def test_execute_maps_events_to_frames(stubbed: AgentAnswer) -> None:
         "The Course says forgiveness."
     )
 
-    # A successful run persists the user turn then the assistant answer (the same JSON as
-    # the evidence artifact), keyed by context_id.
-    assert [(role, cid) for cid, role, _ in conversations.appended] == [
+    # A successful run persists the user turn then the assistant turn, keyed by context_id.
+    assert [(role, cid) for cid, role, _, _ in conversations.appended] == [
         (MessageRole.user, "ctx-1"),
         (MessageRole.agent, "ctx-1"),
     ]
-    assert conversations.appended[0][2] == "I can't forgive"
-    assert AgentAnswer.model_validate_json(conversations.appended[1][2]) == stubbed
+    # The user turn stores the raw text and no structured payload.
+    user_cid, _, user_content, user_json = conversations.appended[0]
+    assert user_content == "I can't forgive"
+    assert user_json is None
+    # The agent turn stores the prose in content and the full AgentAnswer in message_json.
+    _, _, agent_content, agent_json = conversations.appended[1]
+    assert agent_content == "The Course says forgiveness."
+    assert agent_json is not None
+    assert AgentAnswer.model_validate(agent_json) == stubbed
 
 
 @pytest.mark.anyio
@@ -210,4 +222,4 @@ async def test_failure_emits_terminal_failed(monkeypatch: pytest.MonkeyPatch) ->
     assert "secret" not in text
 
     # A failed run keeps the user turn but persists no assistant answer.
-    assert [role for _, role, _ in conversations.appended] == [MessageRole.user]
+    assert [role for _, role, _, _ in conversations.appended] == [MessageRole.user]
