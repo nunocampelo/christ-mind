@@ -189,12 +189,13 @@ describe("useA2AChat", () => {
   });
 
   it("echoes the stored context id on the next turn", async () => {
-    const streamFn = vi.fn((_message: string, _contextId: string) =>
-      streamOf([
-        { kind: "contextId", contextId: "ctx-1" },
-        { kind: "text", delta: "hi" },
-        { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
-      ])(),
+    const streamFn = vi.fn(
+      (_message: string, _contextId: string, _signal?: AbortSignal) =>
+        streamOf([
+          { kind: "contextId", contextId: "ctx-1" },
+          { kind: "text", delta: "hi" },
+          { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+        ])(),
     );
     const { result } = renderHook(() => useA2AChat({ streamFn }));
 
@@ -205,17 +206,18 @@ describe("useA2AChat", () => {
       await result.current.send("second");
     });
 
-    expect(streamFn).toHaveBeenNthCalledWith(1, "first", "");
-    expect(streamFn).toHaveBeenNthCalledWith(2, "second", "ctx-1");
+    expect(streamFn.mock.calls[0].slice(0, 2)).toEqual(["first", ""]);
+    expect(streamFn.mock.calls[1].slice(0, 2)).toEqual(["second", "ctx-1"]);
   });
 
   it("rehydrates the context id from sessionStorage on mount", async () => {
     sessionStorage.setItem("christ-mind.agent.contextId", "ctx-restored");
-    const streamFn = vi.fn((_message: string, _contextId: string) =>
-      streamOf([
-        { kind: "text", delta: "hi" },
-        { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
-      ])(),
+    const streamFn = vi.fn(
+      (_message: string, _contextId: string, _signal?: AbortSignal) =>
+        streamOf([
+          { kind: "text", delta: "hi" },
+          { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+        ])(),
     );
     const { result } = renderHook(() => useA2AChat({ streamFn }));
 
@@ -223,6 +225,76 @@ describe("useA2AChat", () => {
       await result.current.send("first");
     });
 
-    expect(streamFn).toHaveBeenCalledWith("first", "ctx-restored");
+    expect(streamFn.mock.calls[0].slice(0, 2)).toEqual(["first", "ctx-restored"]);
+  });
+
+  it("aborts the stream, keeps the partial answer, and drops a notice", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let signal: AbortSignal | undefined;
+    const streamFn = (_m: string, _c: string, s?: AbortSignal) =>
+      (async function* () {
+        signal = s;
+        yield { kind: "text", delta: "partial" } as AgentStreamEvent;
+        await gate;
+      })();
+    const { result } = renderHook(() => useA2AChat({ streamFn }));
+
+    let sending: Promise<void>;
+    act(() => {
+      sending = result.current.send("help");
+    });
+    await waitFor(() => expect(result.current.turns[1]?.text).toBe("partial"));
+
+    act(() => {
+      result.current.handleCancel();
+    });
+    expect(signal?.aborted).toBe(true);
+
+    await act(async () => {
+      release();
+      await sending;
+    });
+
+    const notice = result.current.turns.find((t) => t.role === TurnRole.notice);
+    expect(notice?.text).toBe("Request stopped");
+    expect(result.current.turns[1].text).toBe("partial");
+    expect(result.current.error).toBeNull();
+    expect(result.current.busy).toBe(false);
+  });
+
+  it("drops the empty agent bubble when stopped before the first token", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const streamFn = () =>
+      (async function* () {
+        await gate;
+      })();
+    const { result } = renderHook(() => useA2AChat({ streamFn }));
+
+    let sending: Promise<void>;
+    act(() => {
+      sending = result.current.send("help");
+    });
+    await waitFor(() => expect(result.current.busy).toBe(true));
+
+    act(() => {
+      result.current.handleCancel();
+    });
+    await act(async () => {
+      release();
+      await sending;
+    });
+
+    expect(result.current.turns.some((t) => t.role === TurnRole.agent)).toBe(
+      false,
+    );
+    expect(result.current.turns.some((t) => t.role === TurnRole.notice)).toBe(
+      true,
+    );
   });
 });

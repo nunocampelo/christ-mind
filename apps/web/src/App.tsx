@@ -7,6 +7,8 @@ import useA2AChat from "@/hooks/useA2AChat";
 interface AppProps {
   streamFn?: (
     message: string,
+    contextId: string,
+    signal?: AbortSignal,
   ) => AsyncGenerator<AgentStreamEvent, void, void>;
 }
 
@@ -22,6 +24,7 @@ const App = ({ streamFn }: AppProps = {}) => {
     setDraft,
     handleSubmit,
     handleInputKeyDown,
+    handleCancel,
   } = useA2AChat({ streamFn });
 
   return (
@@ -46,8 +49,10 @@ const App = ({ streamFn }: AppProps = {}) => {
         <Composer
           value={draft}
           disabled={busy}
+          busy={busy}
           onChange={setDraft}
           onSubmit={handleSubmit}
+          onCancel={handleCancel}
           onKeyDown={handleInputKeyDown}
         />
       </div>

@@ -13,11 +13,13 @@ import {
 
 const ENTER_KEY = "Enter";
 const ERR_ASSISTANT_FAILED = "Assistant request failed";
+const NOTICE_STOPPED = "Request stopped";
 const CONTEXT_KEY = "christ-mind.agent.contextId";
 
 const TurnRole = {
   user: "user",
   agent: "agent",
+  notice: "notice",
 } as const;
 
 interface Turn {
@@ -31,6 +33,7 @@ interface Turn {
 type StreamFn = (
   message: string,
   contextId: string,
+  signal?: AbortSignal,
 ) => AsyncGenerator<AgentStreamEvent, void, void>;
 
 const TERMINAL_STATES = new Set([
@@ -51,7 +54,7 @@ const useA2AChat = ({
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<string>("");
   const contextId = useRef(sessionStorage.getItem(CONTEXT_KEY) ?? "");
-  const inFlight = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
   const nextTurnId = useRef(0);
 
   const appendTurn = useCallback((turn: Omit<Turn, "id">): number => {
@@ -131,9 +134,10 @@ const useA2AChat = ({
   const send = useCallback(
     async (message: string) => {
       const trimmed = message.trim();
-      if (!trimmed || busy || inFlight.current) return;
+      if (!trimmed || busy || abortRef.current) return;
 
-      inFlight.current = true;
+      const controller = new AbortController();
+      abortRef.current = controller;
       setBusy(true);
       setError(null);
       appendTurn({ role: TurnRole.user, text: trimmed, steps: [] });
@@ -144,17 +148,29 @@ const useA2AChat = ({
       });
 
       try {
-        await consumeStream(streamFn(trimmed, contextId.current), agentTurnId);
+        await consumeStream(
+          streamFn(trimmed, contextId.current, controller.signal),
+          agentTurnId,
+        );
       } catch (err) {
-        setError(err instanceof Error ? err.message : ERR_ASSISTANT_FAILED);
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : ERR_ASSISTANT_FAILED);
+        }
       } finally {
         removeAgentTurnIfEmpty(agentTurnId);
         setBusy(false);
-        inFlight.current = false;
+        abortRef.current = null;
       }
     },
     [appendTurn, busy, consumeStream, removeAgentTurnIfEmpty, streamFn],
   );
+
+  const handleCancel = useCallback(() => {
+    const controller = abortRef.current;
+    if (!controller) return;
+    controller.abort();
+    appendTurn({ role: TurnRole.notice, text: NOTICE_STOPPED, steps: [] });
+  }, [appendTurn]);
 
   const handleSubmit = useCallback(() => {
     if (busy) return;
@@ -183,6 +199,7 @@ const useA2AChat = ({
     send,
     handleSubmit,
     handleInputKeyDown,
+    handleCancel,
   };
 };
 

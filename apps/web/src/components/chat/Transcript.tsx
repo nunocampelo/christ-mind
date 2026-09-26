@@ -21,16 +21,30 @@ const AgentTurn = ({ turn, busy }: { turn: Turn; busy: boolean }) => (
 
 const Transcript = ({ turns, busy }: TranscriptProps) => (
   <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8">
-    {turns.map((turn, i) =>
-      turn.role === TurnRole.user ? (
-        <div
-          key={turn.id}
-          data-testid="user-turn"
-          className="self-end max-w-[85%] rounded-[var(--radius-app)] bg-muted px-4 py-2 text-foreground"
-        >
-          {turn.text}
-        </div>
-      ) : (
+    {turns.map((turn, i) => {
+      if (turn.role === TurnRole.user) {
+        return (
+          <div
+            key={turn.id}
+            data-testid="user-turn"
+            className="self-end max-w-[85%] rounded-[var(--radius-app)] bg-muted px-4 py-2 text-foreground"
+          >
+            {turn.text}
+          </div>
+        );
+      }
+      if (turn.role === TurnRole.notice) {
+        return (
+          <div
+            key={turn.id}
+            data-testid="notice-turn"
+            className="self-start py-0.5 text-[0.6875rem] italic text-muted-foreground"
+          >
+            {turn.text}
+          </div>
+        );
+      }
+      return (
         <div
           key={turn.id}
           data-testid="agent-turn"
@@ -38,8 +52,8 @@ const Transcript = ({ turns, busy }: TranscriptProps) => (
         >
           <AgentTurn turn={turn} busy={busy && i === turns.length - 1} />
         </div>
-      ),
-    )}
+      );
+    })}
   </div>
 );
 

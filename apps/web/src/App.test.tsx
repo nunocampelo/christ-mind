@@ -130,3 +130,36 @@ describe("PR 2 — ask and get a cited answer", () => {
     expect(screen.queryByTestId("agent-turn")).not.toBeInTheDocument();
   });
 });
+
+describe("PR 5 — stop a running answer", () => {
+  it("swaps send for stop while streaming and drops a notice on stop", async () => {
+    const user = userEvent.setup();
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const streamFn = () =>
+      (async function* () {
+        yield { kind: "text", delta: "partial" } as AgentStreamEvent;
+        await gate;
+      })();
+
+    render(<App streamFn={streamFn} />);
+
+    await user.type(screen.getByTestId("composer-input"), "help");
+    await user.click(screen.getByTestId("composer-send"));
+
+    const stop = await screen.findByTestId("composer-stop");
+    expect(screen.queryByTestId("composer-send")).not.toBeInTheDocument();
+
+    await user.click(stop);
+    release();
+
+    expect(await screen.findByTestId("notice-turn")).toHaveTextContent(
+      "Request stopped",
+    );
+    expect(screen.getByTestId("agent-turn")).toHaveTextContent("partial");
+    expect(screen.getByTestId("composer-send")).toBeInTheDocument();
+    expect(screen.queryByTestId("error-strip")).not.toBeInTheDocument();
+  });
+});

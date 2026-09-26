@@ -42,7 +42,7 @@ The `python -m` entrypoint passes the app object to uvicorn directly, which can'
 For a watch-and-restart dev loop, run uvicorn against the import string instead:
 
 ```sh
-AGENT_PUBLIC_URL=http://127.0.0.1:8000 \
+AGENT_PUBLIC_URL=http://localhost:5173 \
   .venv/bin/uvicorn mind_of_christ_a2a.main:app --reload --host 127.0.0.1 --port 8000
 ```
 

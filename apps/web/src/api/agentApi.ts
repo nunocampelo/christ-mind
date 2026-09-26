@@ -268,6 +268,7 @@ const eventsFromFrame = (frame: StreamResponse): AgentStreamEvent[] => {
 async function* streamAssistant(
   message: string,
   contextId = "",
+  signal?: AbortSignal,
 ): AsyncGenerator<AgentStreamEvent, void, void> {
   const client = await getClient();
 
@@ -295,10 +296,11 @@ async function* streamAssistant(
   };
 
   try {
-    for await (const frame of client.sendMessageStream(request)) {
+    for await (const frame of client.sendMessageStream(request, { signal })) {
       for (const ev of eventsFromFrame(frame)) yield ev;
     }
   } catch (err) {
+    if (signal?.aborted) return;
     yield {
       kind: AgentEventKind.error,
       message: err instanceof Error ? err.message : ERR_ASSISTANT_FAILED,
