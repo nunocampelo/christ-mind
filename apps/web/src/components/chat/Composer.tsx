@@ -1,4 +1,8 @@
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+  Ref,
+} from "react";
 import AutoGrowTextarea from "@/components/chat/AutoGrowTextarea";
 import { Button } from "@/components/ui/button";
 
@@ -9,6 +13,7 @@ interface ComposerProps {
   onSubmit: () => void;
   onCancel?: () => void;
   onKeyDown?: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  textareaRef?: Ref<HTMLTextAreaElement>;
   /** Floating overlay (the jump-to-bottom button) positioned above the input row. */
   overlay?: ReactNode;
 }
@@ -23,6 +28,7 @@ const Composer = ({
   onSubmit,
   onCancel,
   onKeyDown,
+  textareaRef,
   overlay,
 }: ComposerProps) => {
   const canSend = value.trim().length > 0;
@@ -35,6 +41,7 @@ const Composer = ({
           testId="composer-input"
           value={value}
           placeholder="Describe a situation…"
+          textareaRef={textareaRef}
           onChange={onChange}
           onKeyDown={onKeyDown ?? (() => {})}
           className="flex-1 resize-none bg-transparent px-2 py-1.5 text-base leading-6 text-foreground placeholder:text-muted-foreground focus:outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"

@@ -1,8 +1,11 @@
-import type { AgentAnswer } from "@/api/agentApi";
+import { citedProseToPlainText, type AgentAnswer } from "@/api/agentApi";
+import { copyTextForAnswer } from "@/api/copyAnswer";
 import { TurnRole, type Turn } from "@/hooks/useA2AChat";
 import CitedAnswer from "@/components/chat/CitedAnswer";
+import CopyButton from "@/components/chat/CopyButton";
 import MarkdownMessage from "@/components/chat/MarkdownMessage";
 import ReasoningTimeline from "@/components/chat/ReasoningTimeline";
+import { cn } from "@/lib/cn";
 
 interface TranscriptProps {
   turns: Turn[];
@@ -45,6 +48,33 @@ const STREAMING_ANSWER: AgentAnswer = {
   inferred_chains: [],
 };
 
+const AgentFlare = () => (
+  <div className="agent-flare" role="status" aria-label="Response incoming">
+    <span aria-hidden="true">✦</span>
+  </div>
+);
+
+// Hover-revealed action row beneath a message, GPT-style. Aligned to the bubble's own edge
+// (right for the user, left for the agent) and kept in the layout at all times so revealing
+// it never shifts the following message.
+const MessageActions = ({
+  text,
+  align,
+}: {
+  text: string;
+  align: "start" | "end";
+}) => (
+  <div
+    className={cn(
+      "flex opacity-0 transition-opacity group-hover:opacity-100",
+      "focus-within:opacity-100 motion-reduce:transition-none",
+      align === "end" ? "self-end" : "self-start",
+    )}
+  >
+    <CopyButton text={text} />
+  </div>
+);
+
 const AgentTurn = ({ turn, busy }: { turn: Turn; busy: boolean }) => (
   <>
     <ReasoningTimeline steps={turn.steps} busy={busy} />
@@ -52,6 +82,8 @@ const AgentTurn = ({ turn, busy }: { turn: Turn; busy: boolean }) => (
       <CitedAnswer answer={turn.answer} streamedText={turn.text} turnId={turn.id} />
     ) : turn.text ? (
       <CitedAnswer answer={STREAMING_ANSWER} streamedText={turn.text} turnId={turn.id} />
+    ) : busy ? (
+      <AgentFlare />
     ) : (
       <MarkdownMessage text={turn.text} />
     )}
@@ -74,9 +106,12 @@ const Transcript = ({
             data-turn
             data-role="user"
             data-testid="user-turn"
-            className="self-end max-w-[85%] rounded-[var(--radius-app)] bg-muted px-4 py-2 text-foreground"
+            className="group flex flex-col items-end gap-1 self-end max-w-[85%]"
           >
-            {turn.text}
+            <div className="rounded-[var(--radius-app)] bg-muted px-4 py-2 text-foreground">
+              {turn.text}
+            </div>
+            {turn.text ? <MessageActions text={turn.text} align="end" /> : null}
           </div>
         );
       }
@@ -97,15 +132,21 @@ const Transcript = ({
           </div>
         );
       }
+      const answerText = turn.answer
+        ? copyTextForAnswer(turn.answer)
+        : citedProseToPlainText(turn.text, []);
       return (
         <div
           key={turn.id}
           data-turn
           data-role="agent"
           data-testid="agent-turn"
-          className="agent-bubble-surface self-start max-w-[95%] rounded-[var(--radius-app)] bg-agent-bubble px-5 py-4 text-agent-bubble-foreground"
+          className="group flex flex-col items-start gap-1 self-start max-w-[95%]"
         >
-          <AgentTurn turn={turn} busy={busy && i === turns.length - 1} />
+          <div className="agent-bubble-surface w-full rounded-[var(--radius-app)] bg-agent-bubble px-5 py-4 text-agent-bubble-foreground">
+            <AgentTurn turn={turn} busy={busy && i === turns.length - 1} />
+          </div>
+          {answerText ? <MessageActions text={answerText} align="start" /> : null}
         </div>
       );
     })}

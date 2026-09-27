@@ -1,6 +1,8 @@
 import {
   type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type Ref,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
 } from "react";
@@ -13,6 +15,7 @@ interface AutoGrowTextareaProps {
   maxRows?: number;
   className?: string;
   testId?: string;
+  textareaRef?: Ref<HTMLTextAreaElement>;
   onChange: (value: string) => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
 }
@@ -29,10 +32,12 @@ const AutoGrowTextarea = ({
   maxRows = DEFAULT_MAX_ROWS,
   className,
   testId,
+  textareaRef,
   onChange,
   onKeyDown,
 }: AutoGrowTextareaProps) => {
   const ref = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(textareaRef, () => ref.current as HTMLTextAreaElement, []);
 
   useLayoutEffect(() => {
     const el = ref.current;

@@ -19,6 +19,7 @@ import useA2AChat, { type Turn } from "@/hooks/useA2AChat";
 import useConversations from "@/hooks/useConversations";
 import useScrollAnchor from "@/hooks/useScrollAnchor";
 import useScrollToBottom from "@/hooks/useScrollToBottom";
+import useTypeToFocus from "@/hooks/useTypeToFocus";
 
 interface AppProps {
   streamFn?: (
@@ -54,6 +55,7 @@ const Chat = ({
   onConversationId,
 }: ChatProps) => {
   const anchorRef = useRef<() => void>(() => {});
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const onSend = useCallback(() => anchorRef.current(), []);
   const {
     turns,
@@ -77,6 +79,7 @@ const Chat = ({
 
   const { scrollRef, spacerHeight, anchorOnSend } = useScrollAnchor(busy);
   anchorRef.current = anchorOnSend;
+  useTypeToFocus(composerRef);
 
   // Chat is keyed on the conversation, so this fires once per open. Landing on an existing
   // conversation should show its newest turn, not the top. Jump instantly (no smooth scroll:
@@ -134,6 +137,7 @@ const Chat = ({
           onSubmit={handleSubmit}
           onCancel={handleCancel}
           onKeyDown={handleInputKeyDown}
+          textareaRef={composerRef}
           overlay={
             turns.length > 0 ? (
               <ScrollToBottomButton visible={!isAtBottom} onClick={scrollToBottom} />

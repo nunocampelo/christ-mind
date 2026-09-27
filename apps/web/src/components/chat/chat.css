@@ -45,6 +45,43 @@
   }
 }
 
+/* Pre-first-token waiting state: a small point of light gathering in the empty
+   bubble, breathing until the first prose token replaces it. Sized to the prose
+   line-height so the swap causes no layout shift. */
+.agent-flare {
+  line-height: 1.65;
+  color: var(--color-primary);
+}
+.agent-flare > span {
+  display: inline-block;
+  will-change: opacity, transform, text-shadow;
+  animation: agent-flare-breathe 1.7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes agent-flare-breathe {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scale(1);
+    text-shadow: 0 0 4px color-mix(in oklch, currentColor 32%, transparent);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.14);
+    text-shadow:
+      0 0 10px color-mix(in oklch, currentColor 58%, transparent),
+      0 0 18px color-mix(in oklch, currentColor 24%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-flare > span {
+    animation: none;
+    opacity: 0.75;
+    text-shadow: 0 0 6px color-mix(in oklch, currentColor 40%, transparent);
+  }
+}
+
 /* Markdown answer typography — the bits utilities can't express per-element. */
 .agent-markdown {
   line-height: 1.65;
@@ -247,6 +284,9 @@
    page background — is re-tinted to translucent-white / near-white so it stays legible
    on violet. Scoped to `.dark .agent-bubble-surface`; light mode and other contexts are
    untouched. `currentColor` is the bubble's own near-white foreground. */
+.dark .agent-bubble-surface .agent-flare {
+  color: currentColor;
+}
 .dark .agent-bubble-surface .cited-section,
 .dark .agent-bubble-surface .inferred-section {
   border-top-color: color-mix(in oklch, currentColor 22%, transparent);

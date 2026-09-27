@@ -189,6 +189,16 @@ const parseCitedProse = (
   return segments;
 };
 
+// Prose with each citation marker rewritten to its reader-facing ordinal ("[1]", "[2]"),
+// numbered by first appearance to match the rendered superscripts. Text for copying; the
+// source list that resolves the ordinals is appended by copyTextForAnswer (copyAnswer.ts).
+const citedProseToPlainText = (text: string, claims: CitedClaim[]): string =>
+  parseCitedProse(text, claims)
+    .map((seg) => (seg.kind === "text" ? seg.text : `[${seg.ordinal}]`))
+    .join("")
+    .replace(/ +([.,;:!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ");
+
 const validateAgentAnswer = (value: unknown): AgentAnswer | null => {
   if (typeof value !== "object" || value === null) return null;
   const a = value as Record<string, unknown>;
@@ -421,6 +431,7 @@ export {
   AGENT_BASE_URL,
   AgentEventKind,
   ArtifactId,
+  citedProseToPlainText,
   eventsFromFrame,
   parseAgentAnswer,
   parseCitedProse,
