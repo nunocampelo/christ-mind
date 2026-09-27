@@ -1,11 +1,15 @@
+from typing import Literal
+
 from evaluation.blackbox.evaluator import CriterionResult, combine
 
+_Status = Literal["pass", "fail", "not_evaluated"]
 
-def _gating(status: str) -> CriterionResult:
+
+def _gating(status: _Status) -> CriterionResult:
     return CriterionResult(name="g", kind="gating", status=status)
 
 
-def _advisory(status: str, score: float | None = None) -> CriterionResult:
+def _advisory(status: _Status, score: float | None = None) -> CriterionResult:
     return CriterionResult(name="a", kind="advisory", status=status, score=score)
 
 

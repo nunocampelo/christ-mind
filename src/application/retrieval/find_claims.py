@@ -2,17 +2,21 @@
 tested directly, mirroring `find_sources`.
 """
 
+from application.retrieval.ranking import rank_query_relevance
 from domain.claims.models import Claim
 from infrastructure.database.claims import list_claims
 
 
 def find_claims(query: str, limit: int = 5) -> list[Claim]:
-    """Return claims whose surface forms match the query.
+    """Return claims whose surface forms match the query, most relevant first.
 
     Case-insensitive substring match over subject, object, and verb_phrase -- the
     claim's own words. (A `Claim` holds evidence as offsets into `Source.text`, not
-    the quote itself, so evidence text isn't searched here.) Placeholder for a real
-    retrieval implementation behind the same signature.
+    the quote itself, so evidence text isn't searched here.) Matches are ranked by
+    query relevance (a term in subject position -- a definitional hit -- outranks an
+    incidental mention) *before* `limit` is applied, so the best match survives the cut
+    rather than being decided by corpus order. Placeholder for a real retrieval
+    implementation behind the same signature.
     """
     if not query.strip():
         return []
@@ -25,7 +29,7 @@ def find_claims(query: str, limit: int = 5) -> list[Claim]:
         or (claim.object is not None and needle in claim.object.lower())
         or needle in claim.verb_phrase.lower()
     ]
-    return matches[:limit]
+    return rank_query_relevance(matches, needle)[:limit]
 
 
 def find_claims_batch(

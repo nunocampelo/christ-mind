@@ -1,4 +1,8 @@
+import pytest
+
+from application.retrieval import find_claims as find_claims_module
 from application.retrieval.find_claims import find_claims, find_claims_batch
+from domain.claims.models import Attribution, Claim, Mode, Polarity, Predicate
 
 
 def _matches(claim, needle: str) -> bool:
@@ -75,3 +79,44 @@ def test_batch_interleaves_rather_than_concatenating():
     result_ids = {c.claim_id for c in results}
     peace_ids = {c.claim_id for c in peace}
     assert result_ids & peace_ids
+
+
+def _mk(claim_id: str, subject: str, predicate: Predicate, object: str | None) -> Claim:
+    return Claim(
+        claim_id=claim_id,
+        source_id="t1-1-1",
+        subject=subject,
+        predicate=predicate,
+        object=object,
+        verb_phrase="",
+        polarity=Polarity.AFFIRMED,
+        mode=Mode.ASSERTION,
+        attribution=Attribution.COURSE,
+        evidence_start=0,
+        evidence_end=1,
+    )
+
+
+def test_definitional_match_survives_limit_despite_late_corpus_position(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # The failure this increment fixes: the definitional subject match sits *past* `limit`
+    # in corpus order, so a pre-ranking slice would drop it. Ranking must run before the
+    # slice, so it is returned at limit=1.
+    incidental = [_mk(f"inc{i}", "fear", Predicate.OTHER, "x") for i in range(5)]
+    definition = _mk("def", "x", Predicate.IS, "healing")
+    corpus = incidental + [definition]  # definition is last in corpus order
+    monkeypatch.setattr(find_claims_module, "list_claims", lambda: corpus)
+
+    results = find_claims("x", limit=1)
+    assert [c.claim_id for c in results] == ["def"]
+
+
+def test_right_mindedness_definition_surfaces_from_real_corpus():
+    # The concrete regression: "right-mindedness IS healing" (t2-2-13) must be ranked into
+    # the small per-query limit the agent uses, not dropped by corpus position.
+    results = find_claims("right-mindedness", limit=5)
+    assert any(
+        c.source_id == "t2-2-13" and c.subject.lower() == "right-mindedness"
+        for c in results
+    )
