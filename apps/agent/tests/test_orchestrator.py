@@ -162,7 +162,7 @@ async def test_meta_question_appends_course_to_seed_batch():
 
     # A question about the Course itself supplements the mapped concepts with "course".
     assert mcp.calls == [
-        ("find_claims", {"queries": ["forgiveness", "atonement", "course"]})
+        ("find_claims", {"queries": ["course", "forgiveness", "atonement"]})
     ]
 
 
@@ -185,7 +185,9 @@ async def test_meta_supplement_is_not_searched_twice():
     ):
         pass
 
-    assert mcp.calls == [("find_claims", {"queries": ["the course", "love"]})]
+    # Supplements are seeded first, so the supplement's "course" wins the dedup over the
+    # mapped "the course" (same normalized term); searched once, not twice.
+    assert mcp.calls == [("find_claims", {"queries": ["course", "love"]})]
 
 
 @pytest.mark.anyio
@@ -211,6 +213,52 @@ async def test_non_meta_question_seed_batch_unchanged():
 
 
 @pytest.mark.anyio
+async def test_concept_question_appends_subject_to_seed_batch():
+    mcp = _FakeMcpClient(
+        {
+            "find_claims": CallToolResult(
+                content=[TextContent(type="text", text="claims")],
+                structured_content={"result": [_claim_result()]},
+            )
+        }
+    )
+    chat_stream = _scripted_stream('{"final": "answer"}')
+    orchestrator = Orchestrator(_StubMapper(["separation", "fear"]), mcp, chat_stream)
+
+    async for _ in orchestrator.run_stream(
+        AgentRequest(situation="What is the ego?", max_steps=4)
+    ):
+        pass
+
+    # A bare-subject definitional question supplements the mapped concepts with its subject.
+    assert mcp.calls == [
+        ("find_claims", {"queries": ["ego", "separation", "fear"]})
+    ]
+
+
+@pytest.mark.anyio
+async def test_concept_subject_matching_a_mapped_concept_is_not_searched_twice():
+    mcp = _FakeMcpClient(
+        {
+            "find_claims": CallToolResult(
+                content=[TextContent(type="text", text="claims")],
+                structured_content={"result": [_claim_result()]},
+            )
+        }
+    )
+    chat_stream = _scripted_stream('{"final": "answer"}')
+    # The mapper already emitted "ego"; the concept supplement must dedupe against it.
+    orchestrator = Orchestrator(_StubMapper(["ego", "fear"]), mcp, chat_stream)
+
+    async for _ in orchestrator.run_stream(
+        AgentRequest(situation="What is the ego?", max_steps=4)
+    ):
+        pass
+
+    assert mcp.calls == [("find_claims", {"queries": ["ego", "fear"]})]
+
+
+@pytest.mark.anyio
 async def test_repeat_tool_call_is_not_re_run():
     empty = CallToolResult(
         content=[TextContent(type="text", text="")],
@@ -228,8 +276,10 @@ async def test_repeat_tool_call_is_not_re_run():
 
     events = [
         event
+        # A situation that doesn't seed (no mapped concepts, not a bare-subject/meta
+        # question) so this test exercises only the repeat-guard on the model's own calls.
         async for event in orchestrator.run_stream(
-            AgentRequest(situation="describe the mind of God", max_steps=5)
+            AgentRequest(situation="my friend keeps doubting himself", max_steps=5)
         )
     ]
 

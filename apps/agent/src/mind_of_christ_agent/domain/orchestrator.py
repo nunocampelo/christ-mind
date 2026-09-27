@@ -23,6 +23,7 @@ from application.mapping.map_situation import SituationMapper, map_situation
 from infrastructure.llm.anthropic_proxy import ChatStream
 from mcp.types import CallToolResult, TextContent, Tool
 
+from mind_of_christ_agent.domain.concept_question import concept_query_terms
 from mind_of_christ_agent.domain.meta_question import meta_query_terms
 
 from mind_of_christ_agent.application.answer import (
@@ -103,10 +104,20 @@ class Orchestrator:
         # one deterministic batch rather than spending an LLM decision call per concept.
         # The model still gets `find_claims` for reactive follow-up when this is thin.
         #
-        # A question *about the Course itself* ("what is the Course about?") maps to the
-        # Course's contents, never to the corpus, so the thesis passage is never searched;
-        # supplement the concepts with a direct "course" query in that one narrow case.
-        queries = _dedupe(concepts + meta_query_terms(request.situation))
+        # Two supplements to the mapped concepts, both for questions the mapper decomposes
+        # into themes instead of searching the subject the question is actually about:
+        # `meta_query_terms` for the Course itself ("what is the Course about?"),
+        # `concept_query_terms` for a bare concept ("what is the ego?" -> also search "ego").
+        # Supplements go FIRST: `find_claims_batch` interleaves round-robin in query order, so
+        # a supplement seated last lands its (definitional) top result near the `global_limit`
+        # cut when the mapped concepts already fill the budget -- the query about the exact
+        # subject asked would be the one dropped. Front-loading seats the definition high.
+        # Deduped so an overlap (or a subject already mapped) is searched once.
+        queries = _dedupe(
+            meta_query_terms(request.situation)
+            + concept_query_terms(request.situation)
+            + concepts
+        )
         if queries:
             yield StepStatusEvent(
                 text=f"Calling find_claims for {len(queries)} mapped concept(s)"
