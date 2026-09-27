@@ -7,6 +7,10 @@ import "@/components/chat/chat.css";
 interface CitedAnswerProps {
   answer: AgentAnswer;
   streamedText: string;
+  // Distinct per chat turn: the anchor id namespaces on it so a marker resolves to *this*
+  // message's source, not the first same-claim_id element on the page (claim ids repeat
+  // across turns). Defaults keep standalone renders / tests working.
+  turnId?: number;
 }
 
 // A negated claim reads affirmative as subject-verb-object ("God is partial") while its
@@ -20,7 +24,19 @@ const claimGloss = (claim: CitedClaim): string => {
   return claim.polarity === "negated" ? `Not: ${core}` : core;
 };
 
-const sourceAnchor = (claimId: string): string => `src-${claimId}`;
+const sourceAnchor = (turnId: number, claimId: string): string =>
+  `src-${turnId}-${claimId}`;
+
+// Reveal the source in its collapsed panel, then ease it into view centered rather than
+// letting the native #hash jump snap it to the container top. block:"center" keeps the
+// abrupt edge-landing away; smoothness yields to prefers-reduced-motion.
+const jumpToSource = (anchorId: string) => {
+  const el = document.getElementById(anchorId);
+  if (!el) return;
+  el.closest("details")?.setAttribute("open", "");
+  const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+};
 
 // The reference pill: work title over location ("A Course in Miracles" / "Chapter 1
 // Section I Paragraph 1"). Location is dropped when there's nothing beyond the title.
@@ -41,11 +57,17 @@ const SourceRef = ({ claim }: { claim: CitedClaim }) => {
 const ClaimEvidence = ({
   claim,
   ordinal,
+  turnId,
 }: {
   claim: CitedClaim;
   ordinal?: number;
+  turnId: number;
 }) => (
-  <div className="cited-claim" id={sourceAnchor(claim.claim_id)} data-testid="cited-claim">
+  <div
+    className="cited-claim"
+    id={sourceAnchor(turnId, claim.claim_id)}
+    data-testid="cited-claim"
+  >
     {ordinal !== undefined && <span className="cited-ordinal">{ordinal}</span>}
     <div className="cited-claim-body">
       <p className="cited-claim-gloss">{claimGloss(claim)}</p>
@@ -59,29 +81,53 @@ const ClaimEvidence = ({
     claims; an unknown/malformed marker is dropped rather than shown as literal "[...]".
     With no resolvable marker the prose renders as ordinary markdown; once a marker
     resolves, segments render inline so the superscript sits mid-sentence rather than
-    breaking the flow into blocks. */
-const CitedProse = ({ answer }: { answer: AgentAnswer }) => {
-  const segments = parseCitedProse(answer.text, answer.cited_claims);
+    breaking the flow into blocks.
+
+    `pending` is set while the prose still streams (the evidence artifact hasn't landed):
+    the superscript renders immediately, numbered by appearance, but as a bare <sup> with
+    no source anchor to jump to yet -- it becomes a link once its claim resolves. */
+const CitedProse = ({
+  text,
+  claims,
+  turnId,
+  pending = false,
+}: {
+  text: string;
+  claims: CitedClaim[];
+  turnId: number;
+  pending?: boolean;
+}) => {
+  const segments = parseCitedProse(text, claims, pending);
   const hasCitation = segments.some((seg) => seg.kind === "citation");
 
-  if (!hasCitation) return <MarkdownMessage text={answer.text} />;
+  if (!hasCitation) return <MarkdownMessage text={text} />;
 
   return (
     <div className="agent-markdown cited-prose">
-      {segments.map((seg, i) =>
-        seg.kind === "text" ? (
-          <span key={i}>{seg.text}</span>
-        ) : (
+      {segments.map((seg, i) => {
+        if (seg.kind === "text") return <span key={i}>{seg.text}</span>;
+        if (!seg.claim)
+          return (
+            <sup key={i} className="cited-marker cited-marker-pending" aria-hidden="true">
+              {seg.ordinal}
+            </sup>
+          );
+        const anchor = sourceAnchor(turnId, seg.claim.claim_id);
+        return (
           <a
             key={i}
             className="cited-marker"
-            href={`#${sourceAnchor(seg.claim.claim_id)}`}
+            href={`#${anchor}`}
             aria-label={`Source ${seg.ordinal}`}
+            onClick={(e) => {
+              e.preventDefault();
+              jumpToSource(anchor);
+            }}
           >
             {seg.ordinal}
           </a>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 };
@@ -91,13 +137,14 @@ const CitedProse = ({ answer }: { answer: AgentAnswer }) => {
     (inferred chains, marked inferred, whose links stay Course-attributed). The evidence
     machinery sits in a collapsed "Sources" panel; the prose itself reads directly, with
     citations as superscripts rather than narrated. */
-const CitedAnswer = ({ answer, streamedText }: CitedAnswerProps) => {
-  // While prose streams (before the structured evidence artifact lands) markers may be
-  // partial, so render the raw stream. Once `answer.text` is present, resolve markers.
+const CitedAnswer = ({ answer, streamedText, turnId = 0 }: CitedAnswerProps) => {
+  // While prose streams (before the structured evidence artifact lands) the claims aren't
+  // known yet, so markers render as bare numbered superscripts (pending). Once `answer.text`
+  // is present the same markers resolve to claims and the superscripts become source links.
   const streaming = streamedText.length > 0 && answer.text.length === 0;
   const ordinals = new Map<string, number>();
   for (const seg of parseCitedProse(answer.text, answer.cited_claims)) {
-    if (seg.kind === "citation" && !ordinals.has(seg.claim.claim_id)) {
+    if (seg.kind === "citation" && seg.claim && !ordinals.has(seg.claim.claim_id)) {
       ordinals.set(seg.claim.claim_id, seg.ordinal);
     }
   }
@@ -114,9 +161,9 @@ const CitedAnswer = ({ answer, streamedText }: CitedAnswerProps) => {
   return (
     <div className="cited-answer">
       {streaming ? (
-        <MarkdownMessage text={streamedText} />
+        <CitedProse text={streamedText} claims={[]} turnId={turnId} pending />
       ) : (
-        <CitedProse answer={answer} />
+        <CitedProse text={answer.text} claims={answer.cited_claims} turnId={turnId} />
       )}
 
       {answer.cited_claims.length > 0 && (
@@ -127,6 +174,7 @@ const CitedAnswer = ({ answer, streamedText }: CitedAnswerProps) => {
               key={claim.claim_id}
               claim={claim}
               ordinal={ordinals.get(claim.claim_id)}
+              turnId={turnId}
             />
           ))}
         </details>

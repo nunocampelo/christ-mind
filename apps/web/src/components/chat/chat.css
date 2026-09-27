@@ -156,6 +156,13 @@
   text-decoration: none;
 }
 
+/* Shown while the prose is still streaming, before the claim it points at has arrived: the
+   raised number appears immediately but isn't yet a link to a source. No hover affordance
+   -- there's nothing to jump to until the evidence artifact lands and it becomes an <a>. */
+.cited-marker-pending {
+  cursor: default;
+}
+
 /* The matching number shown against each source in the panel, so the ref in the prose and
    the entry it points to read as the same number. */
 .cited-ordinal {

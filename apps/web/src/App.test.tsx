@@ -331,6 +331,40 @@ describe("PR D — sidebar, routing, and rehydration by URL", () => {
     expect(screen.getByTestId("cited-claims")).toHaveTextContent("s1");
   });
 
+  it("jumps to the bottom when landing on a rehydrated conversation", async () => {
+    // jsdom doesn't lay out, so pin the scroller taller than its viewport and capture writes
+    // to scrollTop — the mount effect should snap it to scrollHeight (the newest turn).
+    let scrollTop = 0;
+    const proto = window.HTMLElement.prototype;
+    const origScrollTop = Object.getOwnPropertyDescriptor(proto, "scrollTop");
+    const origScrollHeight = Object.getOwnPropertyDescriptor(proto, "scrollHeight");
+    const setSpy = vi.fn((v: number) => {
+      scrollTop = v;
+    });
+    Object.defineProperty(proto, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: setSpy,
+    });
+    Object.defineProperty(proto, "scrollHeight", { configurable: true, value: 2000 });
+    try {
+      renderApp(
+        {
+          streamFn: streamOf([]),
+          loadConversation: async () => detail,
+          listConversations: async () => summaries,
+        },
+        "/c/ctx-restored",
+      );
+
+      await screen.findByTestId("agent-turn");
+      await waitFor(() => expect(setSpy).toHaveBeenCalledWith(2000));
+    } finally {
+      if (origScrollTop) Object.defineProperty(proto, "scrollTop", origScrollTop);
+      if (origScrollHeight) Object.defineProperty(proto, "scrollHeight", origScrollHeight);
+    }
+  });
+
   it("shows the landing at the root route (new chat)", async () => {
     renderApp(
       {

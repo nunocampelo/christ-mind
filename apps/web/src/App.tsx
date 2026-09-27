@@ -78,6 +78,20 @@ const Chat = ({
   const { scrollRef, spacerHeight, anchorOnSend } = useScrollAnchor(busy);
   anchorRef.current = anchorOnSend;
 
+  // Chat is keyed on the conversation, so this fires once per open. Landing on an existing
+  // conversation should show its newest turn, not the top. Jump instantly (no smooth scroll:
+  // there's nothing to animate from on a fresh mount) after layout settles. Empty (fresh)
+  // chats have nothing to scroll.
+  useEffect(() => {
+    if (initialTurns.length === 0) return;
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+    // Mount-only: initialTurns is the seed for this keyed instance and never changes in place.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const streamingText = turns.length ? turns[turns.length - 1].text : "";
   const { isAtBottom, scrollToBottom } = useScrollToBottom(
     scrollRef,

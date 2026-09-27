@@ -34,4 +34,23 @@ describe("Transcript scroll anchoring (PR 7)", () => {
     expect(screen.getByTestId("user-turn")).toHaveAttribute("data-role", "user");
     expect(screen.getByTestId("agent-turn")).toHaveAttribute("data-role", "agent");
   });
+
+  it("renders inline superscripts while the agent prose streams, before answer lands", () => {
+    // Mid-stream: prose (with markers) has arrived but turn.answer is still undefined.
+    // The superscript must show now, not only once the evidence artifact fills answer.
+    render(
+      <Transcript
+        turns={[
+          turn({
+            id: 0,
+            role: TurnRole.agent,
+            text: "Forgiveness undoes it. [c1]",
+          }),
+        ]}
+        busy
+      />,
+    );
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.queryByText(/\[c1\]/)).not.toBeInTheDocument();
+  });
 });

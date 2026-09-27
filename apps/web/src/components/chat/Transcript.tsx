@@ -1,3 +1,4 @@
+import type { AgentAnswer } from "@/api/agentApi";
 import { TurnRole, type Turn } from "@/hooks/useA2AChat";
 import CitedAnswer from "@/components/chat/CitedAnswer";
 import MarkdownMessage from "@/components/chat/MarkdownMessage";
@@ -35,11 +36,22 @@ const ReconnectChip = ({ onReconnect }: { onReconnect?: () => void }) => (
   </button>
 );
 
+// Empty answer so CitedAnswer renders its streaming branch (pending superscripts) from the
+// prose deltas before the evidence artifact lands and fills `turn.answer`.
+const STREAMING_ANSWER: AgentAnswer = {
+  text: "",
+  concepts: [],
+  cited_claims: [],
+  inferred_chains: [],
+};
+
 const AgentTurn = ({ turn, busy }: { turn: Turn; busy: boolean }) => (
   <>
     <ReasoningTimeline steps={turn.steps} busy={busy} />
     {turn.answer ? (
-      <CitedAnswer answer={turn.answer} streamedText={turn.text} />
+      <CitedAnswer answer={turn.answer} streamedText={turn.text} turnId={turn.id} />
+    ) : turn.text ? (
+      <CitedAnswer answer={STREAMING_ANSWER} streamedText={turn.text} turnId={turn.id} />
     ) : (
       <MarkdownMessage text={turn.text} />
     )}

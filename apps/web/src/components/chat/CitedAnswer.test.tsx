@@ -61,9 +61,48 @@ describe("CitedAnswer", () => {
     // The marker becomes a reference link to the source anchor; the literal "[c1]"
     // never appears in the prose.
     const marker = screen.getByRole("link", { name: "Source 1" });
-    expect(marker).toHaveAttribute("href", "#src-c1");
+    expect(marker).toHaveAttribute("href", "#src-0-c1");
     expect(marker).toHaveTextContent("1");
     expect(screen.queryByText(/\[c1\]/)).not.toBeInTheDocument();
+  });
+
+  it("namespaces the source anchor by turn so same-claim markers don't collide", () => {
+    // Two messages can cite the same claim_id; a bare "#src-c1" would jump to whichever
+    // rendered first. The turnId keeps each message's marker pointing at its own source.
+    const answer = {
+      ...ANSWER,
+      text: "Forgiveness undoes it. [c1]",
+      inferred_chains: [],
+    };
+    const { rerender } = render(<CitedAnswer answer={answer} streamedText="" turnId={3} />);
+    expect(screen.getByRole("link", { name: "Source 1" })).toHaveAttribute(
+      "href",
+      "#src-3-c1",
+    );
+    expect(screen.getByTestId("cited-claim")).toHaveAttribute("id", "src-3-c1");
+
+    rerender(<CitedAnswer answer={answer} streamedText="" turnId={7} />);
+    expect(screen.getByRole("link", { name: "Source 1" })).toHaveAttribute(
+      "href",
+      "#src-7-c1",
+    );
+    expect(screen.getByTestId("cited-claim")).toHaveAttribute("id", "src-7-c1");
+  });
+
+  it("renders superscripts while streaming, before the evidence artifact lands", () => {
+    // The answer's structured payload hasn't arrived (empty text/claims); the prose is
+    // still streaming with raw markers. Superscripts must show now, numbered, with no
+    // literal "[c1]" leaking through and no source link yet (nothing to jump to).
+    render(
+      <CitedAnswer
+        answer={{ text: "", concepts: [], cited_claims: [], inferred_chains: [] }}
+        streamedText="Forgiveness undoes it. [c1] It heals. [c2]"
+      />,
+    );
+    expect(screen.queryByText(/\[c1\]/)).not.toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("orders the Sources panel by citation order, not retrieval order", () => {

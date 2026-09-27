@@ -389,4 +389,20 @@ describe("parseCitedProse", () => {
       .map((s) => (s.kind === "citation" ? s.ordinal : 0));
     expect(ordinals).toEqual([1, 2, 1]);
   });
+
+  it("pending: numbers every marker with a null claim before the evidence lands", () => {
+    // Mid-stream: no claims yet, but markers already in the prose should get superscripts,
+    // numbered by first appearance and reusing an id's ordinal, matching the resolved pass.
+    const segments = parseCitedProse("A [c1] B [c2] C [c1]", [], true);
+    const cites = segments.filter((s) => s.kind === "citation");
+    expect(cites.map((s) => (s.kind === "citation" ? s.ordinal : 0))).toEqual([
+      1, 2, 1,
+    ]);
+    expect(cites.every((s) => s.kind === "citation" && s.claim === null)).toBe(true);
+    const text = segments
+      .filter((s) => s.kind === "text")
+      .map((s) => (s.kind === "text" ? s.text : ""))
+      .join("");
+    expect(text).not.toContain("[c1]");
+  });
 });
