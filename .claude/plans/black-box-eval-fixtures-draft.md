@@ -310,13 +310,20 @@ consistent.
     Corpus is text chapters 1-4 only; there is no Workbook here. GOOD = say the material
     isn't in what's available. BAD = invent a lesson or cite a t-id that doesn't exist.
 
-- id: outside-second-coming-020
-  question: "What does the Course teach about the Second Coming?"
+- id: outside-special-relationship-020
+  question: "What does the Course teach about the special relationship?"
   evaluation:
     intent: outside_corpus
     corpus_reality: outside
     expected_behavior: [acknowledge_material_not_present]
-    prohibited_behavior: [fabricate_citation, fill_gap_with_uncited_knowledge]
+    prohibited_behavior: [fabricate_citation, fill_gap_with_uncited_knowledge, import_external_doctrine]
+  notes: >
+    CORRECTED from the first draft's "Second Coming" — that IS defined in ch.1-4
+    (t4-4-11, "the SECOND coming of Christ means nothing more than the end of the ego's
+    rule..."), so it was not an outside case. "Special relationship" (0 hits in t1-t4) is
+    a genuine one: a famous ACIM concept that belongs to later chapters. GOOD = say it's
+    not in the available material, don't import the later-chapter doctrine the model may
+    know. Verified absent in corpus.jsonl (2026-09-27).
 
 - id: outside-author-bio-021
   question: "Who transcribed the Course and in what year?"
