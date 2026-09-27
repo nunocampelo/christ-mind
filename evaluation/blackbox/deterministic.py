@@ -33,7 +33,8 @@ class DeterministicEvaluator:
         ]
 
     def _non_empty(self, response: BlackBoxResponse) -> CriterionResult:
-        return _gating("non_empty", bool(response.answer.strip()), "answer is empty")
+        ok = bool(response.answer.strip())
+        return _gating("non_empty", ok, "" if ok else "answer is empty")
 
     def _citation_integrity(self, response: BlackBoxResponse) -> CriterionResult:
         fabricated = response.citation_diagnostics.unknown_ids

@@ -284,7 +284,7 @@ artifact is `AgentAnswer.model_dump_json()` carrying `cited_claims` (kept distin
   scripted reply), the A2A client's request-build / response-parse (against
   `test_a2a_endpoint.py`'s recorded shape). Fast, deterministic.
 - **Live integration tier** (`python -m evaluation.blackbox.run --live`): stands up the real
-  stack and runs the ~22 fixtures through it. There is **no offline black-box run** — a
+  stack and runs the 23 fixtures through it. There is **no offline black-box run** — a
   product eval can't score answers the product can't generate. This is an
   integration/evaluation run, not an ordinary unit test.
 
@@ -374,16 +374,21 @@ A case separates required from acceptable evidence, so the harness never becomes
 exact-passage matcher:
 
 ```json
-{"id": "...", "question": "...", "intent": "purpose", "corpus_reality": "adequate",
+{"id": "...", "question": "...", "intent": "purpose", "corpus_reality": "sufficient",
  "expected_behavior": [...], "prohibited_behavior": [...],
  "must_include_source_ids": ["t1-0-1"],
  "may_include_source_ids": ["t1-0-2", "t2-0-16"],
  "must_include_claim_ids": [...], "may_include_claim_ids": [...]}
 ```
 
-`required_source_present` gates only on `must_include_*`; `may_include_*` informs the judge
-and the A/B/C diagnostic but never gates. Partial/outside cases legitimately have empty
-`must_include`, so their `required_source_present` is `not_evaluated`.
+`corpus_reality` is `sufficient` / `insufficient` / `absent` (has-enough / has-some-but-not-
+enough / not-present), which maps onto the diagnostic — `sufficient`→expect A✓B✓,
+`insufficient`→A✓B✗, `absent`→A✗. `required_source_present` gates only on `must_include_*`;
+`may_include_*` informs the judge and the A/B/C diagnostic but never gates. `insufficient`/
+`absent` cases legitimately have empty `must_include`, so their `required_source_present` is
+`not_evaluated`. **Gold source/claim ids are given only to the deterministic evaluator, never
+to the LLM/System-1 judge** — the judge sees question + answer + actual cited evidence +
+behaviour rubric, so it is never told what the answer was "supposed to" cite.
 
 ### Tests (root `tests/`, offline tier)
 
