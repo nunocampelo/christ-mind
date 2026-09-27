@@ -17,6 +17,7 @@ def _case() -> BlackBoxCase:
         must_include_any_source_ids=frozenset(),
         may_include_source_ids=frozenset(),
         must_include_claim_ids=frozenset(),
+        must_include_any_claim_ids=frozenset(),
         may_include_claim_ids=frozenset(),
     )
 

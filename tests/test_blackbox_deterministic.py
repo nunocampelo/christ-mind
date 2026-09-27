@@ -51,6 +51,7 @@ def _case(**overrides: object) -> BlackBoxCase:
         "must_include_any_source_ids": frozenset(),
         "may_include_source_ids": frozenset(),
         "must_include_claim_ids": frozenset(),
+        "must_include_any_claim_ids": frozenset(),
         "may_include_claim_ids": frozenset(),
     }
     base.update(overrides)
@@ -89,31 +90,53 @@ def test_empty_answer_fails():
     assert _crit(results, "non_empty").status == "fail"
 
 
+_CRIT = "required_evidence_present"
+
+
 def test_required_source_present_passes_when_hit():
     case = _case(must_include_source_ids=frozenset({_REAL_SOURCE}))
     results = DeterministicEvaluator().evaluate(case, _response())
-    assert _crit(results, "required_source_present").status == "pass"
+    assert _crit(results, _CRIT).status == "pass"
 
 
 def test_required_source_missing_fails():
     case = _case(must_include_source_ids=frozenset({"t1-1-1"}))
     results = DeterministicEvaluator().evaluate(case, _response())
-    assert _crit(results, "required_source_present").status == "fail"
+    assert _crit(results, _CRIT).status == "fail"
 
 
-def test_no_required_source_is_not_evaluated():
+def test_no_required_evidence_is_not_evaluated():
     results = DeterministicEvaluator().evaluate(_case(), _response())
-    assert _crit(results, "required_source_present").status == "not_evaluated"
+    assert _crit(results, _CRIT).status == "not_evaluated"
 
 
-def test_must_include_any_passes_when_one_present():
+def test_must_include_any_source_passes_when_one_present():
     # response cites _REAL_SOURCE (t2-0-16); any-of includes it plus an absent id.
     case = _case(must_include_any_source_ids=frozenset({_REAL_SOURCE, "t1-1-1"}))
     results = DeterministicEvaluator().evaluate(case, _response())
-    assert _crit(results, "required_source_present").status == "pass"
+    assert _crit(results, _CRIT).status == "pass"
 
 
-def test_must_include_any_fails_when_none_present():
+def test_must_include_any_source_fails_when_none_present():
     case = _case(must_include_any_source_ids=frozenset({"t1-1-1", "t1-1-2"}))
     results = DeterministicEvaluator().evaluate(case, _response())
-    assert _crit(results, "required_source_present").status == "fail"
+    assert _crit(results, _CRIT).status == "fail"
+
+
+def test_required_claim_missing_fails_even_when_source_hit():
+    # response cites the right SOURCE but the case demands a specific CLAIM it didn't cite.
+    case = _case(must_include_claim_ids=frozenset({"a-different-claim-id"}))
+    results = DeterministicEvaluator().evaluate(case, _response())
+    assert _crit(results, _CRIT).status == "fail"
+
+
+def test_must_include_any_claim_passes_when_one_present():
+    case = _case(must_include_any_claim_ids=frozenset({_REAL_CLAIM, "other-id"}))
+    results = DeterministicEvaluator().evaluate(case, _response())
+    assert _crit(results, _CRIT).status == "pass"
+
+
+def test_must_include_any_claim_fails_when_none_present():
+    case = _case(must_include_any_claim_ids=frozenset({"id-a", "id-b"}))
+    results = DeterministicEvaluator().evaluate(case, _response())
+    assert _crit(results, _CRIT).status == "fail"

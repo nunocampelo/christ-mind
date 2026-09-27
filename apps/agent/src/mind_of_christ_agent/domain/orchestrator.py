@@ -23,6 +23,8 @@ from application.mapping.map_situation import SituationMapper, map_situation
 from infrastructure.llm.anthropic_proxy import ChatStream
 from mcp.types import CallToolResult, TextContent, Tool
 
+from mind_of_christ_agent.domain.meta_question import meta_query_terms
+
 from mind_of_christ_agent.application.answer import (
     AgentAnswer,
     AgentRequest,
@@ -100,13 +102,18 @@ class Orchestrator:
         # The concepts to search are already known from the mapping, so retrieve them in
         # one deterministic batch rather than spending an LLM decision call per concept.
         # The model still gets `find_claims` for reactive follow-up when this is thin.
-        if concepts:
+        #
+        # A question *about the Course itself* ("what is the Course about?") maps to the
+        # Course's contents, never to the corpus, so the thesis passage is never searched;
+        # supplement the concepts with a direct "course" query in that one narrow case.
+        queries = _dedupe(concepts + meta_query_terms(request.situation))
+        if queries:
             yield StepStatusEvent(
-                text=f"Calling find_claims for {len(concepts)} mapped concept(s)"
+                text=f"Calling find_claims for {len(queries)} mapped concept(s)"
             )
-            searched_terms.update(_call_terms({"queries": concepts}))
+            searched_terms.update(_call_terms({"queries": queries}))
             result = await self._mcp_client.call_tool(
-                "find_claims", {"queries": concepts}
+                "find_claims", {"queries": queries}
             )
             _absorb("find_claims", result, cited_claims, inferred_chains)
             observations.append(
@@ -370,6 +377,20 @@ def _normalize_term(term: str) -> str:
     t = " ".join(term.lower().split())
     t = _LEADING_ARTICLE.sub("", t)
     return t.replace("'s ", " ").replace("' ", " ").strip()
+
+
+def _dedupe(terms: list[str]) -> list[str]:
+    """Order-preserving dedupe on the normalized core, keeping each term's first spelling --
+    so a supplemental "course" isn't searched twice when a mapped concept already folds to it.
+    Uses the same normalization as the repeat-guard, so "the Course" and "course" collide."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for term in terms:
+        key = _normalize_term(term)
+        if key and key not in seen:
+            seen.add(key)
+            result.append(term)
+    return result
 
 
 def _call_terms(arguments: dict[str, Any]) -> frozenset[str]:

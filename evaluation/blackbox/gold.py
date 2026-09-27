@@ -86,7 +86,11 @@ class BlackBoxCase:
     must_include_source_ids: frozenset[str]
     must_include_any_source_ids: frozenset[str]
     may_include_source_ids: frozenset[str]
+    # Claim-level requirements are stricter than source-level: they pin the *specific* claim
+    # (e.g. the Course's thesis, not merely any claim from the thesis passage). must_include_any
+    # accepts one of several equally-valid specific claims.
     must_include_claim_ids: frozenset[str]
+    must_include_any_claim_ids: frozenset[str]
     may_include_claim_ids: frozenset[str]
 
 
@@ -119,6 +123,9 @@ def load_cases(path: Path) -> list[BlackBoxCase]:
                 ),
                 must_include_claim_ids=_str_set(
                     record.get("must_include_claim_ids", [])
+                ),
+                must_include_any_claim_ids=_str_set(
+                    record.get("must_include_any_claim_ids", [])
                 ),
                 may_include_claim_ids=_str_set(record.get("may_include_claim_ids", [])),
             )

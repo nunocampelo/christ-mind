@@ -29,7 +29,7 @@ class DeterministicEvaluator:
         return [
             self._non_empty(response),
             self._citation_integrity(response),
-            self._required_source_present(case, response),
+            self._required_evidence_present(case, response),
         ]
 
     def _non_empty(self, response: BlackBoxResponse) -> CriterionResult:
@@ -56,21 +56,28 @@ class DeterministicEvaluator:
             problems.append(f"cited source_id(s) not in corpus: {unresolved}")
         return _gating("citation_integrity", not problems, "; ".join(problems))
 
-    def _required_source_present(
+    def _required_evidence_present(
         self, case: BlackBoxCase, response: BlackBoxResponse
     ) -> CriterionResult:
-        if not case.must_include_source_ids and not case.must_include_any_source_ids:
+        requirements = (
+            case.must_include_source_ids
+            or case.must_include_any_source_ids
+            or case.must_include_claim_ids
+            or case.must_include_any_claim_ids
+        )
+        if not requirements:
             return CriterionResult(
-                name="required_source_present",
+                name="required_evidence_present",
                 kind="gating",
                 status="not_evaluated",
-                detail="case names no required sources",
+                detail="case names no required evidence",
             )
         cited_sources = {c.source_id for c in response.cited_claims}
+        cited_claims = {c.claim_id for c in response.cited_claims}
         problems: list[str] = []
-        missing_all = sorted(case.must_include_source_ids - cited_sources)
-        if missing_all:
-            problems.append(f"required source(s) not surfaced: {missing_all}")
+        missing_sources = sorted(case.must_include_source_ids - cited_sources)
+        if missing_sources:
+            problems.append(f"required source(s) not surfaced: {missing_sources}")
         if case.must_include_any_source_ids and not (
             case.must_include_any_source_ids & cited_sources
         ):
@@ -78,7 +85,17 @@ class DeterministicEvaluator:
                 "none of the acceptable source(s) surfaced: "
                 f"{sorted(case.must_include_any_source_ids)}"
             )
-        return _gating("required_source_present", not problems, "; ".join(problems))
+        missing_claims = sorted(case.must_include_claim_ids - cited_claims)
+        if missing_claims:
+            problems.append(f"required claim(s) not surfaced: {missing_claims}")
+        if case.must_include_any_claim_ids and not (
+            case.must_include_any_claim_ids & cited_claims
+        ):
+            problems.append(
+                "none of the acceptable claim(s) surfaced: "
+                f"{sorted(case.must_include_any_claim_ids)}"
+            )
+        return _gating("required_evidence_present", not problems, "; ".join(problems))
 
 
 def make_deterministic() -> DeterministicEvaluator:

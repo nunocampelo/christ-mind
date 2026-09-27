@@ -143,6 +143,74 @@ async def test_run_stream_seeds_all_mapped_concepts_in_one_batch():
 
 
 @pytest.mark.anyio
+async def test_meta_question_appends_course_to_seed_batch():
+    mcp = _FakeMcpClient(
+        {
+            "find_claims": CallToolResult(
+                content=[TextContent(type="text", text="claims")],
+                structured_content={"result": [_claim_result()]},
+            )
+        }
+    )
+    chat_stream = _scripted_stream('{"final": "answer"}')
+    orchestrator = Orchestrator(_StubMapper(["forgiveness", "atonement"]), mcp, chat_stream)
+
+    async for _ in orchestrator.run_stream(
+        AgentRequest(situation="What is the Course all about?", max_steps=4)
+    ):
+        pass
+
+    # A question about the Course itself supplements the mapped concepts with "course".
+    assert mcp.calls == [
+        ("find_claims", {"queries": ["forgiveness", "atonement", "course"]})
+    ]
+
+
+@pytest.mark.anyio
+async def test_meta_supplement_is_not_searched_twice():
+    mcp = _FakeMcpClient(
+        {
+            "find_claims": CallToolResult(
+                content=[TextContent(type="text", text="claims")],
+                structured_content={"result": [_claim_result()]},
+            )
+        }
+    )
+    chat_stream = _scripted_stream('{"final": "answer"}')
+    # A mapped concept already folds to "course"; the supplement must not duplicate it.
+    orchestrator = Orchestrator(_StubMapper(["the course", "love"]), mcp, chat_stream)
+
+    async for _ in orchestrator.run_stream(
+        AgentRequest(situation="What is the Course?", max_steps=4)
+    ):
+        pass
+
+    assert mcp.calls == [("find_claims", {"queries": ["the course", "love"]})]
+
+
+@pytest.mark.anyio
+async def test_non_meta_question_seed_batch_unchanged():
+    mcp = _FakeMcpClient(
+        {
+            "find_claims": CallToolResult(
+                content=[TextContent(type="text", text="claims")],
+                structured_content={"result": [_claim_result()]},
+            )
+        }
+    )
+    chat_stream = _scripted_stream('{"final": "answer"}')
+    orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
+
+    async for _ in orchestrator.run_stream(
+        AgentRequest(situation="What does the Course say about forgiveness?", max_steps=4)
+    ):
+        pass
+
+    # A content question naming the Course must NOT get the supplemental "course" query.
+    assert mcp.calls == [("find_claims", {"queries": ["forgiveness"]})]
+
+
+@pytest.mark.anyio
 async def test_repeat_tool_call_is_not_re_run():
     empty = CallToolResult(
         content=[TextContent(type="text", text="")],
