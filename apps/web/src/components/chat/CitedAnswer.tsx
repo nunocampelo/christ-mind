@@ -1,5 +1,6 @@
 import type { AgentAnswer, CitedClaim } from "@/api/agentApi";
 import { parseCitedProse } from "@/api/agentApi";
+import { sourceReferenceParts } from "@/api/sourceRef";
 import MarkdownMessage from "@/components/chat/MarkdownMessage";
 import "@/components/chat/chat.css";
 
@@ -21,6 +22,18 @@ const claimGloss = (claim: CitedClaim): string => {
 
 const sourceAnchor = (claimId: string): string => `src-${claimId}`;
 
+// The reference pill: work title over location ("A Course in Miracles" / "Chapter 1
+// Section I Paragraph 1"). Location is dropped when there's nothing beyond the title.
+const SourceRef = ({ claim }: { claim: CitedClaim }) => {
+  const { title, location } = sourceReferenceParts(claim);
+  return (
+    <span className="cited-source">
+      <span className="cited-source-title">{title}</span>
+      {location && <span className="cited-source-location">{location}</span>}
+    </span>
+  );
+};
+
 // One evidence unit: gloss + quote + source id, addressable by anchor so an inline
 // superscript can jump to it. Rendered inside the Sources panel now; the same
 // {claim, ordinal} shape is what a future click-popover would consume, so moving to a
@@ -34,9 +47,11 @@ const ClaimEvidence = ({
 }) => (
   <div className="cited-claim" id={sourceAnchor(claim.claim_id)} data-testid="cited-claim">
     {ordinal !== undefined && <span className="cited-ordinal">{ordinal}</span>}
-    <p className="cited-claim-gloss">{claimGloss(claim)}</p>
-    <blockquote className="cited-claim-evidence">{claim.evidence}</blockquote>
-    <span className="cited-source">{claim.source_id}</span>
+    <div className="cited-claim-body">
+      <p className="cited-claim-gloss">{claimGloss(claim)}</p>
+      <blockquote className="cited-claim-evidence">{claim.evidence}</blockquote>
+      <SourceRef claim={claim} />
+    </div>
   </div>
 );
 
@@ -127,7 +142,7 @@ const CitedAnswer = ({ answer, streamedText }: CitedAnswerProps) => {
               {chain.links.map((link, j) => (
                 <li key={`${link.claim_id}-${j}`} className="inferred-link">
                   <span className="inferred-link-gloss">{claimGloss(link)}</span>
-                  <span className="cited-source">{link.source_id}</span>
+                  <SourceRef claim={link} />
                 </li>
               ))}
             </ol>

@@ -165,7 +165,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The evidence entry becomes a flow row so its ordinal sits to the left of the gloss. */
+/* Ordinal (when present) sits to the left; gloss, quote and source always stack in the
+   body cell, so an uncited claim with no ordinal doesn't spill the quote into a second
+   column. */
 .cited-claim {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -173,8 +175,13 @@
   column-gap: 0.5rem;
 }
 .cited-claim > .cited-ordinal {
-  grid-row: 1 / span 3;
   margin-top: 0.1rem;
+}
+.cited-claim-body {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 .inferred-badge {
   padding: 0.05em 0.5em;
@@ -197,14 +204,22 @@
   font-style: italic;
 }
 .cited-source {
-  display: inline-block;
+  display: inline-flex;
+  flex-direction: column;
   margin-top: 0.25rem;
-  padding: 0.05em 0.5em;
-  border-radius: 999px;
+  padding: 0.25em 0.7em;
+  border-radius: 0.75rem;
   background: var(--color-muted);
   color: var(--color-muted-foreground);
   font-size: 0.75rem;
+  line-height: 1.35;
   font-variant-numeric: tabular-nums;
+}
+.cited-source-title {
+  font-weight: 600;
+}
+.cited-source-location {
+  color: color-mix(in oklch, var(--color-muted-foreground) 80%, transparent);
 }
 .inferred-chain {
   margin: 0.5rem 0;
@@ -218,6 +233,74 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* On-violet overrides: the dark agent bubble is a filled violet surface, so the cited
+   apparatus (chips, dividers, citation numbers, evidence bars) — all tuned against the
+   page background — is re-tinted to translucent-white / near-white so it stays legible
+   on violet. Scoped to `.dark .agent-bubble-surface`; light mode and other contexts are
+   untouched. `currentColor` is the bubble's own near-white foreground. */
+.dark .agent-bubble-surface .cited-section,
+.dark .agent-bubble-surface .inferred-section {
+  border-top-color: color-mix(in oklch, currentColor 22%, transparent);
+}
+.dark .agent-bubble-surface .cited-heading,
+.dark .agent-bubble-surface .inferred-heading {
+  color: color-mix(in oklch, currentColor 78%, transparent);
+}
+.dark .agent-bubble-surface .cited-ordinal,
+.dark .agent-bubble-surface .cited-marker {
+  color: currentColor;
+}
+.dark .agent-bubble-surface .cited-marker:hover {
+  background: color-mix(in oklch, currentColor 20%, transparent);
+}
+.dark .agent-bubble-surface .cited-claim-evidence,
+.dark .agent-bubble-surface .agent-markdown blockquote {
+  border-left-color: color-mix(in oklch, currentColor 30%, transparent);
+  color: color-mix(in oklch, currentColor 82%, transparent);
+}
+.dark .agent-bubble-surface .cited-source {
+  background: color-mix(in oklch, currentColor 12%, transparent);
+  color: color-mix(in oklch, currentColor 85%, transparent);
+}
+.dark .agent-bubble-surface .cited-source-location {
+  color: color-mix(in oklch, currentColor 68%, transparent);
+}
+.dark .agent-bubble-surface .agent-markdown code {
+  background: color-mix(in oklch, currentColor 14%, transparent);
+}
+.dark .agent-bubble-surface .agent-markdown a {
+  color: currentColor;
+}
+.dark .agent-bubble-surface .inferred-chain {
+  border-left-color: color-mix(in oklch, currentColor 45%, transparent);
+}
+.dark .agent-bubble-surface .inferred-badge {
+  background: color-mix(in oklch, currentColor 18%, transparent);
+  color: color-mix(in oklch, currentColor 92%, transparent);
+}
+.dark .agent-bubble-surface .reasoning-panel {
+  border-color: color-mix(in oklch, currentColor 20%, transparent);
+  background: color-mix(in oklch, currentColor 8%, transparent);
+}
+.dark .agent-bubble-surface .reasoning-summary,
+.dark .agent-bubble-surface .reasoning-step {
+  color: color-mix(in oklch, currentColor 80%, transparent);
+}
+.dark .agent-bubble-surface .reasoning-steps {
+  border-top-color: color-mix(in oklch, currentColor 18%, transparent);
+}
+.dark .agent-bubble-surface .reasoning-chip {
+  background: color-mix(in oklch, currentColor 14%, transparent);
+  color: color-mix(in oklch, currentColor 85%, transparent);
+}
+.dark .agent-bubble-surface .reasoning-chip-tool {
+  background: color-mix(in oklch, currentColor 20%, transparent);
+  color: currentColor;
+}
+.dark .agent-bubble-surface .reasoning-step-dot {
+  background: currentColor;
 }
 
 /* Reasoning timeline: the agent's tool-call steps for a turn, collapsible above the

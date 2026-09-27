@@ -19,7 +19,7 @@ const ScrollToBottomButton = ({ visible, onClick }: ScrollToBottomButtonProps) =
     className={cn(
       // Horizontally centered on the composer pill, floating just above it. The X translate
       // stays fixed (centering) while only Y animates for the slide-up show/hide.
-      "absolute bottom-full left-1/2 -translate-x-1/2 mb-3 z-20",
+      "absolute bottom-full left-1/2 -translate-x-1/2 mb-8 z-20",
       "flex h-9 w-9 items-center justify-center rounded-full",
       "border border-border bg-muted text-muted-foreground shadow-md",
       "transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-opacity",

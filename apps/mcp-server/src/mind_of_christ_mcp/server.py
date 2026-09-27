@@ -11,6 +11,7 @@ from loguru import logger
 from mcp.server.mcpserver import MCPServer
 
 from application.retrieval.evidence import evidence_text as _evidence_text
+from application.retrieval.evidence import source_for_claim as _source_for_claim
 from application.retrieval.find_claims import find_claims_batch as _find_claims_batch
 from application.retrieval.find_claims_for_entity import (
     find_claims_for_entity as _find_claims_for_entity,
@@ -29,9 +30,16 @@ mcp = MCPServer(name="mind-of-christ")
 
 
 def _to_claim_result(claim: Claim) -> ClaimResult:
+    source = _source_for_claim(claim)
     return ClaimResult(
         claim_id=claim.claim_id,
         source_id=claim.source_id,
+        book=source.book if source else "",
+        chapter=source.chapter if source else 0,
+        verse=source.verse if source else None,
+        section=source.section if source else None,
+        paragraph=source.paragraph if source else None,
+        edition=source.edition if source else "",
         subject=claim.subject,
         predicate=claim.predicate.value,
         object=claim.object,

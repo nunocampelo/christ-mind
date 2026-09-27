@@ -91,7 +91,7 @@ const Transcript = ({
           data-turn
           data-role="agent"
           data-testid="agent-turn"
-          className="self-start max-w-[95%] text-foreground"
+          className="agent-bubble-surface self-start max-w-[95%] rounded-[var(--radius-app)] bg-agent-bubble px-5 py-4 text-agent-bubble-foreground"
         >
           <AgentTurn turn={turn} busy={busy && i === turns.length - 1} />
         </div>

@@ -37,7 +37,7 @@ const Composer = ({
           placeholder="Describe a situation…"
           onChange={onChange}
           onKeyDown={onKeyDown ?? (() => {})}
-          className="flex-1 resize-none bg-transparent px-2 py-1.5 text-base leading-6 text-foreground placeholder:text-muted-foreground focus:outline-none"
+          className="flex-1 resize-none bg-transparent px-2 py-1.5 text-base leading-6 text-foreground placeholder:text-muted-foreground focus:outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         />
         {busy ? (
           <Button

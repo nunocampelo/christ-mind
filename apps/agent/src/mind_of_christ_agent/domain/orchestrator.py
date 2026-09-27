@@ -313,12 +313,22 @@ def _absorb(
             inferred_chains.append(InferredChain(links=links))
 
 
+def _opt_int(value: object) -> int | None:
+    return int(value) if isinstance(value, int) else None
+
+
 def _to_cited_claim(item: object) -> CitedClaim | None:
     if not isinstance(item, dict) or "claim_id" not in item:
         return None
     return CitedClaim(
         claim_id=str(item["claim_id"]),
         source_id=str(item.get("source_id", "")),
+        book=str(item.get("book", "")),
+        chapter=int(item.get("chapter") or 0),
+        verse=_opt_int(item.get("verse")),
+        section=_opt_int(item.get("section")),
+        paragraph=_opt_int(item.get("paragraph")),
+        edition=str(item.get("edition", "")),
         subject=str(item.get("subject", "")),
         predicate=str(item.get("predicate", "")),
         object=item.get("object"),

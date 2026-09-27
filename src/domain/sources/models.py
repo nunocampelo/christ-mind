@@ -10,4 +10,5 @@ class Source:
     verse: int | None = None
     section: int | None = None
     paragraph: int | None = None
+    edition: str = ""
     concepts: tuple[str, ...] = field(default_factory=tuple)

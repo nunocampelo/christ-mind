@@ -61,6 +61,7 @@ def _parse_chapter_file(path: Path) -> tuple[Source, ...]:
                 chapter=chapter,
                 section=section,
                 paragraph=number,
+                edition="Sparkly Edition",
                 text=text,
             )
         )

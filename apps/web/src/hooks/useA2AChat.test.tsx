@@ -10,6 +10,12 @@ const ANSWER: AgentAnswer = {
     {
       claim_id: "c1",
       source_id: "s1",
+      book: "",
+      chapter: 0,
+      verse: null,
+      section: null,
+      paragraph: null,
+      edition: "",
       subject: "the ego",
       predicate: "teaches",
       object: "attack",

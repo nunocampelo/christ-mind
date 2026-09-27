@@ -14,12 +14,14 @@ let flag: boolean | null = null;
 const Harness = ({
   geo,
   version,
+  reservedTail,
 }: {
   geo: { scrollTop: number; scrollHeight: number; clientHeight: number };
   version: unknown;
+  reservedTail?: number;
 }) => {
   const ref = useRef<HTMLDivElement | null>(null);
-  const { isAtBottom, scrollToBottom } = useScrollToBottom(ref, version);
+  const { isAtBottom, scrollToBottom } = useScrollToBottom(ref, version, reservedTail);
   flag = isAtBottom;
   return (
     <div
@@ -58,6 +60,17 @@ describe("useScrollToBottom", () => {
       <Harness geo={{ scrollTop: 100, scrollHeight: 1000, clientHeight: 300 }} version={0} />,
     );
     expect(flag).toBe(false);
+  });
+
+  it("counts the reserved tail spacer as at-bottom", () => {
+    render(
+      <Harness
+        geo={{ scrollTop: 100, scrollHeight: 1000, clientHeight: 300 }}
+        version={0}
+        reservedTail={600}
+      />,
+    );
+    expect(flag).toBe(true);
   });
 
   it("scrolls to the bottom on demand", () => {

@@ -6,6 +6,12 @@ import CitedAnswer from "@/components/chat/CitedAnswer";
 const CLAIM = {
   claim_id: "c1",
   source_id: "T-1.II.3",
+  book: "",
+  chapter: 0,
+  verse: null,
+  section: null,
+  paragraph: null,
+  edition: "",
   subject: "the ego",
   predicate: "teaches",
   object: "attack",
@@ -114,6 +120,68 @@ describe("CitedAnswer", () => {
     const cited = screen.getByTestId("cited-claims");
     expect(within(cited).getByText("Not: God is partial")).toBeInTheDocument();
     expect(within(cited).getByText("God is NOT partial.")).toBeInTheDocument();
+  });
+
+  it("renders a readable ACIM reference with a roman-numeral section", () => {
+    render(
+      <CitedAnswer
+        answer={{
+          ...ANSWER,
+          inferred_chains: [],
+          cited_claims: [
+            { ...CLAIM, book: "ACIM", chapter: 3, section: 4, paragraph: 25 },
+          ],
+        }}
+        streamedText=""
+      />,
+    );
+    expect(screen.getByText("A Course in Miracles")).toBeInTheDocument();
+    expect(screen.getByText("Chapter 3 Section IV Paragraph 25")).toBeInTheDocument();
+  });
+
+  it("renders section 0 as the chapter Introduction", () => {
+    render(
+      <CitedAnswer
+        answer={{
+          ...ANSWER,
+          inferred_chains: [],
+          cited_claims: [
+            { ...CLAIM, book: "ACIM", chapter: 1, section: 0, paragraph: 1 },
+          ],
+        }}
+        streamedText=""
+      />,
+    );
+    expect(screen.getByText("A Course in Miracles")).toBeInTheDocument();
+    expect(screen.getByText("Chapter 1 Introduction Paragraph 1")).toBeInTheDocument();
+  });
+
+  it("renders a Bible reference as book chapter:verse", () => {
+    render(
+      <CitedAnswer
+        answer={{
+          ...ANSWER,
+          inferred_chains: [],
+          cited_claims: [{ ...CLAIM, book: "Matthew", chapter: 5, verse: 7 }],
+        }}
+        streamedText=""
+      />,
+    );
+    expect(screen.getByText("Matthew")).toBeInTheDocument();
+    expect(screen.getByText("5:7")).toBeInTheDocument();
+  });
+
+  it("keeps an uncited claim's quote below its gloss", () => {
+    // No inline [c1] marker in the prose -> the claim has no ordinal. The gloss, quote and
+    // source must still stack inside one body cell rather than the quote floating right.
+    render(
+      <CitedAnswer answer={{ ...ANSWER, inferred_chains: [] }} streamedText="" />,
+    );
+    const entry = screen.getByTestId("cited-claim");
+    const body = entry.querySelector(".cited-claim-body");
+    expect(body).not.toBeNull();
+    expect(within(body as HTMLElement).getByText("The ego teaches attack.")).toBeInTheDocument();
+    expect(within(body as HTMLElement).getByText("the ego teaches attack")).toBeInTheDocument();
   });
 
   it("does not render the string 'null' for a claim with a null object", () => {

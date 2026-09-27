@@ -11,18 +11,21 @@ interface ScrollToBottom {
 // scroll-to-bottom affordance can show only when the user has scrolled up. Recomputed on
 // scroll and whenever `contentVersion` changes (streaming grows the content, which can move
 // the bottom away without a scroll event). Nothing here scrolls the view on its own.
+// `reservedTail` is the send-time spacer (useScrollAnchor): it's real scrollable height but
+// empty, so being within a threshold of the content above it counts as at-bottom.
 const useScrollToBottom = (
   scrollRef: RefObject<HTMLElement | null>,
   contentVersion: unknown,
+  reservedTail = 0,
 ): ScrollToBottom => {
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   const measure = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const distance = el.scrollHeight - reservedTail - el.scrollTop - el.clientHeight;
     setIsAtBottom(distance <= AT_BOTTOM_THRESHOLD);
-  }, [scrollRef]);
+  }, [scrollRef, reservedTail]);
 
   useEffect(() => {
     const el = scrollRef.current;

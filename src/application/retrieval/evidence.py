@@ -19,8 +19,12 @@ class EvidenceResolutionError(Exception):
 _SOURCES_BY_ID: dict[str, Source] = {source.id: source for source in list_sources()}
 
 
+def source_for_claim(claim: Claim) -> Source | None:
+    return _SOURCES_BY_ID.get(claim.source_id)
+
+
 def evidence_text(claim: Claim) -> str:
-    source = _SOURCES_BY_ID.get(claim.source_id)
+    source = source_for_claim(claim)
     if source is None:
         raise EvidenceResolutionError("claim references an unknown source")
     if not 0 <= claim.evidence_start <= claim.evidence_end <= len(source.text):

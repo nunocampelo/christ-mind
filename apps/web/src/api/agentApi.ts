@@ -35,6 +35,12 @@ const ArtifactId = {
 interface CitedClaim {
   claim_id: string;
   source_id: string;
+  book: string;
+  chapter: number;
+  verse: number | null;
+  section: number | null;
+  paragraph: number | null;
+  edition: string;
   subject: string;
   predicate: string;
   object: string | null;

@@ -17,6 +17,12 @@ class CitedClaim(BaseModel):
     model_config = {"frozen": True}
     claim_id: str
     source_id: str
+    book: str = ""
+    chapter: int = 0
+    verse: int | None = None
+    section: int | None = None
+    paragraph: int | None = None
+    edition: str = ""
     subject: str
     predicate: str
     object: str | None

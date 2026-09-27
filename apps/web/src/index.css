@@ -16,6 +16,9 @@
   --primary: oklch(0.55 0.18 265);
   --primary-foreground: oklch(0.99 0.004 106);
   --accent: oklch(0.7 0.15 300);
+  /* Light: soft pale-lavender surface, normal dark text (dark mode fills it — see .dark). */
+  --agent-bubble: oklch(0.96 0.02 300);
+  --agent-bubble-foreground: var(--foreground);
   --radius: 0.875rem;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
@@ -32,6 +35,11 @@
   --primary: oklch(0.72 0.15 285);
   --primary-foreground: oklch(0.17 0.02 265);
   --accent: oklch(0.78 0.14 305);
+  /* Dark-only: the agent bubble is a filled violet with light text, rather than
+     the pale-tint surface used in light mode. Chroma kept modest so a long answer
+     doesn't read as an aggressive block of color. */
+  --agent-bubble: oklch(0.52 0.1 285);
+  --agent-bubble-foreground: oklch(0.98 0.01 285);
 }
 
 @theme inline {
@@ -45,6 +53,8 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-accent: var(--accent);
+  --color-agent-bubble: var(--agent-bubble);
+  --color-agent-bubble-foreground: var(--agent-bubble-foreground);
   --radius-app: var(--radius);
   --font-sans: var(--font-sans);
 }
