@@ -5,12 +5,12 @@ from evaluation.blackbox.gold import BlackBoxCase
 from evaluation.blackbox.llm_judge import LLMEvaluator
 
 
-def _case() -> BlackBoxCase:
+def _case(corpus_reality: str = "sufficient") -> BlackBoxCase:
     return BlackBoxCase(
         id="t",
         question="q",
         intent="direct_description",
-        corpus_reality="adequate",
+        corpus_reality=corpus_reality,
         expected_behavior=frozenset({"answer_directly"}),
         prohibited_behavior=frozenset(),
         must_include_source_ids=frozenset(),
@@ -76,3 +76,46 @@ def test_raising_complete_degrades_to_not_evaluated():
 
     results = LLMEvaluator(boom).evaluate(_case(), _response())
     assert all(c.status == "not_evaluated" for c in results)
+
+
+# --- premature_abstention: the corpus_reality x abstained truth table ---
+
+def _abstention(results, corpus_reality: str):
+    return next(c for c in results if c.name == "premature_abstention")
+
+
+def _run(reply: str, corpus_reality: str):
+    results = LLMEvaluator(_scripted(reply)).evaluate(_case(corpus_reality), _response())
+    return _abstention(results, corpus_reality)
+
+
+def test_sufficient_and_abstained_is_advisory_fail():
+    c = _run('{"abstained": 1.0}', "sufficient")
+    assert c.kind == "advisory" and c.status == "fail" and c.score == 1.0
+
+
+def test_sufficient_and_not_abstained_is_advisory_pass():
+    c = _run('{"abstained": 0.0}', "sufficient")
+    assert c.kind == "advisory" and c.status == "pass"
+
+
+def test_absent_and_abstained_is_not_evaluated():
+    # Correct abstention is out of this criterion's scope -- not penalized, not judged.
+    c = _run('{"abstained": 1.0}', "absent")
+    assert c.status == "not_evaluated"
+
+
+def test_insufficient_and_abstained_is_not_evaluated():
+    c = _run('{"abstained": 1.0}', "insufficient")
+    assert c.status == "not_evaluated"
+
+
+def test_missing_abstained_on_sufficient_degrades_not_evaluated():
+    # The load-bearing case: judge failure => "we don't know", never "the agent abstained".
+    c = _run('{"answers_question": 0.9}', "sufficient")
+    assert c.status == "not_evaluated"
+
+
+def test_malformed_reply_abstention_is_not_evaluated_not_fail():
+    results = LLMEvaluator(_scripted("not json")).evaluate(_case("sufficient"), _response())
+    assert _abstention(results, "sufficient").status == "not_evaluated"
