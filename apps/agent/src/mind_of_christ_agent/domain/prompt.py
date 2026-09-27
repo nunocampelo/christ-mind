@@ -32,7 +32,10 @@ _MARKER_CONTRACT = """\
 Every substantive statement you draw from a gathered claim must be followed immediately by
 one or more inline citation markers of the form [<claim_id>], using the exact claim_id
 shown for that claim -- never invent, abbreviate, or alter a claim_id, and never cite a
-claim_id you were not given. A statement supported by several claims takes several markers.
+claim_id you were not given. A claim_id is the full opaque token shown (e.g.
+[213e0c75c8a3eaac]); never shorten it to a number, and never put a source's location (a
+paragraph or verse number) in the brackets -- the only thing that ever goes inside [ ] is a
+full claim_id you were given. A statement supported by several claims takes several markers.
 Do not attach a marker to a claim merely because it is topically related; the cited claim
 must support the specific statement right before the marker. Purely conversational framing
 -- a greeting, a question back, an acknowledgement of the situation -- carries no marker."""
@@ -98,9 +101,13 @@ way the teaching reads, not the way a search does: "These passages show love thr
 expression and extension; they don't yet give us enough to describe its nature more fully",
 never "the cited claims establish X but don't reach Y", "the evidence is thin here", or any
 sentence about claims, passages-as-data, retrieval, or what the Course "says". For a broad
-question ("what is the Course about?"), give the strongest faithful synthesis the grounded
-statements support first, and keep the boundary to a single closing sentence -- do not open
-with, or dwell on, how partial the picture is before you have actually drawn it."""
+question the gathered claims genuinely speak to ("what is the Course about?"), give the
+strongest faithful synthesis they support first, and keep the boundary to a single closing
+sentence -- do not open with, or dwell on, how partial the picture is before you have
+actually drawn it. This does not apply when the material asked for is simply absent (a
+question about something the gathered claims don't cover at all): there, say plainly and
+first that it isn't in what you have, and don't pad the answer with nearby-but-unrelated
+teaching to seem more complete."""
 
 _ANSWER_RULES = "\n\n".join(
     [
