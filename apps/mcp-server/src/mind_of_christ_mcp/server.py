@@ -17,9 +17,11 @@ from application.retrieval.find_claims_for_entity import (
     find_claims_for_entity as _find_claims_for_entity,
 )
 from application.retrieval.find_sources import find_sources as _find_sources
+from application.retrieval.get_source import get_sources as _get_sources
 from application.synthesis.chain_claims import ClaimChain as _ClaimChain
 from application.synthesis.chain_claims import chain_claims as _chain_claims
 from domain.claims.models import Claim, Predicate
+from domain.sources.models import Source
 from infrastructure.config.env import load_env
 
 from mind_of_christ_mcp.schemas.chains import ChainResult, ClaimChain
@@ -53,25 +55,40 @@ def _to_claim_result(claim: Claim) -> ClaimResult:
     )
 
 
+def _to_source_result(source: Source) -> SourceResult:
+    return SourceResult(
+        id=source.id,
+        book=source.book,
+        chapter=source.chapter,
+        text=source.text,
+        verse=source.verse,
+        section=source.section,
+        paragraph=source.paragraph,
+        concepts=list(source.concepts),
+    )
+
+
 @mcp.tool()
 def find_sources(query: str, limit: int = 5) -> list[SourceResult]:
     """Find source passages relevant to a query (keyword, concept, or theme)."""
     logger.bind(tool="find_sources", query=query, limit=limit).info("tool call")
     results = _find_sources(query, limit=limit)
     logger.bind(tool="find_sources", count=len(results)).info("tool result")
-    return [
-        SourceResult(
-            id=source.id,
-            book=source.book,
-            chapter=source.chapter,
-            text=source.text,
-            verse=source.verse,
-            section=source.section,
-            paragraph=source.paragraph,
-            concepts=list(source.concepts),
-        )
-        for source in results
-    ]
+    return [_to_source_result(source) for source in results]
+
+
+@mcp.tool()
+def get_sources(source_ids: list[str]) -> list[SourceResult]:
+    """Fetch source passages by their exact ids (e.g. "t1-1-31"), for when a reference is
+    already known -- a claim's source_id, or a citation you want to read in full. Returns
+    the passages in the order asked; an id that names no known source is silently omitted,
+    so the result may be shorter than the input. Use find_sources instead to search by
+    keyword or theme when you don't already have the id.
+    """
+    logger.bind(tool="get_sources", count=len(source_ids)).info("tool call")
+    results = _get_sources(source_ids)
+    logger.bind(tool="get_sources", found=len(results)).info("tool result")
+    return [_to_source_result(source) for source in results]
 
 
 @mcp.tool()

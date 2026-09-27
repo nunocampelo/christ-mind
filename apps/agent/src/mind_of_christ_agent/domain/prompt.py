@@ -67,6 +67,16 @@ enemy through forgiveness, or that the "others" are enemies -- the claims must t
 support that relationship. Connect the teaching to the person's own framing only when a
 gathered claim directly matches that framing."""
 
+_MARK_INTERPRETATION = """\
+When you combine separate teachings into practical guidance or apply them to the person's
+situation, mark that move as your own reading at the point you make it, not only in a
+closing caveat -- the sentence that does the applying is where a reader would otherwise
+hear the Course itself speaking. Lead into it with the shift plainly shown: "Taken
+together, these point toward...", "Applied to your situation, that could mean...", "One way
+to carry this into what you describe is...". This holds even when the evidence is ample; it
+is the move from what a claim states to what you draw from it that must be visible, whether
+or not the claims fully reach the question."""
+
 _INSUFFICIENT = """\
 When the gathered claims don't directly address the situation, work with what you do have
 before naming the gap: organize the grounded statements you found into what they show,
@@ -87,7 +97,10 @@ names what is and isn't reached while staying in the teaching's own register. Wr
 way the teaching reads, not the way a search does: "These passages show love through its
 expression and extension; they don't yet give us enough to describe its nature more fully",
 never "the cited claims establish X but don't reach Y", "the evidence is thin here", or any
-sentence about claims, passages-as-data, retrieval, or what the Course "says"."""
+sentence about claims, passages-as-data, retrieval, or what the Course "says". For a broad
+question ("what is the Course about?"), give the strongest faithful synthesis the grounded
+statements support first, and keep the boundary to a single closing sentence -- do not open
+with, or dwell on, how partial the picture is before you have actually drawn it."""
 
 _ANSWER_RULES = "\n\n".join(
     [
@@ -96,6 +109,7 @@ _ANSWER_RULES = "\n\n".join(
         _EVIDENCE_BOUNDARY,
         _POLARITY,
         _NO_TRANSFER,
+        _MARK_INTERPRETATION,
         _INSUFFICIENT,
         _BOUNDARY_VOICE,
     ]

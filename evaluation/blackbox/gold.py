@@ -80,7 +80,11 @@ class BlackBoxCase:
     corpus_reality: str
     expected_behavior: frozenset[str]
     prohibited_behavior: frozenset[str]
+    # must_include: every id must be surfaced (a uniquely-required teaching, e.g. the one
+    # direct definition). must_include_any: at least one must be surfaced (several claims
+    # answer the question equally well, so requiring one specific id would be too strict).
     must_include_source_ids: frozenset[str]
+    must_include_any_source_ids: frozenset[str]
     may_include_source_ids: frozenset[str]
     must_include_claim_ids: frozenset[str]
     may_include_claim_ids: frozenset[str]
@@ -106,6 +110,9 @@ def load_cases(path: Path) -> list[BlackBoxCase]:
                 prohibited_behavior=_behaviors(record.get("prohibited_behavior", [])),
                 must_include_source_ids=_str_set(
                     record.get("must_include_source_ids", [])
+                ),
+                must_include_any_source_ids=_str_set(
+                    record.get("must_include_any_source_ids", [])
                 ),
                 may_include_source_ids=_str_set(
                     record.get("may_include_source_ids", [])

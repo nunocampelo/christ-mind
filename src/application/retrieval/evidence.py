@@ -23,6 +23,10 @@ def source_for_claim(claim: Claim) -> Source | None:
     return _SOURCES_BY_ID.get(claim.source_id)
 
 
+def source_for_id(source_id: str) -> Source | None:
+    return _SOURCES_BY_ID.get(source_id)
+
+
 def evidence_text(claim: Claim) -> str:
     source = source_for_claim(claim)
     if source is None:

@@ -48,6 +48,7 @@ def _case(**overrides: object) -> BlackBoxCase:
         "expected_behavior": frozenset(),
         "prohibited_behavior": frozenset(),
         "must_include_source_ids": frozenset(),
+        "must_include_any_source_ids": frozenset(),
         "may_include_source_ids": frozenset(),
         "must_include_claim_ids": frozenset(),
         "may_include_claim_ids": frozenset(),
@@ -103,3 +104,16 @@ def test_required_source_missing_fails():
 def test_no_required_source_is_not_evaluated():
     results = DeterministicEvaluator().evaluate(_case(), _response())
     assert _crit(results, "required_source_present").status == "not_evaluated"
+
+
+def test_must_include_any_passes_when_one_present():
+    # response cites _REAL_SOURCE (t2-0-16); any-of includes it plus an absent id.
+    case = _case(must_include_any_source_ids=frozenset({_REAL_SOURCE, "t1-1-1"}))
+    results = DeterministicEvaluator().evaluate(case, _response())
+    assert _crit(results, "required_source_present").status == "pass"
+
+
+def test_must_include_any_fails_when_none_present():
+    case = _case(must_include_any_source_ids=frozenset({"t1-1-1", "t1-1-2"}))
+    results = DeterministicEvaluator().evaluate(case, _response())
+    assert _crit(results, "required_source_present").status == "fail"
