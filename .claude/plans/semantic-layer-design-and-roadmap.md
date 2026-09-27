@@ -6,9 +6,13 @@ look the way they do, and the order they're built in. Detailed plans for
 individual increments live alongside this file. Increments #7 (claims in retrieval,
 `claims-in-retrieval.md`), #8 (deterministic claim chaining,
 `synthesis-and-interpretation.md`), and #9 (situation→concept mapping,
-`situation-concept-mapping.md`) are complete. #9 was the roadmap's last planned step;
-the remaining work (embeddings + a database, concept dossiers) is deferred until
-retrieval needs it, so the next increment is written when that need is concrete.
+`situation-concept-mapping.md`) are complete. #9 was the roadmap's last *pre-planned*
+step; the shipped agent/web stack since then surfaced the concrete need that drives the
+next increment — **#10, a black-box evaluation harness** (`black-box-eval-harness.md`).
+The remaining work (ranking, embeddings + a database, concept dossiers) stays deferred,
+but now with explicit triggers: #10's A/B/C failure-mode split (evidence availability /
+adequacy / answer fidelity) decides whether the next step is ranking, synthesis-prompt
+work, embeddings, or dossiers, rather than guessing.
 
 ## Origin
 
@@ -89,7 +93,15 @@ re-argued later.
 | 7 | Claims in retrieval: expose claims and their passages to the agent (MCP tool or `find_sources` extension) | done: `claims-in-retrieval.md` (`find_claims` + `find_claims_for_entity` live) |
 | 8 | Deterministic synthesis: cross-passage claim chains computed at answer time (never stored), each chain labelled inferred while its links stay stated and Course-attributed | done: `synthesis-and-interpretation.md` (`chain_claims` use case + MCP tool live) |
 | 9 | Situation → concept mapping: an LLM maps a user's free-text situation to candidate concept mentions (scored against a small gold set), which feed #7 retrieval and #8 chaining; never presented as the Course speaking | done: `situation-concept-mapping.md` (`map_situation` + eval; dev set R 0.889 / P 0.294 / F1 0.442, recall the metric that matters) |
-| — | Embeddings and a database, concept dossiers | when retrieval needs them |
+| 10 | Black-box evaluation harness: a DeepEval regression suite that treats the agent as a black box (`question → answer + sources`, no internal knowledge), scoring source grounding / answer behavior / epistemic boundaries / citation quality across ~20 behavioral fixtures; a *separate* A/B/C diagnostic (evidence availability / adequacy / answer fidelity) reads pipeline traces to explain failures without ever changing the verdict | planned: `black-box-eval-harness.md` |
+| 11 | Claim ranking / retrieval improvements (incl. question-mode → per-intent ranking extending `ranking.py`) | gated: only where #10's A/B/C split shows misses dominated by retrieval/ranking (A), not synthesis (C) |
+| 12 | Embeddings + persistent semantic index (Postgres/pgvector) | gated: only if **A** persists after #11 — answering passage exists but lexical/concept retrieval can't reach it |
+| 13 | Concept / entity dossiers | gated: when repeated describe/exploration failures show per-concept *aggregation* is the bottleneck (a B the ranking can't fix), not retrieval |
 
 Write a detailed plan for each increment only when its predecessor is done, since
-each one's scope depends on the previous one's results.
+each one's scope depends on the previous one's results. #10 reframes the tail of this
+roadmap from "the semantic layer" to "the retrieval/evidence layer", and puts a
+black-box regression gate *ahead* of any architecture change: the goal is no longer to
+find *related* text but the evidence *appropriate to the question* — and to measure which
+failures are retrieval's (A), evidence-selection's (B), or synthesis's (C) before
+spending effort on any of them.
