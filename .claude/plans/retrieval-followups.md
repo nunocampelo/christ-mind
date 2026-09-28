@@ -27,6 +27,69 @@ problem) and is the weakest-evidenced — its own probe passed.
 
 ---
 
+## SESSION END-STATE (supersedes the per-signal analysis below where they conflict)
+
+Shipped and committed this session: **#10** black-box harness, **#11** query-relevance
+ranking, **#12** meta-question direct-search, **C** abstention-quality advisory criterion
+(`premature_abstention`), **B1** concept-subject supplementation, and the **front-load
+ordering fix** (supplements seeded first). Result: `ego` and several definitional cases fixed;
+gating ~17–18/21.
+
+**The remaining "premature abstention on definitional questions" splits into THREE distinct
+root causes — investigated to ground truth (via the `conversation_messages` join: user row →
+agent row `message_json.cited_claims`), NOT a single class, and deliberately NOT built:**
+
+1. **Claim-selection** (`course-about-006`, partly `mind-definition-025`): the subject query's
+   rank-0 result is *not* the key/thesis claim (e.g. `find_claims("course")` rank-0 is the
+   trivial "required course", not the thesis; `find_claims("mind")` rank-0 is "mind that serves
+   the Spirit is", not the anchored definition). **First audit whether the gold anchor is
+   genuinely the only valid answer** — this is likely partly the recurring over-strict-anchor
+   pattern, not a pure retrieval bug.
+2. **Deep lexical rank on high-frequency subjects** (`mind-of-god-004b`): the definition ranks
+   ~18 among 300+ "God" matches; surfaces only at `global_limit=100`. Lexical `find_claims`
+   fundamentally can't rank it high. **This is the strongest embeddings signal so far** — the
+   genuine #12-embeddings trigger — but still ~1 case; gated on recurrence per the roadmap.
+3. **Round-robin × small `global_limit`** (`mind`): a within-query rank≥1 definition is pushed
+   past position 12 by rank-major interleave. Real but entangled with #1/#2; don't fix alone.
+
+**Tested and rejected as fixes:** raising `global_limit`/`limit_per_query` (surfaces the
+definitions only at positions 20–80, flooding context — no good); a single `find_claims_batch`
+interleave change (query-major-cap-2 still misses `mind`). So there is **no clean single
+increment** here — building one would chase three different causes, one of which is possibly a
+fixture-anchor artifact. **Decision: pause, don't build; let recurrence across more cases pick
+the real increment.** The `mind`/`knowledge` probe cases remain in the gold set as measurement.
+
+### Latest run (18/21, `runs/20260927T212847Z.jsonl`) — failures are HETEROGENEOUS
+
+Three gating failures, three different profiles — reinforcing "don't build one fix":
+- `course-about-006`: answers well (answers_question 0.8, strong grounding/fidelity) but misses
+  the required claim → **audit the anchor first**, likely not a retrieval bug.
+- `mind-definition-025`: same shape (grounding 0.85, synthesis 0.75, required evidence absent)
+  → **audit the anchor first**.
+- `mind-of-god-004b`: coherent answer (grounding 0.9, fidelity 0.9) but the specific expected
+  sources never enter the evidence set → a retrieval miss *relative to this fixture*; the
+  strongest (but still ~1-case) embeddings signal. Does NOT by itself justify embeddings.
+- **`knowledge-definition-026` (secondary, important): required evidence PASSES, yet
+  answers_question is 0.4 and it still prematurely abstains.** The right claim was surfaced and
+  the agent *still* didn't use it well → a **pure SYNTHESIS signal, decoupled from retrieval** —
+  the first case isolating "using available evidence effectively" as its own frontier, separate
+  from any retrieval fix.
+
+### Next investigation (documented entry point): ANCHOR AUDIT
+
+Before any retrieval/embeddings work: audit the gold anchors for `mind-definition-025` and
+`course-about-006`. Question is not "can retrieval eventually find the expected claim?" but
+"is this genuinely the canonical evidence the agent should be *required* to surface for the
+wording of this question?" (`find_claims("mind")` rank-0 is "mind that serves the Spirit is",
+arguably a valid answer; `find_claims("course")` rank-0 is the trivial "required course".) If
+an anchor is too strict → loosen it (the recurring over-strict-anchor pattern), failure
+dissolves. Only if an anchor SURVIVES the audit does its retrieval miss become a real signal —
+and only then does `mind-of-god`'s deep-lexical-rank miss get promoted to an embeddings
+investigation. Sequence: **architecture stop → retrieval stop → anchor audit → (survivors only)
+embeddings investigation**; synthesis (`knowledge`) is a separate, later thread.
+
+---
+
 ## A. Evidence selection — surface the *right* claim, not just a retrievable one
 
 **The strongest current signal.** `course-about-006` still gating-fails after #12, and the
