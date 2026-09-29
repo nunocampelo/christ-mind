@@ -46,6 +46,7 @@ from mind_of_christ_agent.domain.prompt import (
     DECISION_SYSTEM_PROMPT,
     answer_user_prompt,
     decision_user_prompt,
+    render_cited_claims,
 )
 
 _CITED_TOOLS = frozenset({"find_claims", "find_claims_for_entity", "find_sources"})
@@ -126,9 +127,11 @@ class Orchestrator:
             result = await self._mcp_client.call_tool(
                 "find_claims", {"queries": queries}
             )
+            before = len(cited_claims)
             _absorb("find_claims", result, cited_claims, inferred_chains)
+            cited_claims = await _rehydrate(cited_claims, self._mcp_client)
             observations.append(
-                f"Tool 'find_claims' returned: {_result_text(result)[:3000]}"
+                _claim_observation("find_claims", cited_claims[before:], result)
             )
             yield StepStatusEvent(
                 text=f"find_claims returned {_result_summary('find_claims', result)}"
@@ -177,9 +180,11 @@ class Orchestrator:
                 searched_terms.update(terms)
                 yield StepStatusEvent(text=f"Calling {name}{_arg_summary(arguments)}")
                 result = await self._mcp_client.call_tool(name, arguments)
+                before = len(cited_claims)
                 _absorb(name, result, cited_claims, inferred_chains)
+                cited_claims = await _rehydrate(cited_claims, self._mcp_client)
                 observations.append(
-                    f"Tool '{name}' returned: {_result_text(result)[:3000]}"
+                    _claim_observation(name, cited_claims[before:], result)
                 )
                 yield StepStatusEvent(
                     text=f"{name} returned {_result_summary(name, result)}"
@@ -370,13 +375,61 @@ def _to_cited_claim(item: object) -> CitedClaim | None:
         verb_phrase=str(item.get("verb_phrase", "")),
         polarity=str(item.get("polarity", "")),
         evidence=str(item.get("evidence", "")),
+        evidence_start=int(item.get("evidence_start") or 0),
+        evidence_end=int(item.get("evidence_end") or 0),
     )
+
+
+class CitationRehydrationError(Exception):
+    """A claim's source paragraph came back but its evidence offsets no longer anchor the
+    evidence clause -- a source-version drift or extraction bug. Fail loud rather than ship
+    a citation whose highlight points at the wrong text."""
+
+
+async def _rehydrate(
+    claims: list[CitedClaim], mcp_client: ToolClient
+) -> list[CitedClaim]:
+    source_ids = {c.source_id for c in claims if not c.evidence_context and c.source_id}
+    if not source_ids:
+        return claims
+    result = await mcp_client.call_tool("get_sources", {"source_ids": sorted(source_ids)})
+    payload = result.structured_content
+    by_id: dict[str, str] = {}
+    if isinstance(payload, dict):
+        for source in payload.get("result", []):
+            if isinstance(source, dict) and "id" in source:
+                by_id[str(source["id"])] = str(source.get("text", ""))
+
+    out: list[CitedClaim] = []
+    for claim in claims:
+        if claim.evidence_context:
+            out.append(claim)
+            continue
+        context = by_id.get(claim.source_id, "")
+        if context and context[claim.evidence_start:claim.evidence_end] != claim.evidence:
+            raise CitationRehydrationError
+        out.append(claim.model_copy(update={"evidence_context": context}))
+    return out
 
 
 def _result_text(result: CallToolResult) -> str:
     return "".join(
         block.text for block in result.content if isinstance(block, TextContent)
     )
+
+
+def _claim_observation(
+    name: str, new_claims: list[CitedClaim], result: CallToolResult
+) -> str:
+    # A cited tool's claims are shown to the decision LLM the same way the answer prompt
+    # renders them -- passage-grouped, so the surrounding paragraph resolves references the
+    # bare clause can't carry ("my kind of denial"). This is the common answer path (the
+    # model emits {"final"} straight from a decision call), so the rehydrated context must
+    # reach it here, not only the max_steps fallback. Non-cited tools (chain_claims) keep
+    # the raw tool text.
+    if name in _CITED_TOOLS and new_claims:
+        return f"Tool '{name}' returned:\n{render_cited_claims(new_claims)}"
+    return f"Tool '{name}' returned: {_result_text(result)[:3000]}"
 
 
 # The one argument worth showing in the trace per tool -- the query/mention/subject that

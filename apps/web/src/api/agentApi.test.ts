@@ -35,6 +35,9 @@ const ANSWER: AgentAnswer = {
       verb_phrase: "teaches",
       polarity: "affirmed",
       evidence: "The ego teaches attack.",
+      evidence_context: "",
+      evidence_start: 0,
+      evidence_end: 0,
     },
   ],
   inferred_chains: [
@@ -56,6 +59,9 @@ const ANSWER: AgentAnswer = {
           verb_phrase: "teaches",
           polarity: "affirmed",
           evidence: "The ego teaches attack.",
+          evidence_context: "",
+          evidence_start: 0,
+          evidence_end: 0,
         },
       ],
     },
@@ -357,6 +363,9 @@ describe("parseCitedProse", () => {
     verb_phrase: "is",
     polarity: "affirmed",
     evidence: "God is the Giver of life.",
+    evidence_context: "",
+    evidence_start: 0,
+    evidence_end: 0,
   });
 
   it("resolves a known marker to a numbered citation segment", () => {

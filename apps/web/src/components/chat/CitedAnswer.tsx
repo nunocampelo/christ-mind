@@ -50,10 +50,32 @@ const SourceRef = ({ claim }: { claim: CitedClaim }) => {
   );
 };
 
+// The source paragraph split around the evidence clause, so the clause can be marked in
+// place. Offsets index evidence_context; if they don't anchor the clause (missing context,
+// or an older payload without offsets) we return null and the caller shows no context toggle
+// rather than highlighting the wrong span. The backend already fails loud on a genuine
+// offset/text mismatch, so a mismatch here means the fields simply aren't present.
+const clauseInContext = (
+  claim: CitedClaim,
+): { before: string; clause: string; after: string } | null => {
+  const context = claim.evidence_context;
+  if (!context) return null;
+  const { evidence_start: start, evidence_end: end } = claim;
+  if (context.slice(start, end) !== claim.evidence) return null;
+  return {
+    before: context.slice(0, start),
+    clause: context.slice(start, end),
+    after: context.slice(end),
+  };
+};
+
 // One evidence unit: gloss + quote + source id, addressable by anchor so an inline
-// superscript can jump to it. Rendered inside the Sources panel now; the same
-// {claim, ordinal} shape is what a future click-popover would consume, so moving to a
-// popover is a presentation change, not a contract change.
+// superscript can jump to it. When the claim carries its source paragraph, a "Show in
+// context" toggle expands it beneath the quote with the clause marked in place -- the clause
+// stays the citation, the paragraph is context for reading it (resolves references the bare
+// clause can't carry). Rendered inside the Sources panel now; the same {claim, ordinal} shape
+// is what a future click-popover would consume, so moving to a popover is a presentation
+// change, not a contract change.
 const ClaimEvidence = ({
   claim,
   ordinal,
@@ -62,20 +84,33 @@ const ClaimEvidence = ({
   claim: CitedClaim;
   ordinal?: number;
   turnId: number;
-}) => (
-  <div
-    className="cited-claim"
-    id={sourceAnchor(turnId, claim.claim_id)}
-    data-testid="cited-claim"
-  >
-    {ordinal !== undefined && <span className="cited-ordinal">{ordinal}</span>}
-    <div className="cited-claim-body">
-      <p className="cited-claim-gloss">{claimGloss(claim)}</p>
-      <blockquote className="cited-claim-evidence">{claim.evidence}</blockquote>
-      <SourceRef claim={claim} />
+}) => {
+  const context = clauseInContext(claim);
+  return (
+    <div
+      className="cited-claim"
+      id={sourceAnchor(turnId, claim.claim_id)}
+      data-testid="cited-claim"
+    >
+      {ordinal !== undefined && <span className="cited-ordinal">{ordinal}</span>}
+      <div className="cited-claim-body">
+        <p className="cited-claim-gloss">{claimGloss(claim)}</p>
+        <blockquote className="cited-claim-evidence">{claim.evidence}</blockquote>
+        {context && (
+          <details className="cited-context" data-testid="cited-context">
+            <summary className="cited-context-toggle">Show in context</summary>
+            <blockquote className="cited-context-passage">
+              {context.before}
+              <mark className="cited-context-clause">{context.clause}</mark>
+              {context.after}
+            </blockquote>
+          </details>
+        )}
+        <SourceRef claim={claim} />
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 /** The grounded prose with inline citation superscripts. Markers resolve to gathered
     claims; an unknown/malformed marker is dropped rather than shown as literal "[...]".

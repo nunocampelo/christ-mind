@@ -47,6 +47,12 @@ interface CitedClaim {
   verb_phrase: string;
   polarity: string;
   evidence: string;
+  // The source paragraph the claim was drawn from; "" when the source couldn't be fetched.
+  // evidence_start/evidence_end index evidence_context (NOT evidence): the marked clause is
+  // evidence_context.slice(evidence_start, evidence_end) === evidence.
+  evidence_context: string;
+  evidence_start: number;
+  evidence_end: number;
 }
 
 interface InferredChain {

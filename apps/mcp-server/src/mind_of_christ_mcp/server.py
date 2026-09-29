@@ -12,7 +12,7 @@ from mcp.server.mcpserver import MCPServer
 
 from application.retrieval.evidence import evidence_text as _evidence_text
 from application.retrieval.evidence import source_for_claim as _source_for_claim
-from application.retrieval.find_claims import find_claims_batch as _find_claims_batch
+from application.retrieval.hybrid import find_claims_hybrid as _find_claims_hybrid
 from application.retrieval.find_claims_for_entity import (
     find_claims_for_entity as _find_claims_for_entity,
 )
@@ -105,7 +105,7 @@ def find_claims(
     logger.bind(
         tool="find_claims", query_count=len(queries), global_limit=global_limit
     ).info("tool call")
-    results = _find_claims_batch(
+    results = _find_claims_hybrid(
         queries, limit_per_query=limit_per_query, global_limit=global_limit
     )
     logger.bind(tool="find_claims", count=len(results)).info("tool result")

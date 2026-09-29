@@ -29,6 +29,11 @@ class CitedClaim(BaseModel):
     verb_phrase: str
     polarity: str
     evidence: str
+    evidence_context: str = ""
+    # Offsets into evidence_context (the source paragraph), NOT into evidence (the clause):
+    # evidence_context[evidence_start:evidence_end] == evidence once rehydrated.
+    evidence_start: int = 0
+    evidence_end: int = 0
 
 
 class InferredChain(BaseModel):

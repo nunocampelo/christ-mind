@@ -106,7 +106,12 @@ def test_negated_claim_renders_with_marker_and_evidence():
 def test_affirmed_claim_renders_without_the_negated_marker():
     rendered = answer_user_prompt("describe God", [_cited("affirmed")], [])
 
-    assert "[NEGATED]" not in rendered
+    # The preamble legitimately names [NEGATED] as a rule; the marker must not appear on the
+    # affirmed claim's own rendered line.
+    claim_line = next(
+        line for line in rendered.splitlines() if "claim_id=c1" in line
+    )
+    assert "[NEGATED]" not in claim_line
 
 
 def test_rendered_claim_line_exposes_the_claim_id_for_citing():

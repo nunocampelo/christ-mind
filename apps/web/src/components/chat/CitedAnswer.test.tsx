@@ -18,6 +18,9 @@ const CLAIM = {
   verb_phrase: "teaches",
   polarity: "affirmed",
   evidence: "The ego teaches attack.",
+  evidence_context: "",
+  evidence_start: 0,
+  evidence_end: 0,
 };
 
 const ANSWER: AgentAnswer = {
@@ -235,5 +238,67 @@ describe("CitedAnswer", () => {
       />,
     );
     expect(screen.queryByText(/null/)).not.toBeInTheDocument();
+  });
+
+  it("expands the source paragraph with the evidence clause marked in place", () => {
+    const before = "The ego made the world it sees. ";
+    const clause = "The ego teaches attack.";
+    const after = " It knows nothing beyond attack.";
+    render(
+      <CitedAnswer
+        answer={{
+          ...ANSWER,
+          inferred_chains: [],
+          cited_claims: [
+            {
+              ...CLAIM,
+              evidence: clause,
+              evidence_context: before + clause + after,
+              evidence_start: before.length,
+              evidence_end: before.length + clause.length,
+            },
+          ],
+        }}
+        streamedText=""
+      />,
+    );
+    const entry = screen.getByTestId("cited-claim");
+    const context = within(entry).getByTestId("cited-context");
+    // The paragraph carries text the bare clause doesn't, and the clause is a <mark> so the
+    // reader can see which sentence the citation is for within its surrounding passage.
+    expect(within(context).getByText(/It knows nothing beyond attack\./)).toBeInTheDocument();
+    const mark = context.querySelector("mark.cited-context-clause");
+    expect(mark).not.toBeNull();
+    expect(mark).toHaveTextContent(clause);
+  });
+
+  it("shows no context toggle when the claim has no source paragraph", () => {
+    render(
+      <CitedAnswer answer={{ ...ANSWER, inferred_chains: [] }} streamedText="" />,
+    );
+    // CLAIM carries evidence_context "" -> nothing to expand.
+    expect(screen.queryByTestId("cited-context")).not.toBeInTheDocument();
+  });
+
+  it("shows no context toggle when offsets do not anchor the clause", () => {
+    render(
+      <CitedAnswer
+        answer={{
+          ...ANSWER,
+          inferred_chains: [],
+          cited_claims: [
+            {
+              ...CLAIM,
+              evidence: "The ego teaches attack.",
+              evidence_context: "A paragraph that does not contain the clause verbatim.",
+              evidence_start: 0,
+              evidence_end: 5,
+            },
+          ],
+        }}
+        streamedText=""
+      />,
+    );
+    expect(screen.queryByTestId("cited-context")).not.toBeInTheDocument();
   });
 });

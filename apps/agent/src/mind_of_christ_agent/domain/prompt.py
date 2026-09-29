@@ -179,18 +179,37 @@ def decision_user_prompt(
     )
 
 
-def _render_cited_claim(c: CitedClaim) -> str:
+def _render_claim_line(c: CitedClaim) -> str:
     # A NEGATED claim's subject/verb/object read as an affirmative ("God is partial")
     # while its evidence says the opposite ("God is NOT partial"). Mark the polarity and
     # attach the exact evidence span so the reader can never lose the negation. The
-    # claim_id leads the line: it is the token the model must copy into an inline marker
-    # (source_id is shown to the reader but is not the citation key).
+    # claim_id leads the line: it is the token the model must copy into an inline marker.
     neg = " [NEGATED]" if c.polarity == "negated" else ""
     proposition = f"{c.subject} {c.verb_phrase} {c.object or ''}".rstrip()
     return (
-        f'- claim_id={c.claim_id} [{c.source_id}]{neg} {proposition} '
+        f'  - claim_id={c.claim_id}{neg} {proposition} '
         f'-- evidence: "{c.evidence}"'
     )
+
+
+def render_cited_claims(cited_claims: list[CitedClaim]) -> str:
+    # Grouped by source so each passage is shown once with the claims drawn from it beneath
+    # -- the same unit a human reader gets: the paragraph first, then its propositions. The
+    # passage resolves references the bare clause can't carry ("my kind of denial" leans on
+    # surrounding text); it is context for reading the claims, never a licence to broaden
+    # them. Order follows first appearance, which is the retrieval-trace order _absorb keeps.
+    groups: dict[str, list[CitedClaim]] = {}
+    for claim in cited_claims:
+        groups.setdefault(claim.source_id, []).append(claim)
+
+    blocks: list[str] = []
+    for source_id, claims in groups.items():
+        context = next((c.evidence_context for c in claims if c.evidence_context), "")
+        header = f'PASSAGE [{source_id}]'
+        passage = f'"{context}"' if context else "(source text unavailable)"
+        lines = "\n".join(_render_claim_line(c) for c in claims)
+        blocks.append(f"{header}\n{passage}\nCLAIMS WITHIN PASSAGE:\n{lines}")
+    return "\n\n".join(blocks)
 
 
 def answer_user_prompt(
@@ -198,7 +217,7 @@ def answer_user_prompt(
     cited_claims: list[CitedClaim],
     inferred_chains: list[InferredChain],
 ) -> str:
-    cited = "\n".join(_render_cited_claim(c) for c in cited_claims)
+    cited = render_cited_claims(cited_claims)
     chains = "\n".join(
         "- inferred: "
         + " -> ".join(f"{link.subject} {link.verb_phrase}".strip() for link in chain.links)
@@ -206,8 +225,11 @@ def answer_user_prompt(
     )
     return (
         f"Situation:\n{situation}\n\n"
-        f"Grounded claims (each carries a citation shown to the reader; cite by claim_id):"
-        f"\n{cited or '(none)'}\n\n"
+        f"Grounded claims, grouped under the passage each was drawn from (cite by claim_id). "
+        f"The passage is context for reading its claims -- it resolves references a claim's "
+        f"evidence clause leans on (\"my kind\", \"this\") -- but the claim's evidence span is "
+        f"authoritative: do not broaden a claim beyond it or reverse a [NEGATED] polarity "
+        f"from the surrounding text.\n{cited or '(none)'}\n\n"
         f"Inferred chains (connections you may draw, marked inferred):\n{chains or '(none)'}\n\n"
         "Write the answer now."
     )

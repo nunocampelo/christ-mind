@@ -17,6 +17,9 @@ const claim = (over: Partial<CitedClaim>): CitedClaim => ({
   verb_phrase: "v",
   polarity: "affirmed",
   evidence: "e",
+  evidence_context: "",
+  evidence_start: 0,
+  evidence_end: 0,
   ...over,
 });
 

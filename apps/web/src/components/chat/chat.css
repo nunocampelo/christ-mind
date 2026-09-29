@@ -265,6 +265,37 @@
 .cited-source-location {
   color: color-mix(in oklch, var(--color-muted-foreground) 80%, transparent);
 }
+.cited-context {
+  margin-top: 0.25rem;
+}
+.cited-context-toggle {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--color-muted-foreground);
+  list-style: none;
+}
+.cited-context-toggle::-webkit-details-marker {
+  display: none;
+}
+.cited-context-toggle::before {
+  content: "▸ ";
+  display: inline-block;
+}
+.cited-context[open] .cited-context-toggle::before {
+  content: "▾ ";
+}
+.cited-context-passage {
+  margin-top: 0.25rem;
+  padding-left: 0.9rem;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-muted-foreground);
+}
+.cited-context-clause {
+  background: color-mix(in oklch, var(--color-accent) 30%, transparent);
+  color: var(--color-foreground);
+  border-radius: 0.2rem;
+  padding: 0 0.1em;
+}
 .inferred-chain {
   margin: 0.5rem 0;
   padding-left: 1.25rem;
@@ -313,6 +344,17 @@
 }
 .dark .agent-bubble-surface .cited-source-location {
   color: color-mix(in oklch, currentColor 68%, transparent);
+}
+.dark .agent-bubble-surface .cited-context-toggle {
+  color: color-mix(in oklch, currentColor 72%, transparent);
+}
+.dark .agent-bubble-surface .cited-context-passage {
+  border-left-color: color-mix(in oklch, currentColor 30%, transparent);
+  color: color-mix(in oklch, currentColor 82%, transparent);
+}
+.dark .agent-bubble-surface .cited-context-clause {
+  background: color-mix(in oklch, currentColor 26%, transparent);
+  color: currentColor;
 }
 .dark .agent-bubble-surface .agent-markdown code {
   background: color-mix(in oklch, currentColor 14%, transparent);
