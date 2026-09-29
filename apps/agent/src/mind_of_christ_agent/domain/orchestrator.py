@@ -318,6 +318,14 @@ def _absorb(
     # so a repeat inflates neither audit nor answer. Chain links are not appended here,
     # so they don't need this rule -- they ride on inferred_chains and are intentionally
     # not part of the citation set.
+    #
+    # Second contract, load-bearing for evaluation: cited_claims doubles as the turn's
+    # RETRIEVAL TRACE -- every claim gathered from a retrieval tool lands here whether the
+    # model's prose marker-cites it or not. evaluation/blackbox/classify.py reads it as
+    # such to tell a synthesis failure (retrieved but not cited) from a retrieval failure
+    # (never retrieved). If cited_claims is ever narrowed to only marker-cited claims,
+    # that classifier must switch to an explicit retrieved_claim_ids field on AgentAnswer,
+    # or C-class failures will silently be misread as A/B.
     payload = result.structured_content
     if not isinstance(payload, dict):
         return

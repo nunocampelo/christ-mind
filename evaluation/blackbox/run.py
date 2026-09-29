@@ -33,7 +33,10 @@ CORPUS = (
     Path(__file__).resolve().parents[2]
     / "src/infrastructure/database/data/claims/corpus.jsonl"
 )
-_DEFAULT_EVALUATORS = "evaluation.blackbox.deterministic:make_deterministic"
+_DEFAULT_EVALUATORS = (
+    "evaluation.blackbox.deterministic:make_deterministic,"
+    "evaluation.blackbox.classify:make_failure_classification"
+)
 
 
 @dataclass(frozen=True)
