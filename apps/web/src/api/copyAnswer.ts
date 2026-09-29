@@ -2,8 +2,20 @@ import {
   citedProseToPlainText,
   parseCitedProse,
   type AgentAnswer,
+  type CitedClaim,
 } from "@/api/agentApi";
 import { sourceReference } from "@/api/sourceRef";
+
+// The source paragraph a claim was drawn from, with the evidence clause wrapped in ** so the
+// reader can see where the citation lands within it. Falls back to the bare clause when the
+// source paragraph couldn't be fetched (evidence_context === "").
+const evidenceParagraph = (c: CitedClaim): string => {
+  if (!c.evidence_context) return c.evidence;
+  const before = c.evidence_context.slice(0, c.evidence_start);
+  const marked = c.evidence_context.slice(c.evidence_start, c.evidence_end);
+  const after = c.evidence_context.slice(c.evidence_end);
+  return `${before}**${marked}**${after}`;
+};
 
 // The clipboard form of an agent answer: readable prose with inline [n] markers, a compact
 // Sources list resolving them, and — kept visibly separate — the inferred chains, so copied
@@ -22,14 +34,17 @@ export const copyTextForAnswer = (answer: AgentAnswer): string => {
   const cited = [...answer.cited_claims]
     .filter((c) => ordinals.has(c.claim_id))
     .sort((a, b) => ordinals.get(a.claim_id)! - ordinals.get(b.claim_id)!)
-    .map((c) => `[${ordinals.get(c.claim_id)}] ${sourceReference(c)}`);
+    .map(
+      (c) =>
+        `[${ordinals.get(c.claim_id)}] ${sourceReference(c)}\n${evidenceParagraph(c)}`,
+    );
 
   const inferred = answer.inferred_chains.flatMap((chain) =>
     chain.links.map((link) => `— ${sourceReference(link)}`),
   );
 
   const blocks = [prose];
-  if (cited.length) blocks.push(`Sources:\n${cited.join("\n")}`);
+  if (cited.length) blocks.push(`Sources:\n${cited.join("\n\n")}`);
   if (inferred.length) blocks.push(`Inferred from:\n${inferred.join("\n")}`);
   return blocks.join("\n\n");
 };

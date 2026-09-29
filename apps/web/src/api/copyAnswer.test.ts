@@ -29,16 +29,42 @@ describe("copyTextForAnswer", () => {
       text: "Separation is an illusion [a]. Miracles express forgiveness [b].",
       concepts: [],
       cited_claims: [
-        claim({ claim_id: "a", chapter: 4, section: 1, paragraph: 1 }),
-        claim({ claim_id: "b", chapter: 5, section: 2, paragraph: 4 }),
+        claim({ claim_id: "a", chapter: 4, section: 1, paragraph: 1, evidence: "e1" }),
+        claim({ claim_id: "b", chapter: 5, section: 2, paragraph: 4, evidence: "e2" }),
       ],
       inferred_chains: [],
     };
     expect(copyTextForAnswer(answer)).toBe(
       "Separation is an illusion [1]. Miracles express forgiveness [2].\n\n" +
         "Sources:\n" +
-        "[1] A Course in Miracles Chapter 4 Section I Paragraph 1\n" +
-        "[2] A Course in Miracles Chapter 5 Section II Paragraph 4",
+        "[1] A Course in Miracles Chapter 4 Section I Paragraph 1\ne1\n\n" +
+        "[2] A Course in Miracles Chapter 5 Section II Paragraph 4\ne2",
+    );
+  });
+
+  it("includes the source paragraph with the evidence clause marked", () => {
+    const answer: AgentAnswer = {
+      text: "Knowledge is timeless [a].",
+      concepts: [],
+      cited_claims: [
+        claim({
+          claim_id: "a",
+          chapter: 3,
+          section: 4,
+          paragraph: 3,
+          evidence: "Knowledge is timeless",
+          evidence_context: "In fact, Knowledge is timeless, as its stability is beyond time.",
+          evidence_start: 9,
+          evidence_end: 30,
+        }),
+      ],
+      inferred_chains: [],
+    };
+    expect(copyTextForAnswer(answer)).toBe(
+      "Knowledge is timeless [1].\n\n" +
+        "Sources:\n" +
+        "[1] A Course in Miracles Chapter 3 Section IV Paragraph 3\n" +
+        "In fact, **Knowledge is timeless**, as its stability is beyond time.",
     );
   });
 

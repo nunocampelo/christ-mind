@@ -1,7 +1,20 @@
 """A/B/C failure classifier: turns the aggregate `19/21 passing` into an actionable
-split -- how many failures are ranking-recoverable, how many need semantic
-retrieval, how many are synthesis. See `reachability.py` for the static probe this
+split -- how many failures are ranking-recoverable, how many are beyond lexical
+reach, how many are synthesis. See `reachability.py` for the static probe this
 combines with the run's retrieval trace.
+
+    A -- lexically reachable, but this run's retrieval missed it (mapper/ranking)
+    B -- not lexically reachable by any plausible query (beyond-lexical)
+    C -- retrieved, but the answer never marker-cited it (synthesis)
+
+B does NOT mean "embeddings will fix it" -- that is a separate hypothesis the
+classifier never encodes. The hybrid-retrieval experiment (see plan
+`hybrid-retrieval-semantic-channel.md`) showed B sub-splits into B1
+semantic-recoverable (embeddings reach the evidence) and B2 graph/relational
+(embeddings cannot, at any rank). That sub-split is a probe-derived diagnostic
+layered ON TOP of this classifier, deliberately NOT computed here: distinguishing
+B1 from B2 requires running the embedding model, and the eval must stay
+model-independent and deterministic. Keep B meaning exactly "beyond lexical".
 
 The classifier is advisory: it never flips a case's verdict, only annotates why a
 required id was missing. A case with no `must_include_*` evidence yields

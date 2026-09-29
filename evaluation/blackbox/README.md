@@ -97,6 +97,23 @@ Without `--live` the CLI errors clearly (it cannot generate answers offline). A 
 run writes `runs/<run_id>.jsonl` — a header (agent URL, corpus run id, gold hash, gating
 score) plus one line per case — to be committed.
 
+### Retrieval channels
+
+`find_claims` is **hybrid** by default: lexical substring matching merged with a local
+`sentence-transformers` semantic channel (`application/retrieval/hybrid.py`). Set
+`RETRIEVAL_MODE=lexical` to bypass the semantic channel — used to reproduce a lexical-only
+baseline against the same gold set for A/B comparisons, and as a one-line production revert.
+
+```bash
+RETRIEVAL_MODE=lexical .venv/bin/python -m evaluation.blackbox.run --live --record  # baseline
+.venv/bin/python -m evaluation.blackbox.run --live --record                          # hybrid
+```
+
+The A/B/C classifier's reachability probe (`reachability.py`) stays **lexical-only** by
+design: class B means "the lexical channel cannot reach this", which is exactly the gap
+the semantic channel is meant to close, so the probe must not itself go hybrid or B would
+stop being measurable.
+
 ### What a live run brings up (`harness.py`)
 
 Detects each dependency, starts only those that are down, and cleans up only what it

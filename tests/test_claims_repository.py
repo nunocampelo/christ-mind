@@ -25,7 +25,7 @@ def test_list_claims_reconstructs_real_claims():
 @pytest.mark.parametrize(
     "source_id, object",
     [
-        ("t1-1-86", "partial"),
+        ("t1-1-84", "partial"),
         ("t3-4-8", "stranger to His Sons"),
         ("t4-1-12", "author of fear"),
     ],

@@ -44,10 +44,30 @@ def _parse_ref(ref: str) -> tuple[int, int]:
     return int(chapter), int(section)
 
 
+def _is_blockquote(block: str) -> bool:
+    lines = [line for line in block.splitlines() if line.strip()]
+    return bool(lines) and all(line.lstrip().startswith(">") for line in lines)
+
+
+def _split_paragraphs(body: str) -> list[str]:
+    # A blockquote (a prayer/quote set off by blank lines) is always a continuation of the
+    # paragraph that introduces it, never a standalone unit -- so fold it back in rather than
+    # letting the blank-line split strand it as its own Source (which truncated the intro
+    # paragraph at the introducing colon and left the quote contextless).
+    blocks = [block for block in re.split(r"\n\s*\n", body) if block.strip()]
+    merged: list[str] = []
+    for block in blocks:
+        if _is_blockquote(block) and merged:
+            merged[-1] = f"{merged[-1]}\n{block}"
+        else:
+            merged.append(block)
+    return merged
+
+
 def _parse_chapter_file(path: Path) -> tuple[Source, ...]:
     metadata, body = _parse_frontmatter(path.read_text())
     chapter, section = _parse_ref(metadata["ref"])
-    paragraphs = [block for block in re.split(r"\n\s*\n", body) if block.strip()]
+    paragraphs = _split_paragraphs(body)
 
     sources = []
     for number, paragraph in enumerate(paragraphs, start=1):
