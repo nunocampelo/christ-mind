@@ -109,6 +109,27 @@ def test_query_negated_subject_sits_below_affirmed_subject():
     assert [c.claim_id for c in ranked] == ["aff", "neg"]
 
 
+def test_query_tight_subject_beats_incidental_subject_hit():
+    # Both are subject-position hits for the needle "rm", but "rm" the whole subject is
+    # what a user asking about "rm" actually wants -- a longer subject that just happens
+    # to contain "rm" as a substring is an incidental mention. Specificity tie-breaks
+    # below position but above role, so a definitional "rm IS healing" still beats
+    # "rm details ARE minor" only when the subjects are the same length.
+    tight = _claim("tight", "rm", Predicate.IS, "healing")
+    loose = _claim("loose", "rm details", Predicate.IS, "important")
+    ranked = rank_query_relevance([loose, tight], "rm")
+    assert [c.claim_id for c in ranked] == ["tight", "loose"]
+
+
+def test_query_specificity_tie_break_leaves_role_intact_at_equal_length():
+    # Same subject length -> the specificity tie-break contributes nothing, so role
+    # still decides between two same-length subjects (IS beats OTHER).
+    is_claim = _claim("is", "rm", Predicate.IS, "healing")
+    other_claim = _claim("other", "rm", Predicate.OTHER, "something")
+    ranked = rank_query_relevance([other_claim, is_claim], "rm")
+    assert [c.claim_id for c in ranked] == ["is", "other"]
+
+
 def test_query_stable_tie_break_keeps_input_order():
     first = _claim("first", "rm", Predicate.IS, "healing")
     second = _claim("second", "rm", Predicate.IS, "wholeness")

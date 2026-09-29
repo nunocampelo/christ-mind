@@ -110,8 +110,19 @@ def _query_position(claim: Claim, needle: str) -> int:
 
 def rank_query_relevance(claims: list[Claim], needle: str) -> list[Claim]:
     """Reorder substring matches for a query so the most on-point come first: the query
-    term in subject position beats object beats verb-phrase, then the shared role/polarity
-    sub-key. A distinct intent from characterization (a raw query substring, not resolved
-    entity forms), so it gets its own strategy per this module's contract. `needle` arrives
-    already lowercased from the caller. Reorders only; the caller's `limit` alone drops."""
-    return sorted(claims, key=lambda c: (_query_position(c, needle), *_role_polarity(c)), reverse=True)
+    term in subject position beats object beats verb-phrase, then a subject-specificity
+    tie-break (a shorter subject that the needle nearly fills -- `'the course'` for
+    `"course"` -- outranks a longer subject where the needle is embedded incidentally --
+    `'first point in this course'`), then the shared role/polarity sub-key. A distinct
+    intent from characterization (a raw query substring, not resolved entity forms), so
+    it gets its own strategy per this module's contract. `needle` arrives already
+    lowercased from the caller. Reorders only; the caller's `limit` alone drops."""
+    return sorted(
+        claims,
+        key=lambda c: (
+            _query_position(c, needle),
+            -len(c.subject),
+            *_role_polarity(c),
+        ),
+        reverse=True,
+    )
