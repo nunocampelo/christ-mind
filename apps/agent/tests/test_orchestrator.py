@@ -510,8 +510,58 @@ async def test_summarizes_when_the_model_never_answers():
     assert events[-1] == FinalEvent(text="Here is what the Course offers.")
     assert orchestrator.last_answer is not None
     assert orchestrator.last_answer.text == "Here is what the Course offers."
-    # The claims gathered during the loop still ride on the structured answer.
-    assert [c.claim_id for c in orchestrator.last_answer.cited_claims] == ["c1", "c1"]
+    # The claims gathered during the loop still ride on the structured answer -- once,
+    # even though two overlapping find_claims calls each returned c1. See
+    # test_absorb_dedupes_cited_claims_across_tool_calls for the invariant in isolation.
+    assert [c.claim_id for c in orchestrator.last_answer.cited_claims] == ["c1"]
+
+
+@pytest.mark.anyio
+async def test_absorb_dedupes_cited_claims_across_tool_calls():
+    # Two different retrieval tools legitimately surface the same claim_id (a batch
+    # find_claims followed by a targeted find_claims_for_entity for the same subject).
+    # cited_claims must be set-by-id, first-appearance wins, so the eval's
+    # citation_integrity duplicate-check stays green and _diagnose_citations counts a
+    # single gathered claim.
+    first = _claim_result(subject="forgiveness")
+    second = _claim_result(subject="mercy")  # same claim_id "c1", different surface form
+    find_claims_result = CallToolResult(
+        content=[TextContent(type="text", text="claim")],
+        structured_content={"result": [first]},
+    )
+    for_entity_result = CallToolResult(
+        content=[TextContent(type="text", text="claim")],
+        structured_content={"result": [second]},
+    )
+    mcp = _FakeMcpClient(
+        {"find_claims": find_claims_result, "find_claims_for_entity": for_entity_result}
+    )
+    chat_stream = _scripted_stream(
+        # After the seeded batch already ran find_claims, the model reaches for the same
+        # claim via a different tool + a term the seeded batch didn't cover -- so the
+        # repeat-search guard doesn't fire and _absorb is what has to hold the invariant.
+        '{"tool_call": {"name": "find_claims_for_entity", "arguments": {"mention": "atonement"}}}',
+        '{"final": "Forgiveness is the way. [c1]"}',
+    )
+    orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation="help me forgive", max_steps=4)
+        )
+    ]
+
+    assert isinstance(events[-1], FinalEvent)
+    answer = orchestrator.last_answer
+    assert answer is not None
+    # Set-by-id, first appearance retained: the seeded find_claims subject wins over the
+    # later find_claims_for_entity's differing surface form.
+    assert [c.claim_id for c in answer.cited_claims] == ["c1"]
+    assert answer.cited_claims[0].subject == "forgiveness"
+    # A single marker for c1 resolves; the deterministic evaluator's duplicate check has
+    # nothing to flag either (that check runs on cited_claims, which now holds one entry).
+    assert answer.citation_diagnostics.unknown_ids == []
 
 
 @pytest.mark.anyio

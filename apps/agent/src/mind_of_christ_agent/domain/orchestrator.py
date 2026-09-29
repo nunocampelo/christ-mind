@@ -311,14 +311,23 @@ def _absorb(
     cited_claims: list[CitedClaim],
     inferred_chains: list[InferredChain],
 ) -> None:
+    # cited_claims is set-by-id, ordered by first appearance: overlapping retrieval calls
+    # (a batch find_claims followed by a reactive find_claims_for_entity for the same
+    # subject) legitimately surface the same claim_id twice, but the downstream artifact
+    # and _diagnose_citations both treat this list as a set (see gathered = {...} below),
+    # so a repeat inflates neither audit nor answer. Chain links are not appended here,
+    # so they don't need this rule -- they ride on inferred_chains and are intentionally
+    # not part of the citation set.
     payload = result.structured_content
     if not isinstance(payload, dict):
         return
     if name in _CITED_TOOLS:
+        seen = {c.claim_id for c in cited_claims}
         for item in payload.get("result", []):
             claim = _to_cited_claim(item)
-            if claim is not None:
+            if claim is not None and claim.claim_id not in seen:
                 cited_claims.append(claim)
+                seen.add(claim.claim_id)
     elif name == "chain_claims":
         for chain in payload.get("chains", []):
             if not isinstance(chain, dict):
