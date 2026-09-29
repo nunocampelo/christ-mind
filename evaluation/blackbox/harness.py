@@ -43,7 +43,7 @@ class _Started:
 
 @contextmanager
 def live_stack(
-    agent_url: str = "http://127.0.0.1:8000",
+    agent_url: str = "http://127.0.0.1:8765",
     proxy_url: str | None = None,
     stop_postgres_if_started: bool = False,
 ) -> Iterator[str]:
@@ -205,7 +205,7 @@ def _asyncpg_dsn(sqlalchemy_url: str) -> str:
 def _host_port(url: str) -> tuple[str, int]:
     rest = url.split("://", 1)[-1]
     host, _, port = rest.partition(":")
-    return host or "127.0.0.1", int(port or "8000")
+    return host or "127.0.0.1", int(port or "8765")
 
 
 def _wait_for(predicate, what: str, timeout: float) -> None:

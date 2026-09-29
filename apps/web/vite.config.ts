@@ -18,9 +18,9 @@ export default defineConfig({
   // /conversations is the REST history read surface (same-origin fetch from the app).
   server: {
     proxy: {
-      "/a2a": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/.well-known": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/conversations": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/a2a": { target: "http://127.0.0.1:8765", changeOrigin: true },
+      "/.well-known": { target: "http://127.0.0.1:8765", changeOrigin: true },
+      "/conversations": { target: "http://127.0.0.1:8765", changeOrigin: true },
     },
   },
   test: {

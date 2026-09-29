@@ -37,9 +37,9 @@ Open `http://localhost:5173`, type a situation, and send.
 
 The A2A client reads the agent card first, then dials the **absolute** endpoint URL the
 card advertises (`<AGENT_PUBLIC_URL>/a2a`). Vite proxies both `/a2a` and `/.well-known` to
-the backend (`:8000`, see `vite.config.ts`). Pointing `AGENT_PUBLIC_URL` at `:5173` makes
+the backend (`:8765`, see `vite.config.ts`). Pointing `AGENT_PUBLIC_URL` at `:5173` makes
 the card advertise the proxied origin, so the card fetch **and** streaming stay same-origin
-through the proxy — no CORS, no backend change. Pointing it at `:8000` would make the client
+through the proxy — no CORS, no backend change. Pointing it at `:8765` would make the client
 bypass the proxy and hit CORS.
 
 `VITE_AGENT_BASE_URL` overrides the client's base URL (defaults to the page origin); leave

@@ -12,7 +12,7 @@ interface ScrollAnchor {
 // without reserved space the container isn't tall enough to move the turn up. It holds
 // through the stream and collapses when idle. The scrollbar is hidden (App), so the
 // transient overflow the spacer creates is never seen; a jump-to-bottom button handles
-// catching up. `active` is the streaming flag. Anchor math ported from gcm's exp_agent_chat.
+// catching up. `active` is the streaming flag.
 const useScrollAnchor = (active: boolean): ScrollAnchor => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [spacerHeight, setSpacerHeight] = useState(0);

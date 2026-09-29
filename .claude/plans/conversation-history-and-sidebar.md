@@ -25,8 +25,8 @@ Deriving history from the Task shape couples the conversational model to the A2A
 lifecycle. Instead, the repository and the A2A `DatabaseTaskStore` **share one
 `AsyncEngine`**, and `contextId` is translated to `conversation_id` at the A2A boundary.
 
-This adapts the gcm "Story 2" conversation-repository spec to christ-mind: we carry the
-architecture, and drop the gcm-only machinery that doesn't exist here (`MemoryStore`,
+This adapts a prior "Story 2" conversation-repository spec to christ-mind: we carry the
+architecture, and drop machinery that doesn't exist here (`MemoryStore`,
 `SessionMemory`, `/chat`, `/session`, `sessionId`, `/assistant`, `/report`,
 `AGENT_ENABLE_MEMORY`, `AGENT_MEMORY_STORAGE_DIR`, `run_in_threadpool`, HANA).
 
@@ -88,7 +88,7 @@ the one engine: the SDK owns the `a2a_tasks` table; the `ConversationRepository`
 ## Slices (repo's PR-per-slice style; each ships with tests, pyright + vitest green)
 
 ### PR A — Alembic harness + durable task store ✅ DONE
-Mirrors gcm's Story-1 structure, adapted to async Postgres.
+Story-1 structure, adapted to async Postgres.
 - `apps/a2a-server/`: `alembic.ini` (`script_location`, `prepend_sys_path = src`, dummy
   `sqlalchemy.url`), `alembic/env.py` **async** (`create_async_engine` +
   `connection.run_sync(do_run_migrations)`, `compare_type=True`), `script.py.mako`,

@@ -93,7 +93,7 @@ class _FakeConversations:
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    monkeypatch.setenv("AGENT_PUBLIC_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("AGENT_PUBLIC_URL", "http://127.0.0.1:8765")
 
     async def no_stores(app_: object) -> None:
         return None

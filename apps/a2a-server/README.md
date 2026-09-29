@@ -50,7 +50,7 @@ inline (`VAR=… <command>`). `.env` is gitignored.
 - `DATABASE_URL` (**required**, fails loud at boot) — the async SQLAlchemy URL, e.g.
   `postgresql+asyncpg://christ:christ@127.0.0.1:5432/christ_mind`. Used by both the app
   lifespan and Alembic's `env.py`, so migrations and the running app never disagree.
-- `HOST` (default `127.0.0.1`), `PORT` (default `8000`).
+- `HOST` (default `127.0.0.1`), `PORT` (default `8765`).
 
 ## Database
 
@@ -73,7 +73,7 @@ The `python -m` entrypoint passes the app object to uvicorn directly, which can'
 For a watch-and-restart dev loop, run uvicorn against the import string instead:
 
 ```sh
-.venv/bin/uvicorn mind_of_christ_a2a.main:app --reload --host 127.0.0.1 --port 8000
+.venv/bin/uvicorn mind_of_christ_a2a.main:app --reload --host 127.0.0.1 --port 8765
 ```
 
 `--reload` watches the repo root, so edits to this app, `apps/agent`, `apps/mcp-server`,

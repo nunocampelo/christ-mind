@@ -88,7 +88,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
         app.state.session_provider = _FakeSessionProvider()
         return None
 
-    monkeypatch.setenv("AGENT_PUBLIC_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("AGENT_PUBLIC_URL", "http://127.0.0.1:8765")
     monkeypatch.setattr(executor_module, "connect", fake_connect)
     monkeypatch.setattr(
         executor_module, "build_orchestrator", lambda _mcp: _StubOrchestrator()
@@ -123,7 +123,7 @@ def _send(client: TestClient, situation: str) -> Task:
 def test_agent_card_served_at_well_known(client: TestClient) -> None:
     body = client.get("/.well-known/agent-card.json").json()
     assert body["name"] == "Mind of Christ Agent"
-    assert body["supportedInterfaces"][0]["url"] == "http://127.0.0.1:8000/a2a"
+    assert body["supportedInterfaces"][0]["url"] == "http://127.0.0.1:8765/a2a"
 
 
 def test_send_message_returns_answer_and_distinct_evidence(client: TestClient) -> None:
