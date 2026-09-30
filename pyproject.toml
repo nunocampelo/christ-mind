@@ -5,6 +5,7 @@ description = "Shared domain, application, and infrastructure layers for the Min
 requires-python = ">=3.12"
 dependencies = [
     "anthropic==1.8.0",
+    "httpx==0.28.1",
     "numpy==2.5.3",
     "python-dotenv==1.2.3",
     "sentence-transformers==6.1.0",

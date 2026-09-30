@@ -4,3 +4,8 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .env
+
+# Gateway embedding index cache: a large, regenerable measurement artifact for the
+# non-default embedder (regenerate via evaluation/blackbox/gateway_smoke.py). The
+# default MiniLM cache stays committed — the running app loads it.
+src/infrastructure/database/data/claims/embeddings_gateway-*.npz
