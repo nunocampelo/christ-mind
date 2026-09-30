@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import importlib
 import json
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -53,6 +54,13 @@ def _load_evaluator(spec: str) -> Evaluator:
     return getattr(importlib.import_module(module_name), factory_name)()
 
 
+def _resolve_model() -> str:
+    """Best-effort label for the LLM that produced the answers."""
+    if os.getenv("LLM_PROVIDER") == "gateway":
+        return os.getenv("MODEL_GATEWAY_CHAT_MODEL", "").strip() or "gpt-4o"
+    return os.getenv("ANTHROPIC_EXTRACTION_MODEL", "").strip() or "anthropic--claude-4.8-opus"
+
+
 def run(
     client: A2AAgentClient,
     evaluators: Sequence[Evaluator],
@@ -60,6 +68,7 @@ def run(
     cases: Sequence[BlackBoxCase],
     gold_path: Path,
     agent_url: str,
+    model: str,
     record: bool,
     now: datetime,
 ) -> RunOutcome:
@@ -71,7 +80,7 @@ def run(
     report = score_cases(results)
     intents = [c.intent for c in cases]
     path = (
-        _write(report, cases, evaluator_names, gold_path, agent_url, now)
+        _write(report, cases, evaluator_names, gold_path, agent_url, model, now)
         if record
         else None
     )
@@ -84,6 +93,7 @@ def _write(
     evaluator_names: Sequence[str],
     gold_path: Path,
     agent_url: str,
+    model: str,
     now: datetime,
 ) -> Path:
     run_id = now.strftime("%Y%m%dT%H%M%SZ")
@@ -93,6 +103,7 @@ def _write(
         run_id=run_id,
         created_at=now.isoformat(),
         agent_url=agent_url,
+        model=model,
         evaluators=list(evaluator_names),
         corpus_run_id=_corpus_run_id(),
         gold_sha256=hashlib.sha256(gold_path.read_bytes()).hexdigest(),
@@ -171,6 +182,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     except ValueError as e:
         parser.error(str(e))
 
+    model = _resolve_model()
     with live_stack(agent_url=args.agent_url) as agent_url:
         client = A2AAgentClient(agent_url)
         outcome = run(
@@ -180,9 +192,11 @@ def main(argv: Sequence[str] | None = None) -> None:
             cases,
             gold_path,
             agent_url,
+            model,
             args.record,
             datetime.now(UTC),
         )
+    print(f"model: {model}")
     print(_summary(outcome))
 
 

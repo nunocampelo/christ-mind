@@ -13,6 +13,7 @@ import base64
 import binascii
 import json
 import time
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -123,6 +124,64 @@ class ModelGatewayClient:
         if not isinstance(data, dict):
             raise GatewayInferenceError("model gateway response was not a JSON object")
         return data
+
+    def _signed_headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._bearer()}",
+            _RESOURCE_GROUP_HEADER: self._config.resource_group,
+            "Content-Type": "application/json",
+        }
+
+    def post_orchestration(
+        self, deployment_url: str, path: str, json_body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """POST to an orchestration deployment. Unlike foundation-models inference,
+        orchestration rejects the `api-version` query param — so it's omitted here."""
+        url = deployment_url.rstrip("/") + path
+        try:
+            resp = self._http.post(
+                url, headers=self._signed_headers(), json=json_body
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.HTTPError as e:
+            raise GatewayInferenceError(
+                "model gateway orchestration request failed"
+            ) from e
+        except json.JSONDecodeError as e:
+            raise GatewayInferenceError("model gateway response was not JSON") from e
+        if not isinstance(data, dict):
+            raise GatewayInferenceError("model gateway response was not a JSON object")
+        return data
+
+    def post_orchestration_stream(
+        self, deployment_url: str, path: str, json_body: dict[str, Any]
+    ) -> Iterator[dict[str, Any]]:
+        """Streaming POST to an orchestration deployment, yielding parsed SSE events.
+
+        The gateway sends `data: {json}` lines terminated by `data: [DONE]`."""
+        url = deployment_url.rstrip("/") + path
+        try:
+            with self._http.stream(
+                "POST", url, headers=self._signed_headers(), json=json_body
+            ) as resp:
+                resp.raise_for_status()
+                for line in resp.iter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    payload = line.removeprefix("data: ").strip()
+                    if payload == "[DONE]":
+                        return
+                    try:
+                        event = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(event, dict):
+                        yield event
+        except httpx.HTTPError as e:
+            raise GatewayInferenceError(
+                "model gateway orchestration stream failed"
+            ) from e
 
 
 def _jwt_exp(token: str) -> float:

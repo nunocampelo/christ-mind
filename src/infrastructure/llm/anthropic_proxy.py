@@ -14,6 +14,7 @@ from anthropic import Anthropic, AnthropicError, AsyncAnthropic
 from application.extraction.prompt import Complete, PromptedClaimExtractor
 from application.mapping.prompt import PromptedSituationMapper
 from application.resolution.prompt import PromptedResolver
+from infrastructure.llm.types import ChatStream as ChatStream
 
 _DEFAULT_BASE_URL = "http://localhost:6656"
 _DEFAULT_MODEL = "anthropic--claude-4.8-opus"
@@ -25,10 +26,6 @@ class AnthropicProxyError(Exception):
     traceback still prints, but its message isn't interpolated here: it can
     carry the request payload or an internal URL.
     """
-
-
-type ChatStream = Callable[[str, str], AsyncIterator[str]]
-"""Sends (system prompt, user prompt) and yields the reply's text deltas."""
 
 
 def _client() -> Anthropic:

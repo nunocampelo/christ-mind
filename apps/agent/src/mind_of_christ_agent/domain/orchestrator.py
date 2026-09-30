@@ -20,7 +20,7 @@ from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
 from application.mapping.map_situation import SituationMapper, map_situation
-from infrastructure.llm.anthropic_proxy import ChatStream
+from infrastructure.llm.types import ChatStream
 from mcp.types import CallToolResult, TextContent, Tool
 
 from mind_of_christ_agent.domain.concept_question import concept_query_terms

@@ -14,6 +14,7 @@ _CFG = GatewayConfig(
     base_url="https://api.example",
     resource_group="default",
     embedding_deployment_url=None,
+    orchestration_url=None,
 )
 
 _CATALOG = {

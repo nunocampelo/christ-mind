@@ -4,13 +4,17 @@ place that reaches for concrete infrastructure (`make_mapper`, `make_chat_stream
 The MCP client is owned by the caller's `connect()` block and passed in.
 """
 
-from infrastructure.llm.anthropic_proxy import make_chat_stream, make_mapper
+import os
 
 from mind_of_christ_agent.domain.orchestrator import Orchestrator
 from mind_of_christ_agent.infrastructure.mcp_client import McpClient
 
 
 def build_orchestrator(mcp_client: McpClient) -> Orchestrator:
+    if os.getenv("LLM_PROVIDER") == "gateway":
+        from infrastructure.model_gateway.chat import make_chat_stream, make_mapper
+    else:
+        from infrastructure.llm.anthropic_proxy import make_chat_stream, make_mapper
     return Orchestrator(
         mapper=make_mapper(),
         mcp_client=mcp_client,

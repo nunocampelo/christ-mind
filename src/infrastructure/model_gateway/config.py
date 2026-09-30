@@ -30,6 +30,7 @@ class GatewayConfig:
     base_url: str
     resource_group: str
     embedding_deployment_url: str | None
+    orchestration_url: str | None
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -45,6 +46,7 @@ class GatewayConfig:
                 f"model gateway not configured: unset {', '.join(missing)}"
             )
         embed = os.getenv("MODEL_GATEWAY_EMBEDDING_DEPLOYMENT_URL", "").strip()
+        orch = os.getenv("MODEL_GATEWAY_ORCHESTRATION_URL", "").strip()
         return cls(
             auth_url=values["MODEL_GATEWAY_AUTH_URL"].rstrip("/"),
             client_id=values["MODEL_GATEWAY_CLIENT_ID"],
@@ -52,6 +54,7 @@ class GatewayConfig:
             base_url=values["MODEL_GATEWAY_BASE_URL"].rstrip("/"),
             resource_group=values["MODEL_GATEWAY_RESOURCE_GROUP"],
             embedding_deployment_url=(embed.rstrip("/") or None),
+            orchestration_url=(orch.rstrip("/") or None),
         )
 
     @staticmethod

@@ -9,6 +9,7 @@ test cover something production never runs; this keeps the boundary honest.
 too: `async with McpClient() as client: ...` owns the subprocess for the block.
 """
 
+import logging
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,6 +18,8 @@ from typing import Any
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import CallToolResult, Tool
+
+logger = logging.getLogger(__name__)
 
 
 class McpClientError(Exception):
@@ -41,10 +44,23 @@ class McpClient:
     async def call_tool(
         self, name: str, arguments: dict[str, Any]
     ) -> CallToolResult:
+        logger.info("MCP call: %s  args=%s", name, arguments)
         result = await self._session.call_tool(name, arguments)
         if not isinstance(result, CallToolResult):
             raise McpClientError("MCP server returned an unexpected result type")
+        logger.info("MCP result: %s  %s", name, _result_summary(result))
         return result
+
+
+def _result_summary(result: CallToolResult) -> str:
+    payload = result.structured_content
+    if not isinstance(payload, dict):
+        return "no structured content"
+    for key in ("result", "chains"):
+        items = payload.get(key)
+        if isinstance(items, list):
+            return f"{len(items)} {key}"
+    return f"keys={list(payload.keys())}"
 
 
 @asynccontextmanager

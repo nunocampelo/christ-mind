@@ -10,6 +10,7 @@ orchestrator as a stdio subprocess per request — no separate server to start.
 rather than defaulting to a placeholder that would ship a wrong card.
 """
 
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -33,6 +34,12 @@ from mind_of_christ_a2a.infrastructure.db.engine import create_db_engine
 from mind_of_christ_a2a.infrastructure.db.session import SessionProvider
 
 load_env()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 A2A_TASKS_TABLE = "a2a_tasks"
 

@@ -8,24 +8,13 @@ available-but-not-default (the live smoke showed a stronger embedder does not he
 LLM-on-gateway cutover. Jump to the **OUTCOME** section for the result and what's
 left. History below is preserved for context.
 
-## RESUME HERE (Step 0 done 2026-09-30 — build Step 1 next)
+## Step 0 findings (confirmed against the live tenant)
 
-Design is fully decided (see "Decisions pinned" below). **Step 0 is complete: creds
-pasted, probe run, all wire shapes confirmed (see "Step 0 findings" below).** Next
-action is **Step 1** (`config.py` + `client.py` + token mint) against those shapes.
-
-**Done so far:**
-- Empty `MODEL_GATEWAY_*` keys appended to `.env`; neutral placeholders in
-  `.env.example` (committed).
-- Creds pasted into `.env` (5 core vars + `_EMBEDDING_DEPLOYMENT_URL` now set to
-  the confirmed `text-embedding-3-large` deployment).
-- Read-only probe written, run, and **deleted** (throwaway; read creds).
-- No product code written yet. No `httpx` direct pin added yet.
-
-**Step 0 findings (confirmed against the live tenant — build to these):**
+These wire shapes were confirmed by the read-only probe (since deleted) before any
+product code was written; the client and embedder are built to them.
 - **OAuth**: HTTP Basic `client_credentials` POST to `AUTH_URL` → JSON
   `{"access_token": <JWT>}`. JWT has `exp` (use for cache-until-near-expiry) and
-  ~47 scopes. Identical to the reference agent.
+  ~47 scopes. Identical to the sibling agent.
 - **Deployments list**: `GET {BASE_URL}/v2/lm/deployments` with header
   `AI-Resource-Group: <RESOURCE_GROUP>` → `{"resources": [ {id, status,
   scenarioId, deploymentUrl, details.resources.backend_details.model.name}, ...]}`.
@@ -104,7 +93,7 @@ LLM through it too — replacing the cproxy transport in a later increment.
   `MODEL_GATEWAY_*` in this project's `.env` (gitignored) + neutral placeholders
   in `.env.example`; user pastes real values; then a read-only probe runs.
   Secrets never echoed, never committed.
-- **Embedding deployment unknown:** the reference agent pins only a chat
+- **Embedding deployment unknown:** the sibling agent pins only a chat
   deployment. Whether an embeddings deployment exists in the tenant is unknown —
   so a **discovery probe** (list deployments / attempt an embed) runs before the
   embedder is trusted, and the default retrieval embedder stays MiniLM until a
@@ -142,7 +131,7 @@ gateway embedder is a drop-in behind the protocol from the hybrid increment.
 Selecting it is opt-in (DI / a factory switch), NOT the default, until a gateway
 embedding deployment is confirmed live.
 
-### Auth + call flow (mirrors the reference agent's token mint, no SDK)
+### Auth + call flow (mirrors the sibling agent's token mint, no SDK)
 
 ```
 GatewayConfig (from MODEL_GATEWAY_*)
@@ -258,9 +247,9 @@ before the bigger cutover.
   `evaluation/blackbox/gateway_smoke.py` (out of pytest, gated on `MODEL_GATEWAY_*`).
 - Step 0 probe was throwaway and deleted after use.
 
-**Verification:** `pyright` clean; full suite 301 passed (was 296 + 5 gateway
-tests... actually +18 client/embedder/discovery +5 families, all green); no vendor
-name in any product source / `.env.example` / pin (only in this plan's prose).
+**Verification:** `pyright` clean; full suite 301 passed (296 pre-existing + 23 new
+gateway tests: client/embedder/discovery/families, all green); no vendor name in any
+product source, `.env.example`, pin, or this plan.
 
 **The measurement (Step 3 live smoke, `mind-of-god-004b`, 5 required claims):**
 

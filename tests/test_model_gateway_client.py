@@ -29,6 +29,7 @@ def _set_env(monkeypatch: pytest.MonkeyPatch, **overrides: str | None) -> None:
         else:
             monkeypatch.setenv(k, v)
     monkeypatch.delenv("MODEL_GATEWAY_EMBEDDING_DEPLOYMENT_URL", raising=False)
+    monkeypatch.delenv("MODEL_GATEWAY_ORCHESTRATION_URL", raising=False)
 
 
 def _jwt(exp: float) -> str:
@@ -50,6 +51,7 @@ def test_config_from_env_reads_and_strips_trailing_slashes(
     assert cfg.base_url == "https://api.example"
     assert cfg.resource_group == "default"
     assert cfg.embedding_deployment_url is None
+    assert cfg.orchestration_url is None
 
 
 def test_config_fail_loud_lists_missing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,3 +162,132 @@ def test_inference_error_on_http_status(monkeypatch: pytest.MonkeyPatch) -> None
     client = _client_with(cfg, handler)
     with pytest.raises(GatewayInferenceError):
         client.post_inference("https://api.example/dep", "/embeddings", {})
+
+
+# --- orchestration ---
+
+
+def test_post_orchestration_sends_bearer_without_api_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_env(monkeypatch)
+    cfg = GatewayConfig.from_env()
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": _jwt(time.time() + 3600)})
+        seen["auth"] = request.headers.get("Authorization")
+        seen["group"] = request.headers.get("AI-Resource-Group")
+        seen["has_api_version"] = "api-version" in request.url.params
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"orchestration_result": {"choices": []}})
+
+    client = _client_with(cfg, handler)
+    body = {"orchestration_config": {}, "input_params": {}}
+    out = client.post_orchestration("https://api.example/orch", "/completion", body)
+    assert seen["auth"] == f"Bearer {client._token}"
+    assert seen["group"] == "default"
+    assert seen["has_api_version"] is False
+    assert seen["body"] == body
+    assert out == {"orchestration_result": {"choices": []}}
+
+
+def test_post_orchestration_raises_on_http_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_env(monkeypatch)
+    cfg = GatewayConfig.from_env()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": _jwt(time.time() + 3600)})
+        return httpx.Response(500)
+
+    client = _client_with(cfg, handler)
+    with pytest.raises(GatewayInferenceError, match="orchestration"):
+        client.post_orchestration("https://api.example/orch", "/completion", {})
+
+
+def test_post_orchestration_stream_yields_parsed_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_env(monkeypatch)
+    cfg = GatewayConfig.from_env()
+    sse_body = (
+        'data: {"orchestration_result":{"choices":[{"delta":{"content":"Hello"}}]}}\n'
+        "\n"
+        'data: {"orchestration_result":{"choices":[{"delta":{"content":" world"}}]}}\n'
+        "\n"
+        "data: [DONE]\n"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": _jwt(time.time() + 3600)})
+        return httpx.Response(
+            200,
+            content=sse_body.encode(),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    client = _client_with(cfg, handler)
+    events = list(
+        client.post_orchestration_stream(
+            "https://api.example/orch", "/completion", {}
+        )
+    )
+    assert len(events) == 2
+    assert events[0]["orchestration_result"]["choices"][0]["delta"]["content"] == "Hello"
+    assert events[1]["orchestration_result"]["choices"][0]["delta"]["content"] == " world"
+
+
+def test_post_orchestration_stream_skips_non_data_lines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_env(monkeypatch)
+    cfg = GatewayConfig.from_env()
+    sse_body = (
+        ": keep-alive\n"
+        "\n"
+        'data: {"orchestration_result":{"choices":[{"delta":{"content":"ok"}}]}}\n'
+        "\n"
+        "data: [DONE]\n"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": _jwt(time.time() + 3600)})
+        return httpx.Response(
+            200,
+            content=sse_body.encode(),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    client = _client_with(cfg, handler)
+    events = list(
+        client.post_orchestration_stream(
+            "https://api.example/orch", "/completion", {}
+        )
+    )
+    assert len(events) == 1
+
+
+def test_post_orchestration_stream_raises_on_http_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_env(monkeypatch)
+    cfg = GatewayConfig.from_env()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": _jwt(time.time() + 3600)})
+        return httpx.Response(502)
+
+    client = _client_with(cfg, handler)
+    with pytest.raises(GatewayInferenceError, match="orchestration stream"):
+        list(
+            client.post_orchestration_stream(
+                "https://api.example/orch", "/completion", {}
+            )
+        )

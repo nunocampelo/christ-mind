@@ -23,6 +23,7 @@ class BlackBoxHeader(BaseModel):
     run_id: str
     created_at: str
     agent_url: str
+    model: str
     evaluators: list[str]
     corpus_run_id: str
     gold_sha256: str
