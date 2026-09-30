@@ -163,8 +163,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument(
         "--agent-url",
-        default="http://127.0.0.1:8765",
-        help="base URL of the A2A server to spawn/hit",
+        default="http://127.0.0.1:8766",
+        help="base URL of the A2A server to spawn/hit (default 8766, one above the dev server)",
     )
     args = parser.parse_args(argv)
 

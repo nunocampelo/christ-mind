@@ -43,7 +43,7 @@ class _Started:
 
 @contextmanager
 def live_stack(
-    agent_url: str = "http://127.0.0.1:8765",
+    agent_url: str = "http://127.0.0.1:8766",
     proxy_url: str | None = None,
     stop_postgres_if_started: bool = False,
 ) -> Iterator[str]:

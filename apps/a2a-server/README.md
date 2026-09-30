@@ -88,6 +88,28 @@ Needs the Anthropic proxy reachable (the agent's mapper + streaming answer) and 
 `mind_of_christ_mcp` server importable (the agent launches it as a subprocess). No separate
 MCP server to start.
 
+### Running alongside the black-box eval
+
+The eval harness (`python -m evaluation.blackbox.run --live`) spawns its own A2A server on
+port **8766** against the `christ_mind_eval` database. The dev server defaults to **8765**
+against `christ_mind`. Both can run side by side with no flags.
+
+To run all three — dev on the production DB, dev on the eval DB, and the eval harness —
+put the second dev server on a third port:
+
+```sh
+# Terminal 1 — dev server (christ_mind, port 8765)
+.venv/bin/python -m mind_of_christ_a2a.main
+
+# Terminal 2 — dev server against the eval DB (port 8767)
+DATABASE_URL=postgresql+asyncpg://christ:christ@127.0.0.1:5432/christ_mind_eval \
+  AGENT_PUBLIC_URL=http://127.0.0.1:8767 PORT=8767 \
+  .venv/bin/python -m mind_of_christ_a2a.main
+
+# Terminal 3 — eval harness (spawns its own server on port 8766)
+python -m evaluation.blackbox.run --live
+```
+
 ### Endpoints
 
 - `POST /a2a` — the JSON-RPC endpoint. Native v1: methods are `SendMessage`, `GetTask`
