@@ -274,3 +274,73 @@ than for retrieval quality. Two embedding deployments exist in the tenant
 **Left for the future LLM-on-gateway increment:** wire `families/` into a real
 chat path (client streaming via SSE + `parse_stream_event`), replacing the cproxy
 transport. The seam is scaffolded and tested; only the chat call site is missing.
+
+## OUTCOME 2: Gateway LLM chat + model comparison (2026-09-30)
+
+**Built (on top of the families scaffold):**
+- `src/infrastructure/model_gateway/families/orchestration.py` — `OrchestrationFamily`
+  implementing `ChatFamily` for the orchestration deployment's envelope shape. The
+  orchestration deployment (`d3b615b816440f31`) is a model-ROUTER: you pass the model
+  name in the request body, no per-model deployment needed.
+- `src/infrastructure/model_gateway/chat.py` — `make_complete()`, `make_chat_stream()`,
+  `make_mapper()` factories. Queue-based sync-to-async bridge for true token-by-token
+  streaming from sync httpx to async `ChatStream`.
+- `src/infrastructure/llm/types.py` — shared `ChatStream` type alias (fixes layering
+  violation where orchestrator domain imported from `anthropic_proxy`).
+- `apps/agent/src/mind_of_christ_agent/application/build.py` — `LLM_PROVIDER=gateway`
+  DI switch: conditional import from `model_gateway.chat` vs `anthropic_proxy`.
+- `src/infrastructure/model_gateway/client.py` — `post_orchestration()` and
+  `post_orchestration_stream()` (no `api-version` param — orchestration rejects it).
+- `src/infrastructure/model_gateway/config.py` — `orchestration_url` field,
+  `MODEL_GATEWAY_ORCHESTRATION_URL` env var.
+- `evaluation/blackbox/run_format.py` / `run.py` — `model` field in run header, so
+  each eval run records which LLM produced the answers.
+- Tests: `test_model_gateway_families.py` (7 orchestration tests),
+  `test_model_gateway_chat.py` (4 tests), `test_model_gateway_client.py` (5 new
+  orchestration tests). All offline, faked transport. 317 total pass, pyright clean.
+
+**Orchestration wire shape (reverse-engineered from the vendor SDK, no SDK dep):**
+- Request: `{"orchestration_config": {"module_configurations": {"templating_module_config":
+  {"template": [messages]}, "llm_module_config": {"model_name": "gpt-4o", ...}},
+  "stream": true}, "input_params": {}, "messages_history": []}`
+- Response: `{"orchestration_result": {"choices": [{"message": {"content": "..."}}]}}`
+- Streaming: SSE `data: {json}` lines, delta in `choices[0].delta.content`
+- Endpoint: `{deploymentUrl}/completion` (NOT `/chat/completions`, NO `api-version`)
+
+**Black-box eval results (dev split, 21 cases):**
+
+| Model                        | Transport | Pass | Total | Rate      |
+|------------------------------|-----------|------|-------|-----------|
+| anthropic--claude-4.8-opus   | cproxy    | 20   | 21    | **95.2%** |
+| anthropic--claude-4.8-opus   | gateway   | 18   | 21    | 85.7%     |
+| anthropic--claude-4.6-opus   | gateway   | 18   | 21    | 85.7%     |
+| gpt-4.1                      | gateway   | 17   | 21    | 81.0%     |
+| gpt-5                        | gateway   | —    | —     | *too slow, 8/21 in 30 min* |
+| anthropic--claude-4.6-opus   | cproxy    | —    | —     | *too slow, 9/21 in 30 min* |
+
+**Failure analysis:**
+
+| Case                  | cproxy 4.8 | gw gpt-4.1       | gw claude-4.8      | gw claude-4.6      |
+|-----------------------|------------|------------------|--------------------|---------------------|
+| atonement-purpose-002 | ✅          | ❌ citation corrupt | ✅                  | ✅                   |
+| mind-definition-025   | ✅          | ❌ retrieval miss  | ❌ retrieval miss    | ❌ retrieval miss    |
+| mind-of-god-004b      | ❌ B2       | ❌ B2              | ❌ B2               | ❌ B2                |
+| miracles-order-001    | ✅          | ❌ retrieval miss  | ❌ retrieval miss    | ❌ retrieval miss    |
+
+**Findings:**
+1. **mind-of-god-004b** fails everywhere — confirmed graph-tier (B2), model-independent.
+2. **atonement-purpose-002**: gpt-4.1 corrupted a citation ID (prepended `a` to a hex
+   ID). Both Claude models handle it. OpenAI instruction-following weakness.
+3. **mind-definition-025 + miracles-order-001**: fail on ALL gateway runs but pass on
+   cproxy. Same model (claude-4.8) gives different results via different transports.
+   The orchestration envelope likely affects mapper concept extraction subtly — or
+   there's non-deterministic LLM sampling variance. The 2-case difference on a
+   21-case suite is not statistically significant; would need ~5 runs per config to
+   distinguish transport effect from noise.
+4. **gpt-5 is impractically slow** through the orchestration endpoint (~3.5 min/case
+   vs ~45s for gpt-4.1).
+
+**Decision:** cproxy with claude-4.8-opus remains the default. The gateway LLM path
+is fully functional and switchable via `LLM_PROVIDER=gateway` +
+`MODEL_GATEWAY_CHAT_MODEL=<model>` for easy A/B comparison. No model tested via the
+gateway matched cproxy's 95.2% rate.

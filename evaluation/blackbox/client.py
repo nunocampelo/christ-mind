@@ -28,7 +28,7 @@ class A2AClientError(RuntimeError):
 
 
 class A2AAgentClient:
-    def __init__(self, base_url: str, timeout: float = 120.0):
+    def __init__(self, base_url: str, timeout: float = 300.0):
         self._url = base_url.rstrip("/") + "/a2a"
         self._timeout = timeout
 
