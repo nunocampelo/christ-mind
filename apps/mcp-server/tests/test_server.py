@@ -5,6 +5,7 @@ from mcp import Client
 
 from mind_of_christ_mcp.schemas.chains import ChainResult
 from mind_of_christ_mcp.schemas.claims import ClaimResult
+from mind_of_christ_mcp.schemas.entity_relation import EntityRelationCandidate
 from mind_of_christ_mcp.schemas.sources import SourceResult
 from mind_of_christ_mcp.server import mcp
 
@@ -212,3 +213,49 @@ async def test_chain_claims_tool_empty_mention_returns_empty():
 
     chain_result = ChainResult(**result.structured_content)
     assert chain_result.chains == []
+
+
+@pytest.mark.anyio
+async def test_describe_entity_tool_wraps_each_claim_with_a_trace():
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "describe_entity", {"mention": "God", "aspects": ["thinking"], "limit": 20}
+        )
+
+    assert not result.is_error
+    candidates = [
+        EntityRelationCandidate(**item) for item in result.structured_content["result"]
+    ]
+    assert candidates
+    for i, candidate in enumerate(candidates):
+        assert candidate.claim.source_id
+        assert candidate.trace.channel == "entity_relation"
+        assert candidate.trace.rank == i
+        assert candidate.trace.requested_aspects == ["thinking"]
+
+
+@pytest.mark.anyio
+async def test_describe_entity_tool_surfaces_a_knowing_target_within_the_budget():
+    # The mind-of-god-004b gate claim "God knows His Children" (f99fd11e), which
+    # characterization ranking buries past the default limit, must be within the budget
+    # for a thinking question -- with its "you only in peace" style qualifier intact.
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "describe_entity", {"mention": "God", "aspects": ["thinking"], "limit": 20}
+        )
+
+    candidates = [
+        EntityRelationCandidate(**item) for item in result.structured_content["result"]
+    ]
+    ids = [c.claim.claim_id for c in candidates]
+    assert any(cid.startswith("f99fd11e") for cid in ids)
+
+
+@pytest.mark.anyio
+async def test_describe_entity_tool_empty_mention_returns_empty():
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "describe_entity", {"mention": "", "aspects": ["thinking"]}
+        )
+
+    assert result.structured_content["result"] == []

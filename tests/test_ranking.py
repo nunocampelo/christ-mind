@@ -1,6 +1,7 @@
 from application.retrieval.ranking import (
     rank_characterization_claims,
     rank_query_relevance,
+    rank_relational_claims,
 )
 from domain.claims.models import Attribution, Claim, Mode, Polarity, Predicate
 
@@ -140,5 +141,72 @@ def test_query_stable_tie_break_keeps_input_order():
 def test_query_ranking_is_a_permutation_never_drops():
     claims = [_RM_NONE, _RM_VERB, _RM_OBJECT, _RM_SUBJECT]
     ranked = rank_query_relevance(claims, "rm")
+    assert {c.claim_id for c in ranked} == {c.claim_id for c in claims}
+    assert len(ranked) == len(claims)
+
+
+# --- relational ranking (the describe_entity intent) ---
+#
+# Aspect DISCRIMINATION is the property under test, not "OTHER > is": a thinking question
+# must prefer knowing evidence, a creating question creation evidence -- from the same
+# candidate set, with the same entity forms.
+
+_KNOWS = _claim("knows", "God", Predicate.OTHER, "His Children", verb_phrase="knows")
+_CREATES = _claim("creates", "God", Predicate.CREATES, "the Soul", verb_phrase="created")
+_THINKING = frozenset({"thinking"})
+_CREATING = frozenset({"creating"})
+
+
+def test_relational_thinking_prefers_knowing_over_creation():
+    ranked = rank_relational_claims([_CREATES, _KNOWS], FORMS, _THINKING)
+    assert [c.claim_id for c in ranked] == ["knows", "creates"]
+
+
+def test_relational_creating_prefers_creation_over_knowing():
+    # Same candidates and forms as the thinking case -- only the aspect changes, and the
+    # order flips. This is the discrimination the plan requires: the two questions must
+    # not rank identically.
+    ranked = rank_relational_claims([_KNOWS, _CREATES], FORMS, _CREATING)
+    assert [c.claim_id for c in ranked] == ["creates", "knows"]
+
+
+def test_relational_aspect_match_beats_predicate_role():
+    # The whole point: an `other`/"knows" claim (role 0) outranks an attributive `is`
+    # (role 5) under a thinking aspect, because aspect match sits above role. Role alone
+    # would bury exactly the evidence "how does God think?" needs.
+    is_claim = _claim("is", "God", Predicate.IS, "love")
+    ranked = rank_relational_claims([is_claim, _KNOWS], FORMS, _THINKING)
+    assert [c.claim_id for c in ranked] == ["knows", "is"]
+
+
+def test_relational_verb_aspect_beats_object_aspect():
+    # "knows" in the verb phrase (the entity's own action) outranks a claim that only
+    # grazes the aspect in its object ("created knowledge").
+    verb_hit = _claim("verb", "God", Predicate.OTHER, "His Children", verb_phrase="knows")
+    object_hit = _claim(
+        "object", "God", Predicate.CREATES, "knowledge", verb_phrase="created"
+    )
+    ranked = rank_relational_claims([object_hit, verb_hit], FORMS, _THINKING)
+    assert [c.claim_id for c in ranked] == ["verb", "object"]
+
+
+def test_relational_subject_position_beats_object_position():
+    subject = _claim("subj", "God", Predicate.OTHER, "His Children", verb_phrase="knows")
+    obj = _claim("obj", "man", Predicate.OTHER, "God", verb_phrase="knows")
+    ranked = rank_relational_claims([obj, subject], FORMS, _THINKING)
+    assert [c.claim_id for c in ranked] == ["subj", "obj"]
+
+
+def test_relational_empty_aspects_degrade_to_position_and_role():
+    # No aspect -> aspect match is uniformly 0, so entity position + role decide, and
+    # ranking must not raise.
+    is_claim = _claim("is", "God", Predicate.IS, "love")
+    ranked = rank_relational_claims([_KNOWS, is_claim], FORMS, frozenset())
+    assert [c.claim_id for c in ranked] == ["is", "knows"]
+
+
+def test_relational_ranking_is_a_permutation_never_drops():
+    claims = [_KNOWS, _CREATES]
+    ranked = rank_relational_claims(claims, FORMS, _THINKING)
     assert {c.claim_id for c in ranked} == {c.claim_id for c in claims}
     assert len(ranked) == len(claims)

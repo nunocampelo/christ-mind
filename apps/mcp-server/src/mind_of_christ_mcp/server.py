@@ -5,11 +5,15 @@ Run directly for local stdio testing:
     python -m mind_of_christ_mcp.server
 """
 
+import os
 import sys
 
 from loguru import logger
 from mcp.server.mcpserver import MCPServer
 
+from application.retrieval.describe_entity import EntityRelation as _EntityRelation
+from application.retrieval.describe_entity import CHANNEL as _ENTITY_RELATION_CHANNEL
+from application.retrieval.describe_entity import describe_entity as _describe_entity
 from application.retrieval.evidence import evidence_text as _evidence_text
 from application.retrieval.evidence import source_for_claim as _source_for_claim
 from application.retrieval.hybrid import find_claims_hybrid as _find_claims_hybrid
@@ -26,9 +30,23 @@ from infrastructure.config.env import load_env
 
 from mind_of_christ_mcp.schemas.chains import ChainResult, ClaimChain
 from mind_of_christ_mcp.schemas.claims import ClaimResult
+from mind_of_christ_mcp.schemas.entity_relation import (
+    EntityRelationCandidate,
+    RetrievalTrace,
+)
 from mind_of_christ_mcp.schemas.sources import SourceResult
 
 mcp = MCPServer(name="mind-of-christ")
+
+# describe_entity (the entity_relation channel) is an experiment; it is registered as a
+# tool only when this flag is set, so an A/B eval can toggle the whole channel off (agent
+# never sees the tool) without a code change. Any non-empty, non-"0"/"false" value enables.
+_ENTITY_RELATION_ENABLED = os.environ.get("ENTITY_RELATION_ENABLED", "").lower() not in {
+    "",
+    "0",
+    "false",
+    "no",
+}
 
 
 def _to_claim_result(claim: Claim) -> ClaimResult:
@@ -130,6 +148,60 @@ def find_claims_for_entity(mention: str, limit: int = 20) -> list[ClaimResult]:
     results = _find_claims_for_entity(mention, limit=limit)
     logger.bind(tool="find_claims_for_entity", count=len(results)).info("tool result")
     return [_to_claim_result(claim) for claim in results]
+
+
+def _to_entity_relation_candidate(relation: _EntityRelation) -> EntityRelationCandidate:
+    return EntityRelationCandidate(
+        claim=_to_claim_result(relation.claim),
+        trace=RetrievalTrace(
+            seed_mention=relation.seed_mention,
+            resolved_entity_id=relation.resolved_entity_id,
+            requested_aspects=list(relation.requested_aspects),
+            matched_aspect=relation.matched_aspect,
+            rank=relation.rank,
+            channel=_ENTITY_RELATION_CHANNEL,
+        ),
+    )
+
+
+def describe_entity(
+    mention: str, aspects: list[str], limit: int = 20
+) -> list[EntityRelationCandidate]:
+    """Find HOW an entity acts or relates -- for "how does God think?", "how does the ego
+    attack?", "what is the Mind of X". Surface forms of one entity are resolved together
+    (like find_claims_for_entity), so this returns claims whose subject or object is any
+    of that entity's forms.
+
+    Use this -- NOT find_claims_for_entity and NOT find_claims -- when the question is how
+    an entity thinks/creates/loves/wills/relates:
+    - describe_entity: HOW X acts ("how does God think?"). Ranks the entity's own actions
+      matching the asked aspect first, so a "God knows..." claim isn't buried.
+    - find_claims_for_entity: WHAT X is ("tell me about God") -- characterization, ranks
+      attributive "God is..." claims first; it buries the relational answer.
+    - find_claims: keyword/concept search across all claims, no entity resolution.
+
+    `aspects` names what the question asks about ("thinking", "creating", "willing",
+    "loving", or a raw wording like "peace"): pass ["thinking"] for "how does God think?",
+    ["creating"] for "how does God create?". It re-weights ranking toward claims whose own
+    verb phrase or object carries that aspect -- e.g. "thinking" lifts a claim with "knows"
+    in its verb phrase -- WITHOUT asserting that thinking means knowing. An empty list
+    falls back to entity-participation ranking.
+
+    Each result pairs the whole claim (qualifiers like "you only in peace" kept intact)
+    with a trace explaining why it surfaced (resolved entity, matched aspect, rank). The
+    aspect weighting proposes WHERE to look; only the returned claims and their source
+    passages establish WHAT the Course says. Ranking only reorders; `limit` alone drops.
+    """
+    logger.bind(
+        tool="describe_entity", mention=mention, aspects=aspects, limit=limit
+    ).info("tool call")
+    results = _describe_entity(mention, frozenset(aspects), limit=limit)
+    logger.bind(tool="describe_entity", count=len(results)).info("tool result")
+    return [_to_entity_relation_candidate(relation) for relation in results]
+
+
+if _ENTITY_RELATION_ENABLED:
+    mcp.tool()(describe_entity)
 
 
 # Predicates that read subject -> object as a directed step, so a chain of them

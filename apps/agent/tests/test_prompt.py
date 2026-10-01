@@ -60,6 +60,16 @@ def test_carries_the_inline_marker_contract(prompt: str):
 
 
 @pytest.mark.parametrize("prompt", PROSE_PROMPTS, ids=IDS)
+def test_marker_contract_states_the_16_hex_shape(prompt: str):
+    # The positive shape rule is what lets the model reject a location-token or a
+    # wrong-length (off-by-one) id before emitting it. Flatten newlines: the contract is
+    # hard-wrapped, so a phrase can straddle a line break in the source string.
+    flat = " ".join(prompt.split())
+    assert "16 lowercase hexadecimal characters" in flat
+    assert "Copy each claim_id character for character" in flat
+
+
+@pytest.mark.parametrize("prompt", PROSE_PROMPTS, ids=IDS)
 def test_bans_the_retrieval_meta_voice(prompt: str):
     # The voice must not narrate the machinery; these phrases are listed as forbidden.
     for banned in ("the cited claims", "the retrieved claims", "the evidence supports"):
@@ -119,3 +129,10 @@ def test_rendered_claim_line_exposes_the_claim_id_for_citing():
     rendered = answer_user_prompt("describe God", [_cited("affirmed")], [])
 
     assert "claim_id=c1" in rendered
+
+
+def test_rendered_claim_line_shows_the_copy_ready_bracket_form():
+    # The line shows the exact bracketed token to paste, so citing is a copy not a retype.
+    rendered = answer_user_prompt("describe God", [_cited("affirmed")], [])
+
+    assert "(cite as [c1])" in rendered

@@ -22,6 +22,7 @@ from mind_of_christ_agent.domain.orchestrator import (
     _normalize_term,
     _parse_decision,
     _rehydrate,
+    _strip_fabricated_markers,
 )
 
 
@@ -129,6 +130,50 @@ async def test_run_stream_seeds_mapped_concepts_then_answers():
     answer = orchestrator.last_answer
     assert answer is not None
     assert [c.claim_id for c in answer.cited_claims] == ["c1"]
+
+
+@pytest.mark.anyio
+async def test_describe_entity_envelope_is_unwrapped_into_cited_claims():
+    # describe_entity returns each claim wrapped in {claim, trace}, unlike the flat
+    # ClaimResult the other cited tools return. _absorb must unwrap the envelope so the
+    # nested claim still lands in cited_claims (and is not read as a claim_id-less item
+    # and dropped).
+    describe_result = CallToolResult(
+        content=[TextContent(type="text", text="one relation")],
+        structured_content={
+            "result": [
+                {
+                    "claim": _claim_result(claim_id="rel1"),
+                    "trace": {
+                        "seed_mention": "God",
+                        "resolved_entity_id": "e1",
+                        "requested_aspects": ["thinking"],
+                        "matched_aspect": "verb_phrase",
+                        "rank": 0,
+                        "channel": "entity_relation",
+                    },
+                }
+            ]
+        },
+    )
+    mcp = _FakeMcpClient({"describe_entity": describe_result})
+    chat_stream = _scripted_stream(
+        '{"tool_call": {"name": "describe_entity", "arguments": {"mention": "God", "aspects": ["thinking"]}}}',
+        '{"final": "God knows His Children."}',
+    )
+    orchestrator = Orchestrator(_StubMapper([]), mcp, chat_stream)
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation="how does God think?", max_steps=4)
+        )
+    ]
+
+    assert events[-1] == FinalEvent(text="God knows His Children.")
+    answer = orchestrator.last_answer
+    assert answer is not None
+    assert [c.claim_id for c in answer.cited_claims] == ["rel1"]
 
 
 @pytest.mark.anyio
@@ -598,14 +643,15 @@ async def test_citation_diagnostics_clean_when_prose_cites_a_gathered_claim():
 
 
 @pytest.mark.anyio
-async def test_citation_diagnostics_record_unknown_and_unused_but_still_answer():
+async def test_fabricated_marker_is_stripped_and_gathered_claim_recorded_unused():
     find_claims_result = CallToolResult(
         content=[TextContent(type="text", text="one claim")],
         structured_content={"result": [_claim_result(claim_id="c1")]},
     )
     mcp = _FakeMcpClient({"find_claims": find_claims_result})
-    # The prose cites a claim_id that was never gathered (unknown) and never cites the one
-    # the seeded batch did gather (unused). The turn must still complete -- validation is soft.
+    # The prose cites a claim_id that was never gathered: the net strips it from the shipped
+    # text (so unknown_ids ends empty), while the gathered-but-uncited claim stays recorded
+    # as unused. The turn still completes -- validation is soft.
     chat_stream = _scripted_stream('{"final": "Forgiveness brings peace. [made-up]"}')
     orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
 
@@ -616,10 +662,10 @@ async def test_citation_diagnostics_record_unknown_and_unused_but_still_answer()
         )
     ]
 
-    assert events[-1] == FinalEvent(text="Forgiveness brings peace. [made-up]")
+    assert events[-1] == FinalEvent(text="Forgiveness brings peace.")
     answer = orchestrator.last_answer
     assert answer is not None
-    assert answer.citation_diagnostics.unknown_ids == ["made-up"]
+    assert answer.citation_diagnostics.unknown_ids == []
     assert answer.citation_diagnostics.unused_claim_ids == ["c1"]
 
 
@@ -628,6 +674,37 @@ def test_normalize_term_folds_case_article_and_possessive():
     assert _normalize_term("  MIND  of  God ") == "mind of god"
     # A genuine rephrase does NOT collapse -- that is left to the decision prompt.
     assert _normalize_term("Christ's mind") != _normalize_term("the mind of Christ")
+
+
+def test_strip_fabricated_markers_removes_location_tokens():
+    valid = {"b9ced21690885c61"}
+    text = (
+        "Salvation is right-mindedness [b9ced21690885c61]. It is denial of error [88], "
+        "the first chapter [t2-2-13] and the fourth [4-2-5]."
+    )
+    stripped = _strip_fabricated_markers(text, valid)
+    assert "[88]" not in stripped
+    assert "[t2-2-13]" not in stripped
+    assert "[4-2-5]" not in stripped
+    assert "[b9ced21690885c61]" in stripped
+
+
+def test_strip_fabricated_markers_removes_prepended_char_corruption():
+    # A real 16-char id with a leading char prepended (17 chars) is not in the valid set.
+    valid = {"1910b050bd79821d"}
+    text = "The Atonement undoes fear [a1910b050bd79821d]."
+    stripped = _strip_fabricated_markers(text, valid)
+    assert "[a1910b050bd79821d]" not in stripped
+    # Deletion only -- the net never repairs a bogus token into the real one.
+    assert "[1910b050bd79821d]" not in stripped
+    assert stripped == "The Atonement undoes fear."
+
+
+def test_strip_fabricated_markers_keeps_valid_including_duplicates():
+    # A valid id repeated is not fabrication (out of scope); both occurrences survive.
+    valid = {"b9ced21690885c61"}
+    text = "Peace [b9ced21690885c61] is salvation [b9ced21690885c61]."
+    assert _strip_fabricated_markers(text, valid) == text
 
 
 def test_call_terms_is_order_independent_and_ignores_limits():

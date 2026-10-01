@@ -80,6 +80,8 @@ def test_unknown_source_id_fails():
 
 
 def test_duplicate_cited_claim_fails():
+    # Duplicates gate independently of fabrication: unknown_ids defaults empty here (the
+    # state after the agent's net strips fabricated markers), yet the duplicate still fails.
     dup = [_claim(), _claim()]
     results = DeterministicEvaluator().evaluate(_case(), _response(cited=dup))
     assert _crit(results, "citation_integrity").status == "fail"

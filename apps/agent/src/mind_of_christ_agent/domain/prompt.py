@@ -35,7 +35,12 @@ shown for that claim -- never invent, abbreviate, or alter a claim_id, and never
 claim_id you were not given. A claim_id is the full opaque token shown (e.g.
 [213e0c75c8a3eaac]); never shorten it to a number, and never put a source's location (a
 paragraph or verse number) in the brackets -- the only thing that ever goes inside [ ] is a
-full claim_id you were given. A statement supported by several claims takes several markers.
+full claim_id you were given. A claim_id is exactly 16 lowercase hexadecimal characters
+(0-9, a-f), e.g. [b9ced21690885c61]; if a bracketed token is not exactly that -- longer,
+shorter, containing any other character, or looking like a number, verse, or paragraph
+reference -- it is not a claim_id, so do not emit it. Copy each claim_id character for
+character from the line that shows it; do not retype it from memory or add or drop a
+leading character. A statement supported by several claims takes several markers.
 Do not attach a marker to a claim merely because it is topically related; the cited claim
 must support the specific statement right before the marker. Purely conversational framing
 -- a greeting, a question back, an acknowledgement of the situation -- carries no marker."""
@@ -186,8 +191,10 @@ def _render_claim_line(c: CitedClaim) -> str:
     # claim_id leads the line: it is the token the model must copy into an inline marker.
     neg = " [NEGATED]" if c.polarity == "negated" else ""
     proposition = f"{c.subject} {c.verb_phrase} {c.object or ''}".rstrip()
+    # `cite as [<claim_id>]` shows the exact bracketed token to copy, so citing is a copy,
+    # not a retype -- the retype is where a claim_id gets truncated to a location number.
     return (
-        f'  - claim_id={c.claim_id}{neg} {proposition} '
+        f'  - claim_id={c.claim_id} (cite as [{c.claim_id}]){neg} {proposition} '
         f'-- evidence: "{c.evidence}"'
     )
 

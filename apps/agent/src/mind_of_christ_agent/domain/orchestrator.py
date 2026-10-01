@@ -7,8 +7,9 @@ token by token. The tools stay deterministic and cited; the model only chooses a
 them and writes the closing prose.
 
 The invariant is enforced in the accumulated answer state: `find_claims`/
-`find_claims_for_entity`/`find_sources` results land in `cited_claims`; `chain_claims`
-results land in `inferred_chains`. They are never merged. The final answer text is the
+`find_claims_for_entity`/`find_sources`/`describe_entity` results land in `cited_claims`;
+`chain_claims` results land in `inferred_chains`. They are never merged. The final answer
+text is the
 model's, but the structured evidence beneath it keeps "the Course says X" separate from
 "this follows from what it says".
 """
@@ -49,14 +50,22 @@ from mind_of_christ_agent.domain.prompt import (
     render_cited_claims,
 )
 
-_CITED_TOOLS = frozenset({"find_claims", "find_claims_for_entity", "find_sources"})
+_CITED_TOOLS = frozenset(
+    {"find_claims", "find_claims_for_entity", "find_sources", "describe_entity"}
+)
+
+# describe_entity wraps each claim in an {claim, trace} envelope rather than returning the
+# ClaimResult flat, so _absorb unwraps it via this set instead of the flat-item path.
+_ENVELOPED_CITED_TOOLS = frozenset({"describe_entity"})
 
 # Tools that *retrieve* by a search term, so a repeat for an already-searched term is
 # redundant. Currently identical to _CITED_TOOLS, but kept separate on purpose: the
 # repeat-search guard is about retrieval, not about whether a result is cited, and a future
 # retrieval tool whose output isn't a cited claim would still belong here. chain_claims is
 # deliberately absent -- it walks edges from an already-retrieved subject (see the guard).
-_RETRIEVAL_TOOLS = frozenset({"find_claims", "find_claims_for_entity", "find_sources"})
+_RETRIEVAL_TOOLS = frozenset(
+    {"find_claims", "find_claims_for_entity", "find_sources", "describe_entity"}
+)
 
 
 class ToolClient(Protocol):
@@ -225,6 +234,7 @@ class Orchestrator:
         # The structured answer travels alongside the streamed prose; the A2A artifact
         # carries it, keeping cited claims distinct from inferred chains. The FinalEvent's
         # text is the whole prose.
+        text = _strip_fabricated_markers(text, {c.claim_id for c in cited_claims})
         self.last_answer = AgentAnswer(
             text=text,
             concepts=concepts,
@@ -247,6 +257,20 @@ def _diagnose_citations(
         unknown_ids=sorted(marked - gathered),
         unused_claim_ids=sorted(gathered - marked),
     )
+
+
+def _strip_fabricated_markers(text: str, valid: set[str]) -> str:
+    """Delete markers whose token is not a gathered claim_id (a truncated or corrupted id
+    the model invented). A net for imperfect prevention, not a repair -- we remove the bogus
+    token, never guess the intended one. `valid` matches `_diagnose_citations`'s gathered set
+    so a stripped marker is exactly one that would otherwise be reported as unknown."""
+    fabricated = {m for m in extract_markers(text) if m not in valid}
+    if not fabricated:
+        return text
+    pattern = re.compile(
+        r" ?\[(?:" + "|".join(re.escape(m) for m in fabricated) + r")\]"
+    )
+    return pattern.sub("", text)
 
 
 def _parse_decision(text: str) -> dict[str, object]:
@@ -335,9 +359,11 @@ def _absorb(
     if not isinstance(payload, dict):
         return
     if name in _CITED_TOOLS:
+        enveloped = name in _ENVELOPED_CITED_TOOLS
         seen = {c.claim_id for c in cited_claims}
         for item in payload.get("result", []):
-            claim = _to_cited_claim(item)
+            source = item.get("claim") if enveloped and isinstance(item, dict) else item
+            claim = _to_cited_claim(source)
             if claim is not None and claim.claim_id not in seen:
                 cited_claims.append(claim)
                 seen.add(claim.claim_id)
