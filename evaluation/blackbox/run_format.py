@@ -25,6 +25,9 @@ class BlackBoxHeader(BaseModel):
     agent_url: str
     model: str
     evaluators: list[str]
+    # Which gold split this run scored. Defaults to "dev" so runs recorded before the field
+    # existed still load; a holdout number must never be read as a dev number or vice versa.
+    split: Literal["dev", "holdout"] = "dev"
     corpus_run_id: str
     gold_sha256: str
     score: ScoreLine

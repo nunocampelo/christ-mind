@@ -18,6 +18,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
+
+from infrastructure.config.env import load_env
 
 from evaluation.blackbox.client import A2AAgentClient
 from evaluation.blackbox.evaluator import Evaluator, combine
@@ -67,6 +70,7 @@ def run(
     evaluator_names: Sequence[str],
     cases: Sequence[BlackBoxCase],
     gold_path: Path,
+    split: Literal["dev", "holdout"],
     agent_url: str,
     model: str,
     record: bool,
@@ -80,7 +84,7 @@ def run(
     report = score_cases(results)
     intents = [c.intent for c in cases]
     path = (
-        _write(report, cases, evaluator_names, gold_path, agent_url, model, now)
+        _write(report, cases, evaluator_names, gold_path, split, agent_url, model, now)
         if record
         else None
     )
@@ -92,6 +96,7 @@ def _write(
     cases: Sequence[BlackBoxCase],
     evaluator_names: Sequence[str],
     gold_path: Path,
+    split: Literal["dev", "holdout"],
     agent_url: str,
     model: str,
     now: datetime,
@@ -105,6 +110,7 @@ def _write(
         agent_url=agent_url,
         model=model,
         evaluators=list(evaluator_names),
+        split=split,
         corpus_run_id=_corpus_run_id(),
         gold_sha256=hashlib.sha256(gold_path.read_bytes()).hexdigest(),
         score=ScoreLine(
@@ -174,6 +180,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             "(there is no offline full run -- unit tests cover the pieces offline)"
         )
 
+    load_env()
+    split: Literal["dev", "holdout"] = "holdout" if args.holdout else "dev"
     gold_path = HOLDOUT_GOLD if args.holdout else DEV_GOLD
     cases = load_cases(gold_path)
     evaluator_names = [s.strip() for s in args.evaluators.split(",") if s.strip()]
@@ -191,6 +199,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             evaluator_names,
             cases,
             gold_path,
+            split,
             agent_url,
             model,
             args.record,

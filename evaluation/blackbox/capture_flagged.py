@@ -24,8 +24,6 @@ DATABASE_URL set, Docker and cproxy available.
 import argparse
 import json
 import os
-import statistics
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,10 +31,14 @@ from application.extraction.prompt import Complete
 from infrastructure.config.env import load_env
 from infrastructure.llm.anthropic_proxy import make_complete
 
-from evaluation.blackbox.client import A2AAgentClient
+from evaluation.blackbox.calibration.judging import (
+    Frozen,
+    ask_once,
+    claim_dump,
+    judge_repeated,
+)
 from evaluation.blackbox.evaluator import BlackBoxResponse
-from evaluation.blackbox.gold import BlackBoxCase, load_cases
-from evaluation.blackbox.harness import live_stack
+from evaluation.blackbox.gold import load_cases
 from evaluation.blackbox.llm_judge import LLMEvaluator, make_llm_judge
 
 _FLAGGED = (
@@ -72,43 +74,6 @@ Return ONLY a JSON array; each element: {"assertion": "<quoted words from the an
 No prose outside the JSON, no code fences."""
 
 
-@dataclass
-class _Frozen:
-    case: BlackBoxCase
-    response: BlackBoxResponse
-
-
-def _ask_once(cases: list[BlackBoxCase], agent_url: str) -> list[_Frozen]:
-    with live_stack(agent_url=agent_url) as url:
-        client = A2AAgentClient(url)
-        return [_Frozen(case, client.ask(case.question)) for case in cases]
-
-
-def _judge_repeated(
-    judge: LLMEvaluator, case: BlackBoxCase, response: BlackBoxResponse, repeats: int
-) -> dict[str, object]:
-    """Score the SAME frozen answer `repeats` times. Spread here is judge variability only."""
-    per_trial: list[dict[str, float | None]] = []
-    for _ in range(repeats):
-        per_trial.append(
-            {c.name: c.score for c in judge.evaluate(case, response)}
-        )
-    names = sorted({name for trial in per_trial for name in trial})
-    summary: dict[str, object] = {}
-    for name in names:
-        vals = [t[name] for t in per_trial if t.get(name) is not None]
-        floats = [v for v in vals if isinstance(v, float)]
-        summary[name] = {
-            "scores": [t.get(name) for t in per_trial],
-            "n_scored": len(floats),
-            "min": min(floats) if floats else None,
-            "max": max(floats) if floats else None,
-            "mean": round(statistics.fmean(floats), 3) if floats else None,
-            "stdev": round(statistics.pstdev(floats), 3) if len(floats) > 1 else None,
-        }
-    return summary
-
-
 def _scope_audit(complete: Complete, response: BlackBoxResponse) -> object:
     claims = "\n\n".join(
         f"[{c.claim_id}] source {c.source_id}\n"
@@ -128,26 +93,8 @@ def _scope_audit(complete: Complete, response: BlackBoxResponse) -> object:
         return {"_raw": reply}
 
 
-def _claim_dump(response: BlackBoxResponse) -> list[dict[str, object]]:
-    return [
-        {
-            "claim_id": c.claim_id,
-            "source_id": c.source_id,
-            "subject": c.subject,
-            "predicate": c.predicate,
-            "object": c.object,
-            "polarity": c.polarity,
-            "evidence": c.evidence,
-            "evidence_context": c.evidence_context,
-            "evidence_start": c.evidence_start,
-            "evidence_end": c.evidence_end,
-        }
-        for c in response.cited_claims
-    ]
-
-
 def _record(
-    frozen: _Frozen,
+    frozen: Frozen,
     judge: LLMEvaluator,
     complete: Complete,
     repeats: int,
@@ -167,13 +114,13 @@ def _record(
             "may_include_claim_ids": sorted(case.may_include_claim_ids),
         },
         "answer": response.answer,
-        "cited_claims": _claim_dump(response),
+        "cited_claims": claim_dump(response),
         "cited_source_ids": sorted({c.source_id for c in response.cited_claims}),
         "citation_diagnostics": {
             "unknown_ids": response.citation_diagnostics.unknown_ids,
             "unused_claim_ids": response.citation_diagnostics.unused_claim_ids,
         },
-        "judge_variability": _judge_repeated(judge, case, response, repeats),
+        "judge_variability": judge_repeated(judge, case, response, repeats),
         "scope_audit": _scope_audit(complete, response),
     }
 
@@ -197,7 +144,7 @@ def main() -> None:
         raise SystemExit(f"gold is missing flagged case ids: {missing}")
     cases = [by_id[cid] for cid in _FLAGGED]
 
-    frozen = _ask_once(cases, agent_url)
+    frozen = ask_once(cases, agent_url)
 
     judge = make_llm_judge()
     complete = make_complete()

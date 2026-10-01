@@ -10,6 +10,7 @@ reply it can't parse yields `not_evaluated`, not a spurious fail: an unreachable
 judge must not flip a verdict it never actually made.
 """
 
+import hashlib
 import json
 
 from application.extraction.prompt import Complete
@@ -25,22 +26,30 @@ _CRITERIA = (
     "epistemic_boundary",
     "interpretation_marked",
 )
-_PASS_THRESHOLD = 0.6
+# The score at or above which a criterion counts as pass. Display-only for the five scored
+# criteria, but load-bearing for `premature_abstention`'s polarity flip -- and the value the
+# calibration harness joins judge scores against, so it records it in each result's provenance.
+PASS_THRESHOLD = 0.6
 
 SYSTEM_PROMPT = """\
 You are grading one answer from a system that must speak only from a fixed body of source \
 passages (A Course in Miracles, Original Edition). You see the user's question, the answer, \
 and the cited claims -- each given as its short extracted clause AND its full source \
 paragraph. A citation marker licenses that claim's whole source paragraph, not only the \
-clause: an assertion is grounded when the cited claim's source paragraph supports it, even \
-if the exact words fall outside the clause (support, not proximity). Judge only what is in \
-front of you; do not use outside knowledge of the Course.
+clause: an assertion carrying a marker is grounded when the paragraph of THAT marker's claim \
+supports it, even if the exact words fall outside the clause (support, not proximity). An \
+assertion whose marker points to a paragraph that does not support it is ungrounded even if \
+some OTHER supplied paragraph would -- that is a mis-cited marker, not grounding. Judge only \
+what is in front of you; do not use outside knowledge of the Course.
 
 Return ONLY a JSON object mapping each criterion to a number from 0.0 to 1.0:
 - answers_question: does the answer address the actual question asked?
-- semantic_grounding: is every substantive assertion supported by the source paragraph of a \
-cited claim (not just plausible)? An assertion inside a cited paragraph is grounded even if \
-it is outside that claim's clause; only an assertion in NO supplied paragraph is ungrounded.
+- semantic_grounding: is every substantive assertion supported by the source paragraph of \
+THE claim whose marker is attached to it (not just plausible)? An assertion is grounded even \
+if it falls outside that claim's clause, as long as that claim's paragraph supports it. An \
+assertion is ungrounded when the paragraph of its own marker's claim does not support it -- \
+even if a different supplied paragraph would (a mis-cited marker), and when no supplied \
+paragraph supports it at all.
 - synthesis_fidelity: does it stay faithful to the cited paragraphs -- preserving their \
 attribution, polarity, and qualifications -- without overreach, conflation, or attributes no \
 paragraph carries?
@@ -54,6 +63,15 @@ question? 1.0 = fully declines/abstains, 0.0 = answers directly. Report only wha
 does; do NOT judge whether abstaining was appropriate.
 
 No prose, no code fences -- just the JSON object."""
+
+# Bump by hand when a grading rule changes, so a calibration result pins the rubric it
+# validated (mirrors application.extraction.prompt.PROMPT_VERSION). The hash catches an edit
+# that forgot to bump the version.
+PROMPT_VERSION = "1.1"
+
+
+def prompt_hash() -> str:
+    return hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:16]
 
 
 class LLMEvaluator:
@@ -84,7 +102,7 @@ def _scored(name: str, value: float | None) -> CriterionResult:
     return CriterionResult(
         name=name,
         kind="advisory",
-        status="pass" if value >= _PASS_THRESHOLD else "fail",
+        status="pass" if value >= PASS_THRESHOLD else "fail",
         score=value,
     )
 
@@ -109,9 +127,9 @@ def _premature_abstention(case: BlackBoxCase, abstained: float | None) -> Criter
     return CriterionResult(
         name=name,
         kind="advisory",
-        status="fail" if abstained >= _PASS_THRESHOLD else "pass",
+        status="fail" if abstained >= PASS_THRESHOLD else "pass",
         score=abstained,
-        detail="abstained despite sufficient corpus evidence" if abstained >= _PASS_THRESHOLD else "",
+        detail="abstained despite sufficient corpus evidence" if abstained >= PASS_THRESHOLD else "",
     )
 
 
