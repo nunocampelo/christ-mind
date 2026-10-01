@@ -60,6 +60,16 @@ def test_carries_the_inline_marker_contract(prompt: str):
 
 
 @pytest.mark.parametrize("prompt", PROSE_PROMPTS, ids=IDS)
+def test_marker_licenses_the_source_paragraph_not_only_the_clause(prompt: str):
+    # The decided contract: a marker licenses the claim's whole source paragraph (support,
+    # not proximity), not only the extracted clause. Both paths must carry it -- the common
+    # answer path is the decision prompt, so patching only the answer prompt would miss it.
+    flat = " ".join(prompt.split())
+    assert "licenses the cited claim's whole source paragraph" in flat
+    assert "support, not proximity" in flat
+
+
+@pytest.mark.parametrize("prompt", PROSE_PROMPTS, ids=IDS)
 def test_marker_contract_states_the_16_hex_shape(prompt: str):
     # The positive shape rule is what lets the model reject a location-token or a
     # wrong-length (off-by-one) id before emitting it. Flatten newlines: the contract is

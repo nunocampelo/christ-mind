@@ -41,9 +41,13 @@ shorter, containing any other character, or looking like a number, verse, or par
 reference -- it is not a claim_id, so do not emit it. Copy each claim_id character for
 character from the line that shows it; do not retype it from memory or add or drop a
 leading character. A statement supported by several claims takes several markers.
-Do not attach a marker to a claim merely because it is topically related; the cited claim
-must support the specific statement right before the marker. Purely conversational framing
--- a greeting, a question back, an acknowledgement of the situation -- carries no marker."""
+A marker licenses the cited claim's whole source paragraph (shown as PASSAGE above its
+claims), not only the short evidence clause: the statement before the marker is valid when
+that source paragraph supports it, even if the exact words fall outside the clause the claim
+was extracted from. The test is support, not proximity -- do not attach a marker to a claim
+merely because it is topically related; that claim's source paragraph must actually support
+the specific statement right before the marker. Purely conversational framing -- a greeting,
+a question back, an acknowledgement of the situation -- carries no marker."""
 
 _EVIDENCE_BOUNDARY = """\
 Every substantive claim in the answer must be supported by a gathered claim or a claim
@@ -53,12 +57,14 @@ spiritual commentary, therapeutic guidance, or common-sense psychological observ
 whether or not you frame it as the Course's -- when the gathered claims don't support it,
 even when it sounds fitting. No "the picture that emerges", "the Course would remind us",
 "known more fully through experience than definition", "your steady presence speaks more
-than words", or the like. Prefer the narrowest wording the evidence justifies: do not
-strengthen "God gave them His peace" into "God's nature is peace" unless a claim says so,
-and keep the subject, verb, and object of the claim you paraphrase -- never introduce a
-role the claim doesn't carry. Keep what the Course says separate in your reasoning from
-what you infer across claims: you may connect several claims to address the situation, but
-never present such a synthesis as though it were a single statement from the Course."""
+than words", or the like. You may state anything the cited claim's source paragraph
+supports, but no more: do not strengthen "God gave them His peace" into "God's nature is
+peace" unless the paragraph says so, and preserve the paragraph's attribution (what the
+Course asserts versus what it reports the ego or others believing), its polarity, and its
+qualifications -- never introduce a role or reverse a stance the source does not carry.
+Keep what the Course says separate in your reasoning from what you infer across claims: you
+may connect several claims to address the situation, but never present such a synthesis as
+though it were a single statement from the Course."""
 
 _POLARITY = """\
 Preserve polarity exactly. A claim marked [NEGATED], or whose evidence contains "not",
@@ -202,9 +208,10 @@ def _render_claim_line(c: CitedClaim) -> str:
 def render_cited_claims(cited_claims: list[CitedClaim]) -> str:
     # Grouped by source so each passage is shown once with the claims drawn from it beneath
     # -- the same unit a human reader gets: the paragraph first, then its propositions. The
-    # passage resolves references the bare clause can't carry ("my kind of denial" leans on
-    # surrounding text); it is context for reading the claims, never a licence to broaden
-    # them. Order follows first appearance, which is the retrieval-trace order _absorb keeps.
+    # passage is what a marker licenses: a statement is grounded when this paragraph supports
+    # it, even if it falls outside the clause the claim was extracted from (support, not
+    # proximity). The clause stays the retrieval anchor and highlight.
+    # Order follows first appearance, which is the retrieval-trace order _absorb keeps.
     groups: dict[str, list[CitedClaim]] = {}
     for claim in cited_claims:
         groups.setdefault(claim.source_id, []).append(claim)
@@ -233,10 +240,12 @@ def answer_user_prompt(
     return (
         f"Situation:\n{situation}\n\n"
         f"Grounded claims, grouped under the passage each was drawn from (cite by claim_id). "
-        f"The passage is context for reading its claims -- it resolves references a claim's "
-        f"evidence clause leans on (\"my kind\", \"this\") -- but the claim's evidence span is "
-        f"authoritative: do not broaden a claim beyond it or reverse a [NEGATED] polarity "
-        f"from the surrounding text.\n{cited or '(none)'}\n\n"
+        f"A marker licenses the whole passage it is grouped under, not only the claim's "
+        f"evidence clause: you may state anything the passage supports. The clause is the "
+        f"retrieval anchor and highlight, not the limit. But stay faithful to the passage -- "
+        f"preserve its attribution, qualifications, and polarity, and never reverse a "
+        f"[NEGATED] stance. Connections across passages still need the inferred marker."
+        f"\n{cited or '(none)'}\n\n"
         f"Inferred chains (connections you may draw, marked inferred):\n{chains or '(none)'}\n\n"
         "Write the answer now."
     )

@@ -29,16 +29,21 @@ _PASS_THRESHOLD = 0.6
 
 SYSTEM_PROMPT = """\
 You are grading one answer from a system that must speak only from a fixed body of source \
-passages (A Course in Miracles, Original Edition). You see the user's question, the \
-answer, and the exact source claims the answer was allowed to cite. Judge only what is in \
+passages (A Course in Miracles, Original Edition). You see the user's question, the answer, \
+and the cited claims -- each given as its short extracted clause AND its full source \
+paragraph. A citation marker licenses that claim's whole source paragraph, not only the \
+clause: an assertion is grounded when the cited claim's source paragraph supports it, even \
+if the exact words fall outside the clause (support, not proximity). Judge only what is in \
 front of you; do not use outside knowledge of the Course.
 
 Return ONLY a JSON object mapping each criterion to a number from 0.0 to 1.0:
 - answers_question: does the answer address the actual question asked?
-- semantic_grounding: is every substantive assertion supported by the cited claims (not \
-just plausible)?
-- synthesis_fidelity: does it stay within what the evidence supports, without overreach, \
-conflation, or invented attributes?
+- semantic_grounding: is every substantive assertion supported by the source paragraph of a \
+cited claim (not just plausible)? An assertion inside a cited paragraph is grounded even if \
+it is outside that claim's clause; only an assertion in NO supplied paragraph is ungrounded.
+- synthesis_fidelity: does it stay faithful to the cited paragraphs -- preserving their \
+attribution, polarity, and qualifications -- without overreach, conflation, or attributes no \
+paragraph carries?
 - epistemic_boundary: where the evidence is thin or absent, does it say so plainly rather \
 than filling the gap? (1.0 if no gap to acknowledge.)
 - interpretation_marked: is any inference or application labelled as the system's own \
@@ -124,15 +129,20 @@ def _parse_scores(reply: str) -> dict[str, float]:
 
 
 def _user_prompt(case: BlackBoxCase, response: BlackBoxResponse) -> str:
-    claims = "\n".join(
-        f"- [{c.claim_id}] {c.evidence}" for c in response.cited_claims
+    # A marker licenses the claim's whole source paragraph, so grading needs that paragraph,
+    # not only the extracted clause (the clause is the retrieval anchor). Fall back to the
+    # clause where the paragraph was unavailable (evidence_context defaults to "").
+    claims = "\n\n".join(
+        f"- [{c.claim_id}] clause: {c.evidence}\n"
+        f"  source paragraph: {c.evidence_context or c.evidence}"
+        for c in response.cited_claims
     ) or "(no claims cited)"
     expected = ", ".join(sorted(case.expected_behavior)) or "(none)"
     prohibited = ", ".join(sorted(case.prohibited_behavior)) or "(none)"
     return (
         f"QUESTION:\n{response.question}\n\n"
         f"ANSWER:\n{response.answer}\n\n"
-        f"CITED CLAIMS:\n{claims}\n\n"
+        f"CITED CLAIMS (clause + its source paragraph):\n{claims}\n\n"
         f"This question's intent: {case.intent}. "
         f"Expected behaviours: {expected}. Prohibited: {prohibited}."
     )

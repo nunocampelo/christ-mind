@@ -484,11 +484,11 @@ def _claim_observation(
     name: str, new_claims: list[CitedClaim], result: CallToolResult
 ) -> str:
     # A cited tool's claims are shown to the decision LLM the same way the answer prompt
-    # renders them -- passage-grouped, so the surrounding paragraph resolves references the
-    # bare clause can't carry ("my kind of denial"). This is the common answer path (the
-    # model emits {"final"} straight from a decision call), so the rehydrated context must
-    # reach it here, not only the max_steps fallback. Non-cited tools (chain_claims) keep
-    # the raw tool text.
+    # renders them -- passage-grouped, because a marker licenses the whole source paragraph,
+    # not just the extracted clause (support, not proximity). This is the common answer path
+    # (the model emits {"final"} straight from a decision call), so the rehydrated paragraph
+    # must reach it here, not only the max_steps fallback. Non-cited tools (chain_claims)
+    # keep the raw tool text.
     if name in _CITED_TOOLS and new_claims:
         return f"Tool '{name}' returned:\n{render_cited_claims(new_claims)}"
     return f"Tool '{name}' returned: {_result_text(result)[:3000]}"
