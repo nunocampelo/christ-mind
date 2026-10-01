@@ -10,13 +10,18 @@ too: `async with McpClient() as client: ...` owns the subprocess for the block.
 """
 
 import logging
+import os
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
 from mcp.client.session import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.stdio import (
+    StdioServerParameters,
+    get_default_environment,
+    stdio_client,
+)
 from mcp.types import CallToolResult, Tool
 
 logger = logging.getLogger(__name__)
@@ -28,9 +33,27 @@ class McpClientError(Exception):
     preserved by chaining."""
 
 
+# The stdio client scrubs the subprocess env to a safe baseline (PATH/HOME/...) when `env`
+# is None, so a flag set in the agent's environment does NOT reach the server unless it is
+# forwarded explicitly. Only the server-feature toggles the server reads are passed through
+# -- not the whole parent env (proxy credentials etc. have no business in the tool
+# subprocess). Add a key here when the server grows another env-read switch.
+_FORWARDED_ENV = ("ENTITY_RELATION_ENABLED",)
+
+
+def _subprocess_env() -> dict[str, str]:
+    env = get_default_environment()
+    for key in _FORWARDED_ENV:
+        value = os.environ.get(key)
+        if value is not None:
+            env[key] = value
+    return env
+
+
 _SERVER_PARAMS = StdioServerParameters(
     command=sys.executable,
     args=["-m", "mind_of_christ_mcp.server"],
+    env=_subprocess_env(),
 )
 
 

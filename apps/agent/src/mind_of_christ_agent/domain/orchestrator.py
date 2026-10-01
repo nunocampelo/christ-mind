@@ -26,6 +26,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 
 from mind_of_christ_agent.domain.concept_question import concept_query_terms
 from mind_of_christ_agent.domain.meta_question import meta_query_terms
+from mind_of_christ_agent.domain.relational_question import relational_probe
 
 from mind_of_christ_agent.application.answer import (
     AgentAnswer,
@@ -144,6 +145,35 @@ class Orchestrator:
             )
             yield StepStatusEvent(
                 text=f"find_claims returned {_result_summary('find_claims', result)}"
+            )
+
+        # A "how does X act?" / "what is the Mind of X?" question needs the entity_relation
+        # channel, but the first A/B showed the LLM does not reach a brand-new tool on its
+        # own -- so route the detected shape here, deterministically, the way concepts
+        # auto-seed find_claims. The probe is a pure-syntax routing instruction (target +
+        # aspect); describe_entity does the entity resolution across the MCP boundary. When
+        # the channel is disabled the tool is absent, so the call no-ops into no new claims.
+        probe = relational_probe(request.situation)
+        if probe is not None and "describe_entity" in {t.name for t in tools}:
+            yield StepStatusEvent(
+                text=f"Calling describe_entity for \"{probe.target}\" ({probe.reason})"
+            )
+            searched_terms.update(_call_terms({"mention": probe.target}))
+            result = await self._mcp_client.call_tool(
+                "describe_entity",
+                {"mention": probe.target, "aspects": list(probe.aspects)},
+            )
+            before = len(cited_claims)
+            _absorb("describe_entity", result, cited_claims, inferred_chains)
+            cited_claims = await _rehydrate(cited_claims, self._mcp_client)
+            observations.append(
+                _claim_observation("describe_entity", cited_claims[before:], result)
+            )
+            yield StepStatusEvent(
+                text=(
+                    "describe_entity returned "
+                    f"{_result_summary('describe_entity', result)}"
+                )
             )
 
         for _ in range(request.max_steps):

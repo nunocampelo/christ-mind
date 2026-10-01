@@ -177,6 +177,76 @@ async def test_describe_entity_envelope_is_unwrapped_into_cited_claims():
 
 
 @pytest.mark.anyio
+async def test_relational_question_auto_seeds_describe_entity_before_the_loop():
+    # The fix for the first A/B's trigger gap: "how does God think?" must deterministically
+    # seed describe_entity (target God, aspect thinking) before the first LLM decision, the
+    # way mapped concepts seed find_claims -- so the channel's claims are in hand regardless
+    # of whether the model later reaches for the tool itself.
+    describe_result = CallToolResult(
+        content=[TextContent(type="text", text="one relation")],
+        structured_content={
+            "result": [
+                {
+                    "claim": _claim_result(claim_id="rel1"),
+                    "trace": {
+                        "seed_mention": "God",
+                        "resolved_entity_id": "e1",
+                        "requested_aspects": ["thinking"],
+                        "matched_aspect": "verb_phrase",
+                        "rank": 0,
+                        "channel": "entity_relation",
+                    },
+                }
+            ]
+        },
+    )
+    mcp = _FakeMcpClient({"describe_entity": describe_result})
+    # The model answers straight away: it never calls a tool itself, proving the claim came
+    # from the deterministic seed, not an LLM-driven call.
+    chat_stream = _scripted_stream('{"final": "God knows His Children."}')
+    orchestrator = Orchestrator(_StubMapper([]), mcp, chat_stream)
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation="How does God think?", max_steps=4)
+        )
+    ]
+
+    assert mcp.retrieval_calls == [
+        ("describe_entity", {"mention": "God", "aspects": ["thinking"]})
+    ]
+    answer = orchestrator.last_answer
+    assert answer is not None
+    assert [c.claim_id for c in answer.cited_claims] == ["rel1"]
+
+
+@pytest.mark.anyio
+async def test_relational_seed_is_skipped_when_the_channel_is_disabled():
+    # When describe_entity isn't registered (ENTITY_RELATION_ENABLED off), the probe must
+    # not try to call a tool the server doesn't expose -- it quietly no-ops and the turn
+    # proceeds on the mapped-concept seed alone.
+    mcp = _FakeMcpClient(
+        {
+            "find_claims": CallToolResult(
+                content=[TextContent(type="text", text="claims")],
+                structured_content={"result": [_claim_result()]},
+            )
+        }
+    )
+    chat_stream = _scripted_stream('{"final": "answer"}')
+    orchestrator = Orchestrator(_StubMapper(["God"]), mcp, chat_stream)
+
+    async for _ in orchestrator.run_stream(
+        AgentRequest(situation="How does God think?", max_steps=4)
+    ):
+        pass
+
+    # Only the mapped-concept find_claims ran; no describe_entity call was attempted.
+    assert mcp.retrieval_calls == [("find_claims", {"queries": ["God"]})]
+
+
+@pytest.mark.anyio
 async def test_run_stream_seeds_all_mapped_concepts_in_one_batch():
     mcp = _FakeMcpClient(
         {
