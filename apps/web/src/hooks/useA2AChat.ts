@@ -39,7 +39,6 @@ type StreamFn = (
 
 type RecoverFn = (
   taskId: string,
-  textSoFar: string,
 ) => AsyncGenerator<AgentStreamEvent, void, void>;
 
 const TERMINAL_STATES = new Set([
@@ -98,6 +97,12 @@ const useA2AChat = ({
     );
   }, []);
 
+  const setTextOnAgentTurn = useCallback((id: number, text: string) => {
+    setTurns((prev) =>
+      prev.map((turn) => (turn.id === id ? { ...turn, text } : turn)),
+    );
+  }, []);
+
   const appendStepToTurn = useCallback((id: number, text: string) => {
     setTurns((prev) =>
       prev.map((turn) =>
@@ -135,7 +140,8 @@ const useA2AChat = ({
       for await (const event of events) {
         switch (event.kind) {
           case AgentEventKind.text:
-            appendToAgentTurn(agentTurnId, event.delta);
+            if (event.replace) setTextOnAgentTurn(agentTurnId, event.delta);
+            else appendToAgentTurn(agentTurnId, event.delta);
             break;
           case AgentEventKind.answer:
             setAnswerOnTurn(agentTurnId, event.answer);
@@ -171,7 +177,13 @@ const useA2AChat = ({
       }
       return errored;
     },
-    [appendStepToTurn, appendToAgentTurn, onConversationId, setAnswerOnTurn],
+    [
+      appendStepToTurn,
+      appendToAgentTurn,
+      setTextOnAgentTurn,
+      onConversationId,
+      setAnswerOnTurn,
+    ],
   );
 
   const send = useCallback(
@@ -249,8 +261,9 @@ const useA2AChat = ({
     setError(null);
 
     // Stopping before the first token removes the empty agent bubble, so the turn the run
-    // recorded may no longer exist. Recreate it here (with empty `textSoFar`, since nothing
-    // streamed) or the recovered reply would be written to a missing id and never render.
+    // recorded may no longer exist. Recreate it here or the recovered reply would be written
+    // to a missing id and never render. Recovery emits the authoritative answer as a replace,
+    // so any partial text already in an existing bubble is overwritten, not appended to.
     // Strip the trailing "Request stopped" notice first, so the recreated bubble takes its
     // place instead of landing below it.
     const existing = turnsRef.current.find(
@@ -264,10 +277,9 @@ const useA2AChat = ({
       agentTurnId = appendTurn({ role: TurnRole.agent, text: "", steps: [] });
     }
     lastAgentTurnId.current = agentTurnId;
-    const textSoFar = existing?.text ?? "";
 
     try {
-      const errored = await consumeStream(recoverFn(taskId, textSoFar), agentTurnId);
+      const errored = await consumeStream(recoverFn(taskId), agentTurnId);
       if (!errored) removeTrailingNotices();
     } catch (err) {
       setError(err instanceof Error ? err.message : ERR_ASSISTANT_FAILED);

@@ -342,9 +342,11 @@ describe("useA2AChat", () => {
 
   it("reconnects: refills the same bubble and removes the tail notice", async () => {
     const { streamFn, release } = stopAfterPartial();
-    const recoverFn = vi.fn((_taskId: string, _textSoFar: string) =>
+    // Recovery replaces the bubble with the authoritative stored answer (the server
+    // supersedes the raw partial), so the recovered text is the whole answer, not a suffix.
+    const recoverFn = vi.fn((_taskId: string) =>
       streamOf([
-        { kind: "text", delta: " and the rest." },
+        { kind: "text", delta: "partial and the rest.", replace: true },
         { kind: "answer", answer: ANSWER },
         { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
       ])(),
@@ -370,7 +372,7 @@ describe("useA2AChat", () => {
       await result.current.handleReconnect();
     });
 
-    expect(recoverFn).toHaveBeenCalledWith("task-1", "partial");
+    expect(recoverFn).toHaveBeenCalledWith("task-1");
     const agent = result.current.turns.find((t) => t.role === TurnRole.agent);
     expect(agent?.text).toBe("partial and the rest.");
     expect(agent?.answer).toEqual(ANSWER);
@@ -392,9 +394,9 @@ describe("useA2AChat", () => {
         yield { kind: "taskId", taskId: "task-1" } as AgentStreamEvent;
         await gate;
       })();
-    const recoverFn = vi.fn((_taskId: string, _textSoFar: string) =>
+    const recoverFn = vi.fn((_taskId: string) =>
       streamOf([
-        { kind: "text", delta: "Forgiveness undoes it." },
+        { kind: "text", delta: "Forgiveness undoes it.", replace: true },
         { kind: "answer", answer: ANSWER },
         { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
       ])(),
@@ -423,7 +425,7 @@ describe("useA2AChat", () => {
     });
 
     // Nothing had streamed, so recovery replays the full answer into the recreated bubble.
-    expect(recoverFn).toHaveBeenCalledWith("task-1", "");
+    expect(recoverFn).toHaveBeenCalledWith("task-1");
     const agent = result.current.turns.find((t) => t.role === TurnRole.agent);
     expect(agent?.text).toBe("Forgiveness undoes it.");
     expect(agent?.answer).toEqual(ANSWER);

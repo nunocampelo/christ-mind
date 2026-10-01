@@ -225,7 +225,11 @@ describe("PR 6 — reconnect a dropped answer", () => {
       })();
     const recoverFn = () =>
       (async function* () {
-        yield { kind: "text", delta: " and the rest." } as AgentStreamEvent;
+        yield {
+          kind: "text",
+          delta: "partial and the rest.",
+          replace: true,
+        } as AgentStreamEvent;
         yield {
           kind: "status",
           state: "TASK_STATE_COMPLETED",

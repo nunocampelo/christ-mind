@@ -263,21 +263,20 @@ const task = (
   }) as unknown as Task;
 
 describe("recoverEventsFromTask", () => {
-  it("emits only the answer suffix past what already streamed, then evidence + status", () => {
+  it("replaces the bubble with the stored answer, then evidence + status", () => {
     const events = [
       ...recoverEventsFromTask(
         task(TaskState.TASK_STATE_COMPLETED, [
           { artifactId: "answer", text: "Forgiveness undoes it." },
           { artifactId: "evidence", text: JSON.stringify(ANSWER) },
         ]),
-        "Forgiveness ",
       ),
     ];
-    const prose = events
-      .filter((e) => e.kind === AgentEventKind.text)
-      .map((e) => (e.kind === AgentEventKind.text ? e.delta : ""))
-      .join("");
-    expect(prose).toBe("undoes it.");
+    expect(events[0]).toEqual({
+      kind: AgentEventKind.text,
+      delta: "Forgiveness undoes it.",
+      replace: true,
+    });
     expect(events.at(-2)).toEqual({ kind: AgentEventKind.answer, answer: ANSWER });
     expect(events.at(-1)).toEqual({
       kind: AgentEventKind.status,
@@ -286,28 +285,24 @@ describe("recoverEventsFromTask", () => {
     });
   });
 
-  it("replays the full answer when the streamed prefix does not match", () => {
+  it("replaces with the full stored answer regardless of what streamed before", () => {
     const events = [
       ...recoverEventsFromTask(
         task(TaskState.TASK_STATE_COMPLETED, [
           { artifactId: "answer", text: "A fresh answer." },
         ]),
-        "stale partial that never matched",
       ),
     ];
-    const prose = events
-      .filter((e) => e.kind === AgentEventKind.text)
-      .map((e) => (e.kind === AgentEventKind.text ? e.delta : ""))
-      .join("");
-    expect(prose).toBe("A fresh answer.");
+    expect(events[0]).toEqual({
+      kind: AgentEventKind.text,
+      delta: "A fresh answer.",
+      replace: true,
+    });
   });
 
   it("maps a FAILED task to an error then a status event", () => {
     const events = [
-      ...recoverEventsFromTask(
-        task(TaskState.TASK_STATE_FAILED, [], "it broke"),
-        "",
-      ),
+      ...recoverEventsFromTask(task(TaskState.TASK_STATE_FAILED, [], "it broke")),
     ];
     expect(events).toEqual([
       { kind: AgentEventKind.error, message: "it broke" },
@@ -315,11 +310,12 @@ describe("recoverEventsFromTask", () => {
     ]);
   });
 
-  it("emits only a terminal status when there is no answer artifact", () => {
+  it("emits an empty replace then terminal status when there is no answer artifact", () => {
     const events = [
-      ...recoverEventsFromTask(task(TaskState.TASK_STATE_COMPLETED, []), ""),
+      ...recoverEventsFromTask(task(TaskState.TASK_STATE_COMPLETED, [])),
     ];
     expect(events).toEqual([
+      { kind: AgentEventKind.text, delta: "", replace: true },
       { kind: AgentEventKind.status, state: "TASK_STATE_COMPLETED", text: "" },
     ]);
   });

@@ -142,8 +142,8 @@ async def test_execute_maps_events_to_frames(stubbed: AgentAnswer) -> None:
 
     kinds = [type(e).__name__ for e in queue.events]
     # Task first (SDK requires it before any status update), then start_work + two status
-    # events, two answer artifact chunks + the artifact close, the evidence artifact, and
-    # the terminal complete status.
+    # events, two streamed answer deltas, the final answer chunk that replaces them with the
+    # sanitized full text, the evidence artifact, and the terminal complete status.
     assert kinds[0] == "Task"
     assert isinstance(queue.events[0], Task)
     assert queue.events[0].status.state == TaskState.TASK_STATE_SUBMITTED
@@ -161,10 +161,18 @@ async def test_execute_maps_events_to_frames(stubbed: AgentAnswer) -> None:
     assert "Calling find_claims" in working_texts
 
     answer_chunks = [a for a in artifacts if a.artifact.artifact_id == "answer"]
-    streamed = "".join(p.text for a in answer_chunks for p in a.artifact.parts)
-    assert streamed == "The Course says forgiveness."
+    # Interior chunks stream deltas (first creates the artifact, append=False); the final
+    # chunk replaces them (append=False, last_chunk) with FinalEvent.text, so a GetTask /
+    # recovery read sees the authoritative sanitized answer, not the raw delta stream.
+    interior = "".join(p.text for a in answer_chunks[:-1] for p in a.artifact.parts)
+    assert interior == "The Course says forgiveness."
     assert answer_chunks[0].append is False
-    assert answer_chunks[-1].last_chunk is True
+    final_chunk = answer_chunks[-1]
+    assert final_chunk.append is False
+    assert final_chunk.last_chunk is True
+    assert "".join(p.text for p in final_chunk.artifact.parts) == (
+        "The Course says forgiveness."
+    )
 
     terminal = statuses[-1]
     assert terminal.status.state == TaskState.TASK_STATE_COMPLETED
@@ -186,6 +194,70 @@ async def test_execute_maps_events_to_frames(stubbed: AgentAnswer) -> None:
     assert agent_content == "The Course says forgiveness."
     assert agent_json is not None
     assert AgentAnswer.model_validate(agent_json) == stubbed
+
+
+@pytest.mark.anyio
+async def test_final_answer_supersedes_the_raw_streamed_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The raw deltas carry a fabricated citation marker; FinalEvent.text is the sanitized
+    # prose. The final answer chunk and the terminal message must both be the sanitized text
+    # (what a GetTask / recovery read sees), never the raw stream with the bogus marker.
+    sanitized = "Forgiveness brings peace."
+    answer = AgentAnswer(
+        text=sanitized,
+        concepts=["forgiveness"],
+        cited_claims=[_CLAIM],
+        inferred_chains=[],
+    )
+
+    class _FabricatingOrchestrator:
+        last_answer = answer
+
+        async def run_stream(self, _request: object) -> AsyncIterator[object]:
+            yield TokenEvent(delta="Forgiveness brings peace. [made-up]")
+            yield FinalEvent(text=sanitized)
+
+    @asynccontextmanager
+    async def fake_connect() -> AsyncIterator[object]:
+        yield object()
+
+    monkeypatch.setattr(executor_module, "connect", fake_connect)
+    monkeypatch.setattr(
+        executor_module,
+        "build_orchestrator",
+        lambda _mcp: _FabricatingOrchestrator(),
+    )
+    monkeypatch.setattr(executor_module, "ConversationRepository", lambda session: session)
+
+    queue = _RecordingQueue()
+    conversations = _RecordingConversations()
+    await MindOfChristExecutor(
+        sessions=conversations.as_session_provider()  # type: ignore[arg-type]
+    ).execute(
+        _FakeContext("peace"),  # type: ignore[arg-type]
+        queue,  # type: ignore[arg-type]
+    )
+
+    answer_chunks = [
+        e
+        for e in queue.events
+        if isinstance(e, TaskArtifactUpdateEvent)
+        and e.artifact.artifact_id == "answer"
+    ]
+    final_chunk = answer_chunks[-1]
+    assert final_chunk.append is False
+    assert final_chunk.last_chunk is True
+    assert "".join(p.text for p in final_chunk.artifact.parts) == sanitized
+
+    statuses = [e for e in queue.events if isinstance(e, TaskStatusUpdateEvent)]
+    terminal = statuses[-1]
+    assert terminal.status.state == TaskState.TASK_STATE_COMPLETED
+    assert "".join(p.text for p in terminal.status.message.parts) == sanitized
+
+    # The persisted assistant turn is the sanitized prose, too.
+    _, _, agent_content, _ = conversations.appended[1]
+    assert agent_content == sanitized
 
 
 @pytest.mark.anyio

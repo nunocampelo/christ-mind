@@ -29,7 +29,6 @@ interface AppProps {
   ) => AsyncGenerator<AgentStreamEvent, void, void>;
   recoverFn?: (
     taskId: string,
-    textSoFar: string,
   ) => AsyncGenerator<AgentStreamEvent, void, void>;
   loadConversation?: (id: string) => Promise<ConversationDetail | null>;
   listConversations?: () => Promise<ConversationSummary[]>;

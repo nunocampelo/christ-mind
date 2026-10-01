@@ -719,9 +719,10 @@ async def test_fabricated_marker_is_stripped_and_gathered_claim_recorded_unused(
         structured_content={"result": [_claim_result(claim_id="c1")]},
     )
     mcp = _FakeMcpClient({"find_claims": find_claims_result})
-    # The prose cites a claim_id that was never gathered: the net strips it from the shipped
-    # text (so unknown_ids ends empty), while the gathered-but-uncited claim stays recorded
-    # as unused. The turn still completes -- validation is soft.
+    # The prose cites a claim_id that was never gathered: the diagnostics (computed on the
+    # model's original text) record it as unknown, while the net strips it from the shipped
+    # text so no bogus marker reaches the reader. The gathered-but-uncited claim stays
+    # recorded as unused. The turn still completes -- validation is soft.
     chat_stream = _scripted_stream('{"final": "Forgiveness brings peace. [made-up]"}')
     orchestrator = Orchestrator(_StubMapper(["forgiveness"]), mcp, chat_stream)
 
@@ -735,7 +736,7 @@ async def test_fabricated_marker_is_stripped_and_gathered_claim_recorded_unused(
     assert events[-1] == FinalEvent(text="Forgiveness brings peace.")
     answer = orchestrator.last_answer
     assert answer is not None
-    assert answer.citation_diagnostics.unknown_ids == []
+    assert answer.citation_diagnostics.unknown_ids == ["made-up"]
     assert answer.citation_diagnostics.unused_claim_ids == ["c1"]
 
 

@@ -112,8 +112,8 @@ class MindOfChristExecutor(AgentExecutor):
         updater = TaskUpdater(event_queue, task_id, context_id)
         await updater.start_work()
 
-        buffer: list[str] = []
         answer_started = False
+        final_text = ""
         try:
             async with connect() as mcp_client:
                 orchestrator = build_orchestrator(mcp_client)
@@ -127,7 +127,6 @@ class MindOfChristExecutor(AgentExecutor):
                             ),
                         )
                     elif isinstance(event, TokenEvent):
-                        buffer.append(event.delta)
                         await updater.add_artifact(
                             parts=[Part(text=event.delta)],
                             artifact_id=_ANSWER_ARTIFACT_ID,
@@ -135,10 +134,15 @@ class MindOfChristExecutor(AgentExecutor):
                         )
                         answer_started = True
                     elif isinstance(event, FinalEvent):
+                        # The raw deltas streamed live, but FinalEvent.text is the
+                        # authoritative prose (fabricated citation markers stripped). Replace
+                        # the artifact (append=False) with it so a GetTask / recovery read and
+                        # the terminal message all see sanitized text, not the raw stream.
+                        final_text = event.text
                         await updater.add_artifact(
-                            parts=[Part(text="")],
+                            parts=[Part(text=final_text)],
                             artifact_id=_ANSWER_ARTIFACT_ID,
-                            append=answer_started,
+                            append=False,
                             last_chunk=True,
                         )
                 # The structured answer (cited claims kept distinct from inferred
@@ -174,7 +178,7 @@ class MindOfChristExecutor(AgentExecutor):
             return
 
         await updater.complete(
-            message=updater.new_agent_message(parts=[Part(text="".join(buffer))])
+            message=updater.new_agent_message(parts=[Part(text=final_text)])
         )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:

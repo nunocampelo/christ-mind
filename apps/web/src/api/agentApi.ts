@@ -69,7 +69,9 @@ interface AgentAnswer {
 
 type AgentStreamEvent =
   | { kind: typeof AgentEventKind.status; state: string; text: string }
-  | { kind: typeof AgentEventKind.text; delta: string }
+  // `replace` carries the server's final sanitized answer (fabricated markers stripped),
+  // which arrives as a non-append artifact chunk and supersedes the raw streamed deltas.
+  | { kind: typeof AgentEventKind.text; delta: string; replace?: boolean }
   | { kind: typeof AgentEventKind.answer; answer: AgentAnswer }
   | { kind: typeof AgentEventKind.error; message: string }
   | { kind: typeof AgentEventKind.contextId; contextId: string }
@@ -81,7 +83,6 @@ const ERR_RECOVER_TIMEOUT = "Could not recover the answer";
 
 const RECOVER_POLL_MS = 500;
 const RECOVER_MAX_POLLS = 40;
-const RECOVER_CHUNK = 24;
 
 const TERMINAL_STATES = new Set([
   TaskState.TASK_STATE_COMPLETED,
@@ -300,9 +301,14 @@ const eventsFromFrame = (frame: StreamResponse): AgentStreamEvent[] => {
       );
       return events;
     }
-    // "answer" (and any other id) streams prose; never silently drop text.
+    // "answer" (and any other id) streams prose; never silently drop text. The final chunk
+    // (`lastChunk`) carries the server's sanitized full answer and replaces what streamed so
+    // far, so the raw deltas (which may carry fabricated markers) are superseded, not added
+    // to; interior chunks append as usual.
     const delta = artifactText(artifact);
-    if (delta) events.push({ kind: AgentEventKind.text, delta });
+    const replace = payload.value.lastChunk === true;
+    if (replace) events.push({ kind: AgentEventKind.text, delta, replace });
+    else if (delta) events.push({ kind: AgentEventKind.text, delta });
     return events;
   }
 
@@ -364,13 +370,15 @@ const sleep = (ms: number): Promise<void> =>
 const findArtifact = (task: Task, id: string): Artifact | undefined =>
   task.artifacts.find((a) => a.artifactId === id);
 
-// Map a *terminal* task into the events that refill a dropped bubble: only the answer
-// suffix past what already streamed (`textSoFar`), then the parsed evidence, then the
-// terminal status. FAILED maps to an error. The polling in `recoverAssistant` calls this
-// once the task settles; kept pure (no client) so it is unit-testable in isolation.
+// Map a *terminal* task into the events that refill a dropped bubble: the authoritative
+// answer (replacing whatever partially streamed before the drop), then the parsed evidence,
+// then the terminal status. FAILED maps to an error. The stored answer artifact is the
+// sanitized final text (the executor replaces the raw deltas with it), so recovery emits it
+// as a single `replace` rather than diffing against what streamed. The polling in
+// `recoverAssistant` calls this once the task settles; kept pure (no client) so it is
+// unit-testable in isolation.
 function* recoverEventsFromTask(
   task: Task,
-  textSoFar: string,
 ): Generator<AgentStreamEvent, void, void> {
   const state = task.status?.state;
   if (state === undefined) return;
@@ -383,10 +391,7 @@ function* recoverEventsFromTask(
   }
 
   const full = artifactText(findArtifact(task, ArtifactId.answer));
-  const suffix = full.startsWith(textSoFar) ? full.slice(textSoFar.length) : full;
-  for (let i = 0; i < suffix.length; i += RECOVER_CHUNK) {
-    yield { kind: AgentEventKind.text, delta: suffix.slice(i, i + RECOVER_CHUNK) };
-  }
+  yield { kind: AgentEventKind.text, delta: full, replace: true };
 
   const evidence = findArtifact(task, ArtifactId.evidence);
   if (evidence) {
@@ -404,7 +409,6 @@ function* recoverEventsFromTask(
 // reconnect refills the same bubble rather than duplicating its prose.
 async function* recoverAssistant(
   taskId: string,
-  textSoFar: string,
 ): AsyncGenerator<AgentStreamEvent, void, void> {
   const client = await getClient();
 
@@ -426,7 +430,7 @@ async function* recoverAssistant(
       continue;
     }
 
-    yield* recoverEventsFromTask(task, textSoFar);
+    yield* recoverEventsFromTask(task);
     return;
   }
 

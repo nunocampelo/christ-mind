@@ -264,13 +264,18 @@ class Orchestrator:
         # The structured answer travels alongside the streamed prose; the A2A artifact
         # carries it, keeping cited claims distinct from inferred chains. The FinalEvent's
         # text is the whole prose.
+        #
+        # Diagnose the model's original text, *then* strip for display. Stripping removes
+        # exactly the markers the audit would flag as unknown, so diagnosing the stripped
+        # text would always report zero fabrications and lose the signal entirely.
+        diagnostics = _diagnose_citations(text, cited_claims)
         text = _strip_fabricated_markers(text, {c.claim_id for c in cited_claims})
         self.last_answer = AgentAnswer(
             text=text,
             concepts=concepts,
             cited_claims=cited_claims,
             inferred_chains=inferred_chains,
-            citation_diagnostics=_diagnose_citations(text, cited_claims),
+            citation_diagnostics=diagnostics,
         )
         return FinalEvent(text=text)
 
@@ -292,8 +297,9 @@ def _diagnose_citations(
 def _strip_fabricated_markers(text: str, valid: set[str]) -> str:
     """Delete markers whose token is not a gathered claim_id (a truncated or corrupted id
     the model invented). A net for imperfect prevention, not a repair -- we remove the bogus
-    token, never guess the intended one. `valid` matches `_diagnose_citations`'s gathered set
-    so a stripped marker is exactly one that would otherwise be reported as unknown."""
+    token, never guess the intended one. `valid` is `_diagnose_citations`'s gathered set, so
+    every stripped marker is one the diagnostics already recorded as unknown -- diagnose
+    before stripping (see `_final_event`), or the audit sees nothing to report."""
     fabricated = {m for m in extract_markers(text) if m not in valid}
     if not fabricated:
         return text
