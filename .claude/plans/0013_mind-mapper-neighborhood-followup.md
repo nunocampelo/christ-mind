@@ -33,6 +33,13 @@ interpretation stays in the one designated place. This also composes with the no
 repeat-search guard already in the orchestrator (reworded variants the mapper emits are
 searched once as a set; later model retries of the same terms are skipped).
 
+> **Follow-up: this invariant held for conversation history (plan 0028, item 4).** When
+> retrieval needed prior-turn context to resolve a follow-up's "that", the resolution flows
+> through `map_situation` (bounded history as an additive param) rather than a separate
+> query-resolution LLM step — keeping interpretation in the one designated place. Same
+> operation as entity-neighborhood expansion: an underspecified situation becomes retrievable
+> concepts.
+
 ## Sketch (to be detailed when picked up)
 
 - `map_situation` / its `SituationMapper` prompt — instruct the mapper to include near

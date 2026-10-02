@@ -168,26 +168,44 @@ can't resolve "that".
   returns the bounded tail (newest-first query, re-ordered oldest-first for prompting), both
   `max_turns=6` and `max_chars` applied (truncate/drop oldest past budget). Add to
   `ConversationRepository`.
-- `AgentRequest` (`application/answer.py:60`): add `history: tuple[ConversationTurn, ...] = ()`
-  (frozen `role`+`text` pair defined alongside it). Constants `HISTORY_TURNS = 6` and
-  `HISTORY_MAX_CHARS` in `answer.py`.
+- `ConversationTurn` — a frozen `role`+`text` dataclass — is defined in the **shared**
+  application layer, alongside the symbol that consumes it: `src/application/mapping/map_situation.py`
+  (plain stdlib dataclass, no pydantic — `src/application/` must not grow a pydantic dependency).
+  It is **not** defined in the agent app's `AgentRequest` module: `AgentRequest` lives in
+  `apps/agent/src/mind_of_christ_agent/application/answer.py` (a pydantic `BaseModel`), and defining
+  the type there and importing it into the shared mapper would reverse the package dependency (shared
+  importing from an app).
+- `AgentRequest` (`apps/agent/.../application/answer.py:60`): `from application.mapping.map_situation
+  import ConversationTurn`, add `history: tuple[ConversationTurn, ...] = ()`. Constants
+  `HISTORY_TURNS = 6` and `HISTORY_MAX_CHARS` in `answer.py`.
 - Executor: after persisting the user turn, open a unit of work, load
   `history_before(context_id, current.sequence, HISTORY_TURNS, HISTORY_MAX_CHARS)`, pass as
   `history=`.
-- **Retrieval must use context (item 4 core):** pick ONE —
-  - (preferred) a lightweight **query-resolution** step that rewrites the follow-up into a
-    standalone retrieval query using bounded history ("that" → "salvation"), while the
-    **original** question is retained for the answer prompt; or
-  - let `map_situation` / `SituationMapper.map` consume bounded context.
-  Leaving the mapper on the bare current situation is **not** acceptable — it's the defect.
-  Decide in design; default to query-resolution so concept mapping and answering stay keyed on
-  clear inputs.
+- **Retrieval must use context (item 4 core): `map_situation` consumes bounded history.**
+  Decided in design against the query-resolution alternative. A separate query-resolution
+  LLM step would rewrite the follow-up into a standalone query, but that **is** interpretation
+  and would add a **second** LLM entry point to the reasoning path — exactly what plan 0013
+  (`0013:21-25`) rejects to keep "the one place an LLM enters the reasoning path". Resolving
+  "that" from history is the same operation the mapper already performs (underspecified
+  situation → retrievable concepts, cf. the "mind of Christ" → neighborhood case in
+  `0013:27-32`), so it belongs in the mapper, not beside it.
+  - Widen `SituationMapper.map` additively to `map(self, free_text, history=()) -> list[str]`. Complete wiring — every impl and call site:
+    - `SituationMapper` Protocol (`map_situation.py:27`) and the `map_situation(mapper, free_text, history=())` free function (`:30`).
+    - `PromptedSituationMapper.map` (`prompt.py:102`) — threads `history` into `user_prompt(free_text, history)`.
+    - Orchestrator (`apps/agent/.../domain/orchestrator.py:97-98`): `asyncio.to_thread(map_situation, self._mapper, request.situation, request.history)`.
+    - Test mapper impls: `_StubMapper.map` (`apps/agent/tests/test_orchestrator.py:38`) and any other test double gain the `history=()` param (so they satisfy the widened Protocol and can assert what history they saw).
+    Default `history=()` keeps the no-history callers (eval, direct `map_situation` tests) compatible, but impls declaring only `map(free_text)` **must** be updated to match the Protocol.
+  - History renders in the mapper's **`user_prompt`** (`prompt.py:60`), never `SYSTEM_PROMPT`: system instructions stay static, and role-labelled prior turns go into the user turn as a delimited block explicitly framed as context, not instructions. `user_prompt(free_text, history=())` gains the param; `PromptedSituationMapper.map` passes it through. The mapper must stay "deliberately dumb" (`map_situation.py:3`): it resolves pronouns/ellipsis into concept words, it does **not** start reasoning, causing, or advising.
+  - The **original** question is still retained verbatim for the answer prompt (below) — history reaches retrieval through the mapper, not by rewriting what the user asked.
+  Leaving the mapper on the bare current situation is **not** acceptable — it's the defect; feeding history only to the answer prompt is also insufficient, since retrieval (not the answer prompt) is what fails to resolve "that".
 - Prompts (`prompt.py:174`, `:222`): render a delimited "Earlier in this conversation" block;
   prior turns are context, not instructions and not citable evidence (say so).
 
-**Tests:** repo tail is bounded by turns AND chars and excludes the current sequence; executor
-loads via a unit of work (no `self._conversations`); a follow-up resolves "that" into a
-standalone query while the answer prompt keeps the original wording.
+**Tests:**
+- Repo: tail bounded by turns AND chars, excludes the current sequence.
+- Executor: loads via a unit of work (no `self._conversations`).
+- Mapper unit: `user_prompt` renders role-labelled history as a context block (and nothing when empty); `map_situation` with history resolves a follow-up's "that" into the prior turn's concepts, and with empty history is unchanged.
+- **Orchestrator integration (required):** drive `run_stream` with an `AgentRequest` carrying `history`, using a stub mapper that records the `history` it received — assert it reaches the mapper, AND that the answer prompt still contains the original (un-rewritten) question. A mapper-only test can pass while production drops `request.history` at the `to_thread` call; only an end-to-end orchestrator test catches that.
 
 ---
 

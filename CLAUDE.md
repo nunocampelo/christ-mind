@@ -264,3 +264,19 @@ None yet — this is a local prototype run over stdio for manual/agent testing. 
 container, no secrets. Document the pipeline here once one exists (see the base template
 this file was generated from for the shape: CI on push, container build, orchestrator
 secrets, migrations-before-app if a real datastore is added).
+
+## Plans
+
+Plan files live in the **repo-local** `.claude/plans/` (i.e.
+`christ-mind/.claude/plans/`, which is tracked in git), **not** the harness's user-global
+`~/.claude/plans/`. The plan-mode workflow defaults new plans to the user-global
+directory, so a plan written there never lands in the repo — always write (or copy) the
+plan into the repo-local `.claude/plans/` and stage it, so it's versioned alongside the
+code it describes.
+
+Plan files are named `NNNN_descriptive-kebab-name.md` — a 4-digit zero-padded number in
+creation-date order, in front of a content-derived descriptive name (never the harness's
+random animal/adjective slug). The number orders by each file's earliest add commit in git
+history (not filesystem mtime), breaking same-commit ties alphabetically; a new plan takes
+the next number. When renaming existing files, use `git mv` to preserve history. Leave the
+commit to the user (see no-self-commit).
