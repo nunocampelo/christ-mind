@@ -37,6 +37,7 @@ prose as a second, JSON artifact (`artifact_id="evidence"`) emitted once at the 
 distinction survives to the frontend rather than collapsing into the prose stream.
 """
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -136,6 +137,7 @@ class MindOfChristExecutor(AgentExecutor):
 
         answer_started = False
         final_text = ""
+        succeeded = False
         try:
             async with connect() as mcp_client:
                 orchestrator = build_orchestrator(mcp_client)
@@ -185,11 +187,14 @@ class MindOfChristExecutor(AgentExecutor):
                         answer.text,
                         message_json=answer.model_dump(mode="json"),
                     )
+            succeeded = True
+        except asyncio.CancelledError:
+            # The SDK publishes cancellation through cancel(). Preserve propagation so
+            # the per-request MCP context exits and no more tools are called.
+            raise
         except Exception:
             # Any escaping exception must still emit a terminal event, or the task hangs
-            # in `working` with no result. CancelledError is a BaseException, so a client
-            # disconnect is NOT caught here — it propagates and the SDK cancels cleanly,
-            # and `async with connect()` tears down the MCP subprocess. The static
+            # in `working` with no result. The static
             # message avoids leaking exception detail (which can carry the situation text
             # or an internal path).
             await updater.failed(
@@ -199,9 +204,14 @@ class MindOfChristExecutor(AgentExecutor):
             )
             return
 
-        await updater.complete(
-            message=updater.new_agent_message(parts=[Part(text=final_text)])
-        )
+        finally:
+            # Cleanup can suppress CancelledError. A pending cancellation still wins
+            # over completion; cancel() owns the canceled terminal event.
+            execution = asyncio.current_task()
+            if succeeded and (execution is None or not execution.cancelling()):
+                await updater.complete(
+                    message=updater.new_agent_message(parts=[Part(text=final_text)])
+                )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         task_id = context.task_id or str(uuid.uuid4())

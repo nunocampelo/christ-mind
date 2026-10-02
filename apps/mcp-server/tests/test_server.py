@@ -44,7 +44,13 @@ async def test_find_sources_tool_no_match_returns_empty():
 
 
 @pytest.mark.anyio
-async def test_find_claims_tool_matches_by_subject_or_object():
+async def test_find_claims_tool_matches_by_subject_or_object(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Substring-on-subject/object/verb_phrase is the lexical channel's contract. The hybrid
+    # default also returns semantic neighbors that need not contain the literal term (covered
+    # by test_find_claims_hybrid.py), so pin lexical to assert the substring guarantee.
+    monkeypatch.setenv("RETRIEVAL_MODE", "lexical")
     async with Client(mcp) as client:
         result = await client.call_tool("find_claims", {"queries": ["forgiveness"]})
 
@@ -114,7 +120,12 @@ async def test_find_claims_tool_respects_limit():
 
 
 @pytest.mark.anyio
-async def test_find_claims_tool_no_match_returns_empty():
+async def test_find_claims_tool_no_match_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Only the lexical channel can report a genuine no-match; the semantic channel always
+    # returns the nearest neighbors, so a true empty is a lexical-mode guarantee.
+    monkeypatch.setenv("RETRIEVAL_MODE", "lexical")
     async with Client(mcp) as client:
         result = await client.call_tool(
             "find_claims", {"queries": ["xyzzy-nonexistent-term"]}

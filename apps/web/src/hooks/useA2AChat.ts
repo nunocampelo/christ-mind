@@ -1,6 +1,7 @@
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -39,6 +40,7 @@ type StreamFn = (
 
 type RecoverFn = (
   taskId: string,
+  signal?: AbortSignal,
 ) => AsyncGenerator<AgentStreamEvent, void, void>;
 
 const TERMINAL_STATES = new Set([
@@ -83,6 +85,8 @@ const useA2AChat = ({
   turnsRef.current = turns;
   const nextTurnId = useRef(initialTurns?.length ?? 0);
 
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const appendTurn = useCallback((turn: Omit<Turn, "id">): number => {
     const id = nextTurnId.current++;
     setTurns((prev) => [...prev, { ...turn, id }]);
@@ -106,7 +110,11 @@ const useA2AChat = ({
   const appendStepToTurn = useCallback((id: number, text: string) => {
     setTurns((prev) =>
       prev.map((turn) =>
-        turn.id === id ? { ...turn, steps: [...turn.steps, text] } : turn,
+        // Skip a label identical to the turn's current last step: recovery re-polls the same
+        // working status across polls, so the live step must not be appended twice.
+        turn.id === id && turn.steps.at(-1) !== text
+          ? { ...turn, steps: [...turn.steps, text] }
+          : turn,
       ),
     );
   }, []);
@@ -114,6 +122,16 @@ const useA2AChat = ({
   const setAnswerOnTurn = useCallback((id: number, answer: AgentAnswer) => {
     setTurns((prev) =>
       prev.map((turn) => (turn.id === id ? { ...turn, answer } : turn)),
+    );
+  }, []);
+
+  const resetAgentTurn = useCallback((id: number) => {
+    setTurns((prev) =>
+      prev.map((turn) =>
+        turn.id === id
+          ? { ...turn, text: "", steps: [], answer: undefined }
+          : turn,
+      ),
     );
   }, []);
 
@@ -135,9 +153,14 @@ const useA2AChat = ({
     async (
       events: AsyncGenerator<AgentStreamEvent, void, void>,
       agentTurnId: number,
+      controller: AbortController,
     ): Promise<boolean> => {
       let errored = false;
       for await (const event of events) {
+        // A superseded run's generator can keep yielding after a newer send replaced it;
+        // bail before touching shared refs (contextId/taskId) or this run's turn so a late
+        // event can't clobber the live run. Return (not continue) to stop draining promptly.
+        if (abortRef.current !== controller) return errored;
         switch (event.kind) {
           case AgentEventKind.text:
             if (event.replace) setTextOnAgentTurn(agentTurnId, event.delta);
@@ -193,6 +216,8 @@ const useA2AChat = ({
 
       const controller = new AbortController();
       abortRef.current = controller;
+      lastTaskId.current = null;
+      lastAgentTurnId.current = null;
       setBusy(true);
       setError(null);
       appendTurn({ role: TurnRole.user, text: trimmed, steps: [] });
@@ -208,6 +233,7 @@ const useA2AChat = ({
         await consumeStream(
           streamFn(trimmed, contextId.current, controller.signal),
           agentTurnId,
+          controller,
         );
       } catch (err) {
         if (!controller.signal.aborted) {
@@ -260,36 +286,50 @@ const useA2AChat = ({
     setBusy(true);
     setError(null);
 
-    // Stopping before the first token removes the empty agent bubble, so the turn the run
-    // recorded may no longer exist. Recreate it here or the recovered reply would be written
-    // to a missing id and never render. Recovery emits the authoritative answer as a replace,
-    // so any partial text already in an existing bubble is overwritten, not appended to.
-    // Strip the trailing "Request stopped" notice first, so the recreated bubble takes its
-    // place instead of landing below it.
+    // Reconnect presents like a fresh send: strip the trailing "Request stopped" notice and
+    // clear the carried-over bubble back to empty (loading star), so the stale reasoning and
+    // partial prose from the stopped attempt disappear until recovery refills them. Stopping
+    // before the first token removes the empty bubble entirely, so recreate it in that case
+    // or the recovered reply would be written to a missing id and never render.
+    removeTrailingNotices();
     const existing = turnsRef.current.find(
       (t) => t.id === lastAgentTurnId.current && t.role === TurnRole.agent,
     );
     let agentTurnId: number;
     if (existing) {
       agentTurnId = existing.id;
+      resetAgentTurn(agentTurnId);
     } else {
-      removeTrailingNotices();
       agentTurnId = appendTurn({ role: TurnRole.agent, text: "", steps: [] });
     }
     lastAgentTurnId.current = agentTurnId;
 
     try {
-      const errored = await consumeStream(recoverFn(taskId), agentTurnId);
-      if (!errored) removeTrailingNotices();
+      const errored = await consumeStream(
+        recoverFn(taskId, controller.signal),
+        agentTurnId,
+        controller,
+      );
+      // The notice was stripped up-front for the fresh-send look; a failed recovery restores
+      // it so its reconnect chip returns and the user can retry again.
+      if (errored) appendTurn({ role: TurnRole.notice, text: NOTICE_STOPPED, steps: [] });
     } catch (err) {
       setError(err instanceof Error ? err.message : ERR_ASSISTANT_FAILED);
+      appendTurn({ role: TurnRole.notice, text: NOTICE_STOPPED, steps: [] });
     } finally {
       if (abortRef.current === controller) {
         setBusy(false);
         abortRef.current = null;
       }
     }
-  }, [appendTurn, busy, consumeStream, recoverFn, removeTrailingNotices]);
+  }, [
+    appendTurn,
+    busy,
+    consumeStream,
+    recoverFn,
+    removeTrailingNotices,
+    resetAgentTurn,
+  ]);
 
   const handleSubmit = useCallback(() => {
     if (busy) return;

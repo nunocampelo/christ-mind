@@ -82,7 +82,13 @@ const ERR_MALFORMED_ANSWER = "Malformed answer payload";
 const ERR_RECOVER_TIMEOUT = "Could not recover the answer";
 
 const RECOVER_POLL_MS = 500;
-const RECOVER_MAX_POLLS = 40;
+// A client disconnect does not cancel the run (the SDK keeps consuming server-side), so a
+// reconnect is usually waiting on a task that is still legitimately working. The budget must
+// therefore exceed a full orchestrator run, not a snappy one: up to max_steps (6) LLM
+// round-trips plus tool calls routinely reach ~25s and can run longer. 360 polls * 500ms =
+// 180s of headroom; a shorter budget abandons the task right before it settles and surfaces
+// a spurious "could not recover" while the answer is in fact completing.
+const RECOVER_MAX_POLLS = 360;
 
 const TERMINAL_STATES = new Set([
   TaskState.TASK_STATE_COMPLETED,
@@ -364,8 +370,21 @@ async function* streamAssistant(
   }
 }
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+// Resolve-and-exit on abort (not reject): the poll loop re-checks the signal on the next
+// iteration and returns cleanly, so an aborted wait just wakes early rather than throwing.
+const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 
 const findArtifact = (task: Task, id: string): Artifact | undefined =>
   task.artifacts.find((a) => a.artifactId === id);
@@ -404,19 +423,31 @@ function* recoverEventsFromTask(
   yield { kind: AgentEventKind.status, state: TaskState[state], text: "" };
 }
 
-// Replay a dropped stream's finished answer by polling GetTask until the task reaches a
-// terminal state, then emitting its recovered events (see `recoverEventsFromTask`), so the
-// reconnect refills the same bubble rather than duplicating its prose.
+// Replay a dropped stream by polling GetTask until the task reaches a terminal state, then
+// emitting its recovered events (see `recoverEventsFromTask`), so the reconnect refills the
+// same bubble rather than duplicating its prose. A disconnect does not cancel the run, so a
+// recovered task is usually still WORKING: each poll re-surfaces the live progress GetTask
+// carries -- the current working-step label (status.message) and the partial answer artifact
+// -- so the reasoning timeline keeps advancing and the bubble shows live prose instead of
+// sitting silent until the task settles. Both are deduped against what was last emitted (the
+// label and the artifact repeat verbatim across polls), and the partial prose rides as a
+// `replace` so each emission overwrites rather than appends; the terminal pass then replaces
+// it once more with the authoritative sanitized answer.
 async function* recoverAssistant(
   taskId: string,
+  signal?: AbortSignal,
 ): AsyncGenerator<AgentStreamEvent, void, void> {
   const client = await getClient();
+  let lastStep = "";
+  let lastPartial = "";
 
   for (let poll = 0; poll < RECOVER_MAX_POLLS; poll++) {
+    if (signal?.aborted) return;
     let task: Task;
     try {
-      task = await client.getTask({ tenant: "", id: taskId });
+      task = await client.getTask({ tenant: "", id: taskId }, { signal });
     } catch (err) {
+      if (signal?.aborted) return;
       yield {
         kind: AgentEventKind.error,
         message: err instanceof Error ? err.message : ERR_ASSISTANT_FAILED,
@@ -426,7 +457,17 @@ async function* recoverAssistant(
 
     const state = task.status?.state;
     if (state === undefined || !TERMINAL_STATES.has(state)) {
-      await sleep(RECOVER_POLL_MS);
+      const step = messageText(task.status?.message);
+      if (step && step !== lastStep) {
+        lastStep = step;
+        yield { kind: AgentEventKind.status, state: TaskState[state ?? 0], text: step };
+      }
+      const partial = artifactText(findArtifact(task, ArtifactId.answer));
+      if (partial && partial !== lastPartial) {
+        lastPartial = partial;
+        yield { kind: AgentEventKind.text, delta: partial, replace: true };
+      }
+      await sleep(RECOVER_POLL_MS, signal);
       continue;
     }
 

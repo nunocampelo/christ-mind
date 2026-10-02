@@ -340,11 +340,12 @@ describe("useA2AChat", () => {
     return { streamFn, release: () => release() };
   };
 
+
   it("reconnects: refills the same bubble and removes the tail notice", async () => {
     const { streamFn, release } = stopAfterPartial();
     // Recovery replaces the bubble with the authoritative stored answer (the server
     // supersedes the raw partial), so the recovered text is the whole answer, not a suffix.
-    const recoverFn = vi.fn((_taskId: string) =>
+    const recoverFn = vi.fn((_taskId: string, _signal?: AbortSignal) =>
       streamOf([
         { kind: "text", delta: "partial and the rest.", replace: true },
         { kind: "answer", answer: ANSWER },
@@ -372,9 +373,93 @@ describe("useA2AChat", () => {
       await result.current.handleReconnect();
     });
 
-    expect(recoverFn).toHaveBeenCalledWith("task-1");
+    expect(recoverFn).toHaveBeenCalledWith("task-1", expect.any(AbortSignal));
     const agent = result.current.turns.find((t) => t.role === TurnRole.agent);
     expect(agent?.text).toBe("partial and the rest.");
+    expect(agent?.answer).toEqual(ANSWER);
+    expect(result.current.turns.some((t) => t.role === TurnRole.notice)).toBe(
+      false,
+    );
+  });
+
+  it("reconnects like a fresh send: clears the carried-over bubble, then advances live reasoning", async () => {
+    // Stopped after a reasoning step and partial prose arrived, so the bubble carries both.
+    // Reconnect must first clear it back to empty (the loading-star / fresh-send look), then
+    // recovery (landing on a still-working task) re-surfaces live progress: a repeated label
+    // must not double up, a new label advances the timeline, and the answer finally lands.
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const streamFn = () =>
+      (async function* () {
+        yield { kind: "taskId", taskId: "task-1" } as AgentStreamEvent;
+        yield {
+          kind: "status",
+          state: "TASK_STATE_WORKING",
+          text: "Calling find_claims",
+        } as AgentStreamEvent;
+        yield { kind: "text", delta: "half an answer" } as AgentStreamEvent;
+        await gate;
+      })();
+
+    let releaseRecover = () => {};
+    const recoverGate = new Promise<void>((r) => {
+      releaseRecover = r;
+    });
+    const recoverFn = vi.fn((_taskId: string, _signal?: AbortSignal) =>
+      (async function* () {
+        await recoverGate;
+        // Repeated label (recovery re-polls the same working status) must dedupe.
+        yield { kind: "status", state: "TASK_STATE_WORKING", text: "Calling find_claims" };
+        yield { kind: "status", state: "TASK_STATE_WORKING", text: "Calling find_claims" };
+        yield { kind: "status", state: "TASK_STATE_WORKING", text: "find_claims returned" };
+        yield { kind: "text", delta: "Forgiveness undoes it.", replace: true };
+        yield { kind: "answer", answer: ANSWER };
+        yield { kind: "status", state: "TASK_STATE_COMPLETED", text: "" };
+      })(),
+    );
+    const { result } = renderHook(() => useA2AChat({ streamFn, recoverFn }));
+
+    let sending: Promise<void>;
+    act(() => {
+      sending = result.current.send("help");
+    });
+    await waitFor(() => expect(result.current.turns[1]?.text).toBe("half an answer"));
+    act(() => {
+      result.current.handleCancel();
+    });
+    await act(async () => {
+      release();
+      await sending;
+    });
+
+    expect(result.current.turns[1]?.steps).toEqual(["Calling find_claims"]);
+    expect(result.current.canReconnect).toBe(true);
+
+    let reconnecting: Promise<void>;
+    act(() => {
+      reconnecting = result.current.handleReconnect();
+    });
+
+    // Before recovery yields anything, the carried-over bubble is cleared to the fresh-send
+    // state (empty text + steps, busy) -- the stale reasoning and partial prose are gone.
+    await waitFor(() => expect(result.current.busy).toBe(true));
+    const cleared = result.current.turns.find((t) => t.role === TurnRole.agent);
+    expect(cleared?.text).toBe("");
+    expect(cleared?.steps).toEqual([]);
+    expect(result.current.turns.some((t) => t.role === TurnRole.notice)).toBe(false);
+
+    await act(async () => {
+      releaseRecover();
+      await reconnecting;
+    });
+
+    const agent = result.current.turns.find((t) => t.role === TurnRole.agent);
+    // Recovery rebuilt the trace from empty: the doubled "Calling find_claims" collapsed to
+    // one, and "find_claims returned" advanced it.
+    expect(agent?.steps).toEqual(["Calling find_claims", "find_claims returned"]);
+    expect(agent?.text).toBe("Forgiveness undoes it.");
     expect(agent?.answer).toEqual(ANSWER);
     expect(result.current.turns.some((t) => t.role === TurnRole.notice)).toBe(
       false,
@@ -394,7 +479,7 @@ describe("useA2AChat", () => {
         yield { kind: "taskId", taskId: "task-1" } as AgentStreamEvent;
         await gate;
       })();
-    const recoverFn = vi.fn((_taskId: string) =>
+    const recoverFn = vi.fn((_taskId: string, _signal?: AbortSignal) =>
       streamOf([
         { kind: "text", delta: "Forgiveness undoes it.", replace: true },
         { kind: "answer", answer: ANSWER },
@@ -425,7 +510,7 @@ describe("useA2AChat", () => {
     });
 
     // Nothing had streamed, so recovery replays the full answer into the recreated bubble.
-    expect(recoverFn).toHaveBeenCalledWith("task-1");
+    expect(recoverFn).toHaveBeenCalledWith("task-1", expect.any(AbortSignal));
     const agent = result.current.turns.find((t) => t.role === TurnRole.agent);
     expect(agent?.text).toBe("Forgiveness undoes it.");
     expect(agent?.answer).toEqual(ANSWER);
@@ -504,5 +589,118 @@ describe("useA2AChat", () => {
     expect(new Set(result.current.turns.map((t) => t.id)).size).toBe(
       result.current.turns.length,
     );
+  });
+
+  it("aborts the in-flight controller when the component unmounts", async () => {
+    let captured: AbortSignal | undefined;
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const streamFn = (_message: string, _contextId: string, signal?: AbortSignal) =>
+      (async function* () {
+        captured = signal;
+        yield { kind: "text", delta: "partial" } as AgentStreamEvent;
+        await gate;
+      })();
+    const { result, unmount } = renderHook(() => useA2AChat({ streamFn }));
+
+    act(() => {
+      void result.current.send("help");
+    });
+    await waitFor(() => expect(captured).toBeDefined());
+
+    unmount();
+    expect(captured?.aborted).toBe(true);
+    release();
+  });
+
+  it("ignores a late event from a superseded run", async () => {
+    // Run #1 is cancelled, then run #2 starts (replacing abortRef). When run #1's gated
+    // generator finally yields a stale contextId/taskId, the guard must drop it so it can't
+    // clobber run #2's state.
+    let releaseStale = () => {};
+    const staleGate = new Promise<void>((r) => {
+      releaseStale = r;
+    });
+    const onConversationId = vi.fn();
+    let call = 0;
+    const streamFn = () => {
+      call += 1;
+      return call === 1
+        ? (async function* () {
+            yield { kind: "taskId", taskId: "task-1" } as AgentStreamEvent;
+            await staleGate;
+            yield { kind: "contextId", contextId: "stale-ctx" } as AgentStreamEvent;
+            yield { kind: "taskId", taskId: "stale-task" } as AgentStreamEvent;
+          })()
+        : streamOf([
+            { kind: "taskId", taskId: "task-2" },
+            { kind: "status", state: "TASK_STATE_COMPLETED", text: "" },
+          ])();
+    };
+    const { result } = renderHook(() =>
+      useA2AChat({ streamFn, onConversationId }),
+    );
+
+    act(() => {
+      void result.current.send("first");
+    });
+    await waitFor(() => expect(result.current.busy).toBe(true));
+    act(() => {
+      result.current.handleCancel();
+    });
+    await act(async () => {
+      await result.current.send("second");
+    });
+    await act(async () => {
+      releaseStale();
+    });
+
+    // Run #2's completion set canReconnect via task-2; run #1's late stale-task was dropped.
+    expect(result.current.canReconnect).toBe(true);
+    expect(onConversationId).not.toHaveBeenCalledWith("stale-ctx");
+  });
+
+  it("aborts recovery polling when cancelled mid-reconnect", async () => {
+    const { streamFn, release } = stopAfterPartial();
+    let captured: AbortSignal | undefined;
+    let releaseRecover = () => {};
+    const recoverGate = new Promise<void>((r) => {
+      releaseRecover = r;
+    });
+    const recoverFn = (_taskId: string, signal?: AbortSignal) =>
+      (async function* () {
+        captured = signal;
+        await recoverGate;
+      })();
+    const { result } = renderHook(() => useA2AChat({ streamFn, recoverFn }));
+
+    let sending: Promise<void>;
+    act(() => {
+      sending = result.current.send("help");
+    });
+    await waitFor(() => expect(result.current.turns[1]?.text).toBe("partial"));
+    act(() => {
+      result.current.handleCancel();
+    });
+    await act(async () => {
+      release();
+      await sending;
+    });
+
+    let reconnecting: Promise<void>;
+    act(() => {
+      reconnecting = result.current.handleReconnect();
+    });
+    await waitFor(() => expect(captured).toBeDefined());
+    act(() => {
+      result.current.handleCancel();
+    });
+    expect(captured?.aborted).toBe(true);
+    await act(async () => {
+      releaseRecover();
+      await reconnecting;
+    });
   });
 });

@@ -140,6 +140,26 @@ def _send(client: TestClient, situation: str) -> Task:
     return json_format.ParseDict(envelope["result"]["task"], Task())
 
 
+def _get_task(client: TestClient, task_id: str) -> Task:
+    """Re-fetch a settled task by id via a native-v1 GetTask RPC -- the same call the
+    frontend's recoverAssistant polls, so this exercises the real recovery read path."""
+    response = client.post(
+        "/a2a",
+        json={
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "GetTask",
+            "params": {"tenant": "", "id": task_id},
+        },
+        headers={"A2A-Version": "1.0"},
+    )
+    assert response.status_code == 200
+    envelope = response.json()
+    assert "error" not in envelope, envelope
+    # GetTask's result is the bare Task, unlike SendMessage's `{ "task": ... }` wrapper.
+    return json_format.ParseDict(envelope["result"], Task())
+
+
 def test_agent_card_served_at_well_known(client: TestClient) -> None:
     body = client.get("/.well-known/agent-card.json").json()
     assert body["name"] == "Mind of Christ Agent"
@@ -157,6 +177,21 @@ def test_send_message_returns_answer_and_distinct_evidence(client: TestClient) -
     streamed = "".join(p.text for p in artifacts["answer"].parts)
     assert streamed == "Forgiveness undoes it."
 
+    evidence = json.loads(artifacts["evidence"].parts[0].text)
+    assert AgentAnswer.model_validate(evidence) == _ANSWER
+
+
+def test_settled_task_is_recoverable_via_get_task(client: TestClient) -> None:
+    # A disconnected run stays recoverable: the SDK keeps consuming after a client drops, so
+    # the settled task persists in the store and a later GetTask (what recoverAssistant uses)
+    # still returns the authoritative answer + the distinct evidence artifact.
+    sent = _send(client, "I can't forgive someone")
+    refetched = _get_task(client, sent.id)
+
+    assert refetched.id == sent.id
+    assert refetched.status.state == TaskState.TASK_STATE_COMPLETED
+    artifacts = {a.artifact_id: a for a in refetched.artifacts}
+    assert "".join(p.text for p in artifacts["answer"].parts) == "Forgiveness undoes it."
     evidence = json.loads(artifacts["evidence"].parts[0].text)
     assert AgentAnswer.model_validate(evidence) == _ANSWER
 

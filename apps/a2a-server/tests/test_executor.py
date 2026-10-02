@@ -401,3 +401,114 @@ async def test_execute_loads_history_and_passes_it_excluding_the_current_turn(
         ConversationTurn("agent", "Salvation undoes the belief in separation."),
     )
     assert request.situation == "how does that relate to forgiveness?"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("suppress_cancellation", [False, True])
+async def test_cancel_stops_tools_and_prevents_completion(
+    monkeypatch: pytest.MonkeyPatch, suppress_cancellation: bool
+) -> None:
+    import asyncio
+
+    tool_started = asyncio.Event()
+    disconnected = False
+    tool_calls: list[str] = []
+
+    class _Client:
+        async def call_tool(self, name: str) -> None:
+            tool_calls.append(name)
+            tool_started.set()
+            await asyncio.Future()
+
+    client = _Client()
+
+    class _Orchestrator:
+        last_answer = None
+
+        async def run_stream(self, _request: object) -> AsyncIterator[object]:
+            await client.call_tool("find_claims")
+            await client.call_tool("infer_chain")
+            yield FinalEvent(text="should never complete")
+
+    @asynccontextmanager
+    async def fake_connect() -> AsyncIterator[object]:
+        nonlocal disconnected
+        try:
+            yield client
+        except asyncio.CancelledError:
+            if not suppress_cancellation:
+                raise
+        finally:
+            disconnected = True
+
+    monkeypatch.setattr(executor_module, "connect", fake_connect)
+    monkeypatch.setattr(executor_module, "build_orchestrator", lambda _mcp: _Orchestrator())
+    monkeypatch.setattr(executor_module, "ConversationRepository", lambda session: session)
+    conversations = _RecordingConversations()
+    executor = MindOfChristExecutor(
+        sessions=conversations.as_session_provider()  # type: ignore[arg-type]
+    )
+    context = _FakeContext("peace")
+    queue = _RecordingQueue()
+    execution = asyncio.create_task(
+        executor.execute(context, queue)  # type: ignore[arg-type]
+    )
+    try:
+        await asyncio.wait_for(tool_started.wait(), timeout=1)
+        # Match the SDK workflow: cancel the producer, then invoke the cancel hook.
+        execution.cancel()
+        await executor.cancel(context, queue)  # type: ignore[arg-type]
+        if suppress_cancellation:
+            await execution
+        else:
+            with pytest.raises(asyncio.CancelledError):
+                await execution
+    finally:
+        if not execution.done():
+            execution.cancel()
+        await asyncio.gather(execution, return_exceptions=True)
+
+    assert disconnected
+    assert tool_calls == ["find_claims"]
+    terminal_states = [
+        e.status.state
+        for e in queue.events
+        if isinstance(e, TaskStatusUpdateEvent)
+        and e.status.state != TaskState.TASK_STATE_WORKING
+    ]
+    assert terminal_states == [TaskState.TASK_STATE_CANCELED]
+    assert [role for _, role, _, _ in conversations.appended] == [MessageRole.user]
+
+
+@pytest.mark.anyio
+async def test_run_without_cancel_completes_and_is_recoverable(
+    stubbed: AgentAnswer,
+) -> None:
+    # A plain client disconnect does NOT cancel the producer: the SDK's request handler keeps
+    # consuming in the background (default_request_handler.py), so only an explicit tasks/cancel
+    # propagates CancelledError into execute() (see test_cancel_stops_tools_and_prevents_completion
+    # for that pole). This pins the opposite contract -- a run that is never cancelled completes
+    # normally and leaves the artifacts a later GetTask / recoverAssistant read needs: the
+    # authoritative answer chunk (last_chunk), the evidence artifact, and a persisted agent turn.
+    queue = _RecordingQueue()
+    conversations = _RecordingConversations()
+    await MindOfChristExecutor(
+        sessions=conversations.as_session_provider()  # type: ignore[arg-type]
+    ).execute(
+        _FakeContext("I can't forgive"),  # type: ignore[arg-type]
+        queue,  # type: ignore[arg-type]
+    )
+
+    statuses = [e for e in queue.events if isinstance(e, TaskStatusUpdateEvent)]
+    assert statuses[-1].status.state == TaskState.TASK_STATE_COMPLETED
+
+    artifacts = [e for e in queue.events if isinstance(e, TaskArtifactUpdateEvent)]
+    answer_chunks = [a for a in artifacts if a.artifact.artifact_id == "answer"]
+    assert answer_chunks[-1].last_chunk is True
+    assert "".join(p.text for p in answer_chunks[-1].artifact.parts) == stubbed.text
+    assert any(a.artifact.artifact_id == "evidence" for a in artifacts)
+
+    assert [role for _, role, _, _ in conversations.appended] == [
+        MessageRole.user,
+        MessageRole.agent,
+    ]

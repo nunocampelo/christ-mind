@@ -211,31 +211,58 @@ can't resolve "that".
 
 ---
 
-### 5. Cancellation: obsolete-run guards + signal through network + real server cancel
+### 5. Cancellation: obsolete-run guards + signal through network + real server cancel  🔄 IN PROGRESS
 
-**Frontend (`useA2AChat.ts`):**
+**Status (revised after SDK trace):** the server premise below was partly wrong. a2a-sdk 1.1.2
+**already** stops `execute()` on an explicit `tasks/cancel`: it calls `producer_task.cancel()`
+(`active_task.py:733`), injecting `CancelledError` into `execute()`, which escapes the narrow
+`except Exception` (it's a `BaseException`) and tears down the MCP subprocess via `async with
+connect()`. **No task registry / `asyncio.Event` is needed** — the plan's "share cancel state per
+task" approach is unnecessary. A plain **client disconnect** is a *different* path
+(`default_request_handler.py:446-453`): the SDK spawns a background consume task and does **not**
+cancel the producer, so the run completes and the answer persists — i.e. disconnect ≠ cancel, and
+a disconnected run stays recoverable via `getTask`. **Server-side minimal hardening is DONE**
+(working tree): `except asyncio.CancelledError: raise` + a `succeeded` flag and
+`execution.cancelling()` guard in a new `finally` (so a late `complete()` can't race the canceled
+terminal event), plus `test_cancel_stops_tools_and_prevents_completion`. **Remaining:** the
+frontend hardening below, and a recovery regression test (B) locking in disconnect ≠ cancel.
+
+**Frontend (`useA2AChat.ts`):** — run tag = the per-run `AbortController` identity (reuse the
+existing `abortRef.current === controller` convention; no separate run-id ref).
 - **Unmount cleanup** (no `useEffect` exists): `useEffect(() => () => abortRef.current?.abort(), [])`.
-- **Guard ALL event consumption against obsolete runs**, not just token writes. `contextId`
-  (:147) and `taskId` (:157) events mutate shared refs regardless of which run is live; a late
-  event from a superseded run can clobber the current one. Tag each run (e.g. the run's
-  `AbortController` or a run id) and in `consumeStream` ignore events whose run is no longer
-  `abortRef.current` — covering context/task id updates too.
+- **Guard ALL event consumption against obsolete runs**, not just token writes. The `contextId`
+  (:153-162) and `taskId` (:163-165) events mutate shared refs regardless of which run is live; a
+  late event from a superseded run can clobber the current one. Pass the run's `controller` into
+  `consumeStream` (:134) and, as the first statement in the `for await` loop (before the
+  `switch`, :141), `if (abortRef.current !== controller) return errored;` — covering the
+  context/task id writes too. Call sites: `send` (:208), `handleReconnect` (:282).
 - **Recovery signal into the network layer:** thread `controller.signal` through `RecoverFn`
-  (:40), `recoverAssistant` (`agentApi.ts:405`), and into the `RECOVER_MAX_POLLS` loop and its
-  polling **waits** (abort the sleep, not just skip the next request). Update tests asserting
-  the two-arg recover signature (`useA2AChat.test.tsx:373,426`).
-- **Reset stale task id on send:** clear `lastTaskId.current` (and `lastAgentTurnId`) at the
-  top of `send` (:177) so `canReconnect` (:299) can't reflect the previous run.
+  (:40), `recoverAssistant` (`agentApi.ts:410`), the `RECOVER_MAX_POLLS` loop, and its polling
+  **wait** (make `sleep` at `agentApi.ts:367` abortable — resolve-and-exit on abort, not reject).
+  `getTask` **is** abortable: `getTask({tenant:"", id}, { signal })` (`RequestOptions.signal?:
+  AbortSignal`). On abort, `recoverAssistant` yields nothing and returns; its `getTask` catch
+  returns early on `signal.aborted` so a cancel doesn't surface "Assistant request failed". Update
+  the two-arg recover tests (`useA2AChat.test.tsx:375,428`) to
+  `toHaveBeenCalledWith("task-1", expect.any(AbortSignal))`.
+- **Reset stale task id on send:** after the early-return guard (:192), clear
+  `lastTaskId.current` and `lastAgentTurnId.current` so `canReconnect` (:311) can't reflect the
+  previous run between a new send and its first `taskId` event.
 
-**Server (`executor.py:180`):** `cancel()` only emits a canceled status — it does **not** stop
-the running `execute()` (the `async for` over `run_stream` keeps consuming, MCP subprocess
-keeps working). Wire real cancellation: share cancel state per task (e.g. an `asyncio.Event`
-or task registry keyed by `task_id`) that `execute()`'s loop checks and that tears down the
-`async with connect()` block. Verify a cancel actually halts tool calls, not just the status.
+**Server:** DONE (see Status above) — no registry; SDK-driven `CancelledError` propagation +
+`finally` guard against a late `complete()`.
+
+**(B) Recovery regression test — disconnect ≠ cancel:** the SDK's disconnect→background-consume
+branch lives in `default_request_handler.py`, not our code, so test the recoverability property at
+the seam we own. **B1** (`test_executor.py`): `execute()` run to completion *without* a producer
+cancel emits terminal COMPLETED + `answer`/`evidence` artifacts + a persisted agent turn (the
+recoverable contract), contrasted with `test_cancel_stops_tools_and_prevents_completion`. **B2**
+(`test_a2a_endpoint.py`): blocking `SendMessage` then a `GetTask` round-trip asserts the settled
+task is re-fetchable with COMPLETED + both artifacts — the same RPC `recoverAssistant` uses,
+against the real SDK handler + `InMemoryTaskStore`. Neither reaches into SDK internals.
 
 **Tests:** unmount aborts the live controller; a late event from a superseded run is ignored;
-recovery abort stops polling; server cancel stops the orchestrator loop (mock MCP, assert no
-further tool calls after cancel).
+recovery abort stops polling; (server done) cancel stops the orchestrator loop; **plus B1/B2
+above**.
 
 ---
 
