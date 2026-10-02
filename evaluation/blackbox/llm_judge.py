@@ -70,19 +70,20 @@ what was asked -- not for declining when declining is the right response.
 the answer (every claim the answer makes about the subject matter; skip pure connective or \
 meta sentences like "Here is what the passages say"). Include assertions that carry NO marker \
 too. Each element is {"assertion": "<the asserted span, copied VERBATIM from the answer, \
-character-for-character, INCLUDING any [id] citation markers inside it>", "char_start": <int>, \
-"char_end": <int>, "supported_by_its_markers": true|false, "quote": "<exact words from the \
-paragraph of ONE of this assertion's own markers that support it, or empty>"}. char_start and \
-char_end are 0-based offsets into the ANSWER such that answer[char_start:char_end] is exactly \
-"assertion" -- so the span is located by its offsets, not by searching text. Do NOT paraphrase \
-or move a marker. The spans must PARTITION the citations: every [id] marker in the answer must \
-fall inside exactly ONE element's [char_start, char_end), and spans must not overlap -- so if \
-the same id appears twice in the answer, each occurrence sits in a different element's span. \
-"supported_by_its_markers" is true ONLY when the paragraph of a marker INSIDE this span \
-supports the assertion (support, not proximity; wording outside the clause is fine) -- it is \
-FALSE for a mis-cited marker whose paragraph does not support the assertion EVEN IF some other \
-supplied paragraph would, and FALSE for any substantive assertion with no marker in its span \
-(an uncited claim is ungrounded). Do not average: one false element means not fully grounded.
+character-for-character, INCLUDING any [id] citation markers inside it>", \
+"supported_by_its_markers": true|false, "quote": "<exact words from the paragraph of ONE of \
+this assertion's own markers that support it, or empty>"}. Copy "assertion" EXACTLY as it \
+appears in the ANSWER -- same characters, same markers, no paraphrase, no reordering -- so it \
+can be found as a literal substring of the answer; the grader locates it by searching the \
+answer text, you do NOT report offsets. The spans must PARTITION the citations: every [id] \
+marker in the answer must fall inside exactly ONE assertion, spans must not overlap, and if the \
+same id appears twice in the answer, give one element per occurrence (copy enough surrounding \
+words that the two copies are distinguishable where possible). "supported_by_its_markers" is \
+true ONLY when the paragraph of a marker INSIDE this assertion supports it (support, not \
+proximity; wording outside the clause is fine) -- it is FALSE for a mis-cited marker whose \
+paragraph does not support the assertion EVEN IF some other supplied paragraph would, and FALSE \
+for any substantive assertion with no marker in it (an uncited claim is ungrounded). Do not \
+average: one false element means not fully grounded.
 - synthesis_fidelity: does it stay faithful to the cited paragraphs -- preserving their \
 attribution, polarity, and qualifications -- without overreach, conflation, or attributes no \
 paragraph carries?
@@ -159,19 +160,24 @@ def _scored(name: str, raw: object) -> CriterionResult:
 def _grounding(raw: object, response: BlackBoxResponse) -> CriterionResult:
     """Deterministic per-assertion floor over the answer's OWN citation occurrences.
 
-    The judge returns one element per substantive assertion, each a verbatim span of the answer.
-    Python -- not the judge -- decides what is grounded: it locates each span in the answer,
-    reads the marker occurrences the answer actually places inside that span (the judge cannot
-    relabel them), and requires the elements to partition every marker occurrence in the answer
+    The judge returns one element per substantive assertion as a VERBATIM span of the answer,
+    with no offsets -- a token model cannot count characters, so Python recovers each span by
+    locating its `assertion` as a literal substring of the answer (model offsets, when present,
+    are not trusted). Python -- not the judge -- then decides what is grounded: it reads the
+    marker occurrences the answer actually places inside each recovered span (the judge cannot
+    relabel them) and requires the elements to partition every marker occurrence in the answer
     exactly once. Status is `all_assertions_supported`, independent of PASS_THRESHOLD; the score
     is the supported fraction, diagnostic only.
 
-    Coverage is defined against the answer's `[id]` occurrences, NOT `response.cited_claims`:
-    the retrieval pool holds claims the answer never cited, and the same id can appear twice on
-    two different clauses (one sound, one mis-cited) -- a per-occurrence partition is what keeps
-    the mis-cited use from hiding behind the sound one. Anything that can't be verified
-    (unlocatable span, overlapping spans, an uncovered occurrence) is `not_evaluated` rather
-    than a guessed pass/fail, so an omission can't manufacture a pass."""
+    An assertion that repeats verbatim is resolved only if the full non-overlapping partition
+    picks out exactly ONE valid occurrence assignment; genuine ambiguity (several assignments
+    satisfy the partition) is `incomplete_coverage`, never a silently-chosen one. Coverage is
+    defined against the answer's `[id]` occurrences, NOT `response.cited_claims`: the retrieval
+    pool holds claims the answer never cited, and the same id can appear twice on two different
+    clauses (one sound, one mis-cited) -- a per-occurrence partition is what keeps the mis-cited
+    use from hiding behind the sound one. Anything that can't be verified (unlocatable span,
+    ambiguous assignment, an uncovered occurrence) is `not_evaluated`, so an omission can't
+    manufacture a pass."""
     name = "semantic_grounding"
     try:
         elements = _parse_grounding_elements(raw)
@@ -188,56 +194,41 @@ def _grounding(raw: object, response: BlackBoxResponse) -> CriterionResult:
         # so it never joins a bucket count; the human verdict for these is not_applicable.
         return _not_evaluated(name, "no cited markers and no asserted grounding", None)
 
-    supplied = {c.claim_id for c in response.cited_claims}
-    covered: set[int] = set()
-    spans: list[tuple[int, int]] = []
-    verdicts: list[bool] = []
+    candidates: list[list[tuple[int, int]]] = []
     for el in elements:
-        # Offsets, not substring search: an identical sentence appearing twice is unambiguous.
-        if not (0 <= el.char_start < el.char_end <= len(answer)):
+        spans = _verbatim_spans(answer, el.assertion)
+        if not spans:
             return _not_evaluated(
-                name, "grounding offsets are out of range", "parse_failure"
+                name, "a grounding assertion is not a verbatim span of the answer", "parse_failure"
             )
-        if answer[el.char_start : el.char_end] != el.assertion:
-            return _not_evaluated(
-                name, "grounding offsets do not match the answer text", "parse_failure"
-            )
-        # Text-range overlap, independent of markers: the prompt requires a partition, so two
-        # spans that overlap at all (even over marker-free prose) is a malformed judgment.
-        if any(el.char_start < e and s < el.char_end for s, e in spans):
-            return _not_evaluated(
-                name, "grounding spans overlap", "parse_failure"
-            )
-        spans.append((el.char_start, el.char_end))
-        # A marker counts for this span only if the WHOLE [id] sits inside it. A span that
-        # clips a marker (one bracket in, the rest out) is a malformed anchor, not a miss.
-        clipped = any(
-            (el.char_start <= ms < el.char_end) != (el.char_start < me <= el.char_end)
-            for ms, me, _ in occurrences
-        )
-        if clipped:
-            return _not_evaluated(
-                name, "grounding span cuts through a marker", "parse_failure"
-            )
-        span = [
-            (ms, cid)
-            for ms, me, cid in occurrences
-            if el.char_start <= ms and me <= el.char_end
-        ]
-        covered.update(ms for ms, _ in span)
-        # An answer marker that resolves to no supplied claim is a grounding DEFECT (the answer
-        # mis-cited), not an unverifiable judgment -- so it fails, it does not degrade.
-        resolves = all(cid in supplied for _, cid in span)
-        # An assertion whose span carries no marker is uncited -- ungrounded in code, never on
-        # the judge's say-so (it must not pass an uncited claim).
-        verdicts.append(el.supported and bool(span) and resolves)
+        candidates.append(spans)
 
-    if {ms for ms, _, _ in occurrences} - covered:
+    occ_starts = {ms for ms, _, _ in occurrences}
+    valid = _partition_assignments(candidates, occurrences, occ_starts)
+    if not valid:
         return _not_evaluated(
             name,
-            "grounding did not account for every marker occurrence in the answer",
+            "no assignment of grounding assertions covers every marker occurrence exactly once",
             "incomplete_coverage",
         )
+    if len(valid) > 1:
+        return _not_evaluated(
+            name,
+            "grounding assertions map ambiguously to repeated spans in the answer",
+            "incomplete_coverage",
+        )
+
+    supplied = {c.claim_id for c in response.cited_claims}
+    chosen = valid[0]
+    verdicts: list[bool] = []
+    for (start, end), el in zip(chosen, elements):
+        span = [(ms, cid) for ms, me, cid in occurrences if start <= ms and me <= end]
+        # An answer marker that resolves to no supplied claim is a grounding DEFECT (the answer
+        # mis-cited), not an unverifiable judgment -- so it fails, it does not degrade. An
+        # assertion whose span carries no marker is uncited -- ungrounded in code, never on the
+        # judge's say-so (it must not pass an uncited claim).
+        resolves = all(cid in supplied for _, cid in span)
+        verdicts.append(el.supported and bool(span) and resolves)
 
     # NOTE: complete occurrence coverage proves every CITED span was examined; it does NOT prove
     # the judge included every uncited substantive assertion (those carry no marker to count).
@@ -251,6 +242,53 @@ def _grounding(raw: object, response: BlackBoxResponse) -> CriterionResult:
         status="pass" if all_supported else "fail",
         score=round(supported / total, 3) if total else 0.0,
     )
+
+
+def _verbatim_spans(answer: str, assertion: str) -> list[tuple[int, int]]:
+    """Every (start, end) at which `assertion` occurs literally in `answer`, including
+    overlapping occurrences -- the span is recovered from text, never from reported offsets."""
+    spans: list[tuple[int, int]] = []
+    start = answer.find(assertion)
+    while start != -1:
+        spans.append((start, start + len(assertion)))
+        start = answer.find(assertion, start + 1)
+    return spans
+
+
+def _partition_assignments(
+    candidates: list[list[tuple[int, int]]],
+    occurrences: list[tuple[int, int, str]],
+    occ_starts: set[int],
+) -> list[list[tuple[int, int]]]:
+    """Every way to pick one span per element so the chosen spans don't overlap, none clips a
+    marker, and together they cover each marker occurrence in the answer exactly once. More than
+    one survivor means the repeated-span assignment is genuinely ambiguous (the caller rejects
+    it); exactly one is the unique partition the judge's assertions pin down."""
+    results: list[list[tuple[int, int]]] = []
+
+    def recurse(i: int, chosen: list[tuple[int, int]], covered: set[int]) -> None:
+        if i == len(candidates):
+            if covered == occ_starts:
+                results.append(list(chosen))
+            return
+        for start, end in candidates[i]:
+            if any(start < e and s < end for s, e in chosen):
+                continue
+            # A marker counts for this span only if the WHOLE [id] sits inside it; a span that
+            # clips a marker (one bracket in, the rest out) is a malformed anchor, skip it.
+            if any(
+                (start <= ms < end) != (start < me <= end) for ms, me, _ in occurrences
+            ):
+                continue
+            inside = {ms for ms, me, _ in occurrences if start <= ms and me <= end}
+            if inside & covered:
+                continue
+            chosen.append((start, end))
+            recurse(i + 1, chosen, covered | inside)
+            chosen.pop()
+
+    recurse(0, [], set())
+    return results
 
 
 def _not_evaluated(
@@ -300,20 +338,19 @@ def _as_score(raw: object) -> float | None:
 
 
 class _GroundingElement:
-    __slots__ = ("assertion", "char_start", "char_end", "supported")
+    __slots__ = ("assertion", "supported")
 
-    def __init__(self, assertion: str, char_start: int, char_end: int, supported: bool):
+    def __init__(self, assertion: str, supported: bool):
         self.assertion = assertion
-        self.char_start = char_start
-        self.char_end = char_end
         self.supported = supported
 
 
 def _parse_grounding_elements(raw: object) -> list[_GroundingElement]:
-    """Validate the grounding array into located (assertion, offsets, supported) elements.
-    Markers are NOT taken from the element -- they are read from the answer at the element's
-    offsets (see `_grounding`), so a judge cannot relabel which id sits on a clause. Raises
-    ValueError on any malformed shape; the caller turns that into `not_evaluated`."""
+    """Validate the grounding array into (verbatim assertion, supported) elements. The element
+    carries NO offsets -- a token model cannot count characters reliably, so Python recovers the
+    span by locating the verbatim `assertion` substring in the answer (see `_grounding`), and the
+    markers on it are read from that recovered span, never self-reported. Raises ValueError on any
+    malformed shape; the caller turns that into `not_evaluated`."""
     if not isinstance(raw, list):
         raise ValueError("semantic_grounding was not a JSON array")
     elements: list[_GroundingElement] = []
@@ -323,21 +360,10 @@ def _parse_grounding_elements(raw: object) -> list[_GroundingElement]:
         assertion = item.get("assertion")
         if not isinstance(assertion, str) or not assertion.strip():
             raise ValueError("grounding element missing an assertion string")
-        start = item.get("char_start")
-        end = item.get("char_end")
-        if (
-            isinstance(start, bool)
-            or isinstance(end, bool)
-            or not isinstance(start, int)
-            or not isinstance(end, int)
-            or start < 0
-            or end < start
-        ):
-            raise ValueError("grounding element has invalid char offsets")
         supported = item.get("supported_by_its_markers")
         if not isinstance(supported, bool):
             raise ValueError("grounding element supported_by_its_markers was not a bool")
-        elements.append(_GroundingElement(assertion, start, end, supported))
+        elements.append(_GroundingElement(assertion, supported))
     return elements
 
 
