@@ -10,6 +10,7 @@ and rejects. The header is `1.0` here -- the same one PR 4's frontend must send.
 import json
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 import pytest
 from a2a.server.tasks import InMemoryTaskStore
@@ -20,7 +21,10 @@ from google.protobuf import json_format
 
 import mind_of_christ_a2a.domain.a2a.executor as executor_module
 import mind_of_christ_a2a.main as main_module
-from mind_of_christ_a2a.domain.conversations.models import MessageRole
+from mind_of_christ_a2a.domain.conversations.models import (
+    ConversationMessage,
+    MessageRole,
+)
 from mind_of_christ_a2a.main import app
 from mind_of_christ_agent.application.answer import (
     AgentAnswer,
@@ -64,8 +68,24 @@ class _FakeConversations:
         role: MessageRole,
         content: str,
         message_json: dict[str, object] | None = None,
-    ) -> None:
-        return None
+    ) -> ConversationMessage:
+        return ConversationMessage(
+            conversation_id=conversation_id,
+            role=role,
+            content=content,
+            message_json=message_json,
+            timestamp=datetime(2026, 1, 1),
+            sequence=1,
+        )
+
+    async def history_before(
+        self,
+        conversation_id: str,
+        before_sequence: int,
+        max_turns: int,
+        max_chars: int,
+    ) -> tuple[ConversationMessage, ...]:
+        return ()
 
 
 class _FakeSessionProvider:

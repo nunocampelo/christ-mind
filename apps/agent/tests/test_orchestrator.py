@@ -9,6 +9,9 @@ from collections.abc import AsyncIterator
 import pytest
 from mcp.types import CallToolResult, TextContent, Tool
 
+from application.mapping.map_situation import ConversationTurn
+from infrastructure.llm.types import ChatStream
+
 from mind_of_christ_agent.application.answer import AgentRequest, CitedClaim
 from mind_of_christ_agent.domain.events import (
     FinalEvent,
@@ -34,8 +37,12 @@ def anyio_backend():
 class _StubMapper:
     def __init__(self, concepts: list[str]):
         self._concepts = concepts
+        self.seen_history: tuple[ConversationTurn, ...] = ()
 
-    def map(self, free_text: str) -> list[str]:
+    def map(
+        self, free_text: str, history: tuple[ConversationTurn, ...] = ()
+    ) -> list[str]:
+        self.seen_history = history
         return list(self._concepts)
 
 
@@ -79,6 +86,22 @@ def _scripted_stream(*replies: str):
             yield ch
 
     return chat_stream
+
+
+def _recording_stream(*replies: str) -> tuple[ChatStream, list[str]]:
+    """Like `_scripted_stream`, but captures every user prompt the orchestrator sends so a
+    test can assert what reached the decision/answer prompts."""
+    calls = {"n": 0}
+    user_prompts: list[str] = []
+
+    async def chat_stream(system: str, user: str) -> AsyncIterator[str]:
+        user_prompts.append(user)
+        reply = replies[min(calls["n"], len(replies) - 1)]
+        calls["n"] += 1
+        for ch in reply:
+            yield ch
+
+    return chat_stream, user_prompts
 
 
 def _claim_result(**overrides: object) -> dict[str, object]:
@@ -985,3 +1008,75 @@ async def test_answer_prompt_carries_the_context_that_resolves_my_kind():
     answer_prompt = captured["user"]
     assert "MY use of projection" in answer_prompt
     assert "the very powerful use of the denial of errors" in answer_prompt
+
+
+@pytest.mark.anyio
+async def test_history_reaches_mapper_and_decision_prompt_on_the_common_path():
+    """The common path: the first decision emits {"final"}, so the answer comes from the
+    decision prompt. A mapper-only test can pass while production drops request.history at
+    the to_thread call -- so drive the whole run and assert history reaches the mapper AND
+    the decision prompt still carries the original, un-rewritten follow-up."""
+    mcp = _FakeMcpClient({})
+    mapper = _StubMapper(["forgiveness"])
+    chat_stream, user_prompts = _recording_stream('{"final": "Peace."}')
+    orchestrator = Orchestrator(mapper, mcp, chat_stream)
+
+    history = (
+        ConversationTurn("user", "What does the Course say about salvation?"),
+        ConversationTurn("agent", "Salvation undoes the belief in separation."),
+    )
+    follow_up = "how does that relate to forgiveness?"
+
+    events = [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation=follow_up, history=history, max_steps=4)
+        )
+    ]
+
+    assert mapper.seen_history == history
+    assert user_prompts, "the orchestrator made no LLM call"
+    for prompt in user_prompts:
+        assert follow_up in prompt
+        assert "What does the Course say about salvation?" in prompt
+        assert "Earlier in this conversation" in prompt
+    assert events[-1] == FinalEvent(text="Peace.")
+
+
+@pytest.mark.anyio
+async def test_history_reaches_the_fallback_answer_prompt_when_max_steps_exhaust():
+    """The max-steps fallback: when the model never emits {"final"} (it keeps calling
+    tools), the orchestrator forces one answer-only call over answer_user_prompt. That
+    second interpretation point must carry history too -- the common-path test can't catch
+    a regression here because its decision returns {"final"} before the loop exhausts."""
+    mcp = _FakeMcpClient({})
+    mapper = _StubMapper(["forgiveness"])
+    # Every decision is a tool_call, with distinct terms each step so the repeat-search
+    # guard never short-circuits the loop; it exhausts max_steps and falls through to the
+    # answer-only call. _recording_stream repeats its last reply, but a fresh query each
+    # turn needs distinct replies, so script one per step.
+    max_steps = 3
+    tool_calls = [
+        f'{{"tool_call": {{"name": "find_claims", "arguments": {{"queries": ["q{i}"]}}}}}}'
+        for i in range(max_steps)
+    ]
+    chat_stream, user_prompts = _recording_stream(*tool_calls, '{"final": "unused"}')
+    orchestrator = Orchestrator(mapper, mcp, chat_stream)
+
+    history = (ConversationTurn("user", "What does the Course say about salvation?"),)
+    follow_up = "how does that relate to forgiveness?"
+
+    [
+        event
+        async for event in orchestrator.run_stream(
+            AgentRequest(situation=follow_up, history=history, max_steps=max_steps)
+        )
+    ]
+
+    # The fallback answer_user_prompt is the only prompt saying "Write the answer now."
+    answer_prompts = [p for p in user_prompts if "Write the answer now." in p]
+    assert len(answer_prompts) == 1, "the max-steps fallback answer call did not run"
+    fallback = answer_prompts[0]
+    assert follow_up in fallback
+    assert "What does the Course say about salvation?" in fallback
+    assert "Earlier in this conversation" in fallback

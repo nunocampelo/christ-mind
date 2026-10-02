@@ -12,6 +12,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from application.mapping.map_situation import ConversationTurn
+
+HISTORY_TURNS = 6
+HISTORY_MAX_CHARS = 4000
+
 
 class CitedClaim(BaseModel):
     model_config = {"frozen": True}
@@ -60,6 +65,7 @@ class CitationDiagnostics(BaseModel):
 class AgentRequest(BaseModel):
     model_config = {"frozen": True}
     situation: str
+    history: tuple[ConversationTurn, ...] = ()
     max_steps: int = 6
 
 

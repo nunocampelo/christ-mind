@@ -91,6 +91,57 @@ class ConversationRepository:
             messages=messages,
         )
 
+    async def history_before(
+        self,
+        conversation_id: str,
+        before_sequence: int,
+        max_turns: int,
+        max_chars: int,
+    ) -> tuple[ConversationMessage, ...]:
+        """The bounded tail of a conversation strictly before `before_sequence`, for
+        priming a follow-up's retrieval. Excludes the current turn by sequence (not
+        position, which is unsafe under concurrent appends). Fetches newest-first with a
+        LIMIT so an enormous history never loads whole, then applies the char budget
+        dropping oldest-first -- truncating the boundary message to its newest tail so the
+        total never exceeds `max_chars`, even when a single turn is larger than the whole
+        budget -- and returns oldest-first for prompting."""
+        result = await self._session.execute(
+            select(ConversationMessageRow)
+            .where(
+                ConversationMessageRow.conversation_id == conversation_id,
+                ConversationMessageRow.sequence < before_sequence,
+            )
+            .order_by(ConversationMessageRow.sequence.desc())
+            .limit(max_turns)
+        )
+        newest_first = list(result.scalars())
+
+        kept: list[tuple[ConversationMessageRow, str]] = []
+        budget = max_chars
+        for row in newest_first:
+            if len(row.content) <= budget:
+                budget -= len(row.content)
+                kept.append((row, row.content))
+                continue
+            # This message overshoots the budget. Keep its newest tail (the end nearest the
+            # follow-up, where "that" most likely points) up to whatever budget remains, then
+            # stop -- even an empty remaining budget must not let a whole message through.
+            if budget > 0:
+                kept.append((row, row.content[-budget:]))
+            break
+
+        return tuple(
+            ConversationMessage(
+                conversation_id=row.conversation_id,
+                role=MessageRole(row.role),
+                content=content,
+                message_json=row.message_json,
+                timestamp=row.timestamp,
+                sequence=row.sequence,
+            )
+            for row, content in reversed(kept)
+        )
+
     async def append_message(
         self,
         conversation_id: str,

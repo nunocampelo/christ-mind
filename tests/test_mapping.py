@@ -3,13 +3,16 @@ import json
 import pytest
 
 from application.mapping.map_situation import (
+    ConversationTurn,
     MappingFailedError,
     SituationMapper,
     map_situation,
 )
 from application.mapping.prompt import (
+    SYSTEM_PROMPT,
     PromptedSituationMapper,
     parse_response,
+    user_prompt,
 )
 
 
@@ -80,3 +83,33 @@ def test_prompted_mapper_is_usable_as_the_protocol():
     mapper, _ = _mapper(json.dumps({"concepts": []}))
     used: SituationMapper = mapper
     assert used.map("something") == []
+
+
+def test_user_prompt_without_history_has_no_context_block():
+    prompt = user_prompt("how does that relate to forgiveness?")
+    assert "Earlier in this conversation" not in prompt
+    assert "how does that relate to forgiveness?" in prompt
+
+
+def test_user_prompt_renders_role_labelled_history_as_context():
+    history = (
+        ConversationTurn("user", "What does the Course say about salvation?"),
+        ConversationTurn("agent", "Salvation is the undoing of the belief in separation."),
+    )
+    prompt = user_prompt("how does that relate to forgiveness?", history)
+    assert "Earlier in this conversation" in prompt
+    assert "user: What does the Course say about salvation?" in prompt
+    assert "agent: Salvation is the undoing of the belief in separation." in prompt
+    assert prompt.index("Earlier in this conversation") < prompt.index(
+        "how does that relate to forgiveness?"
+    )
+
+
+def test_history_reaches_user_prompt_not_system_prompt():
+    reply = json.dumps({"concepts": ["forgiveness", "salvation"]})
+    mapper, complete = _mapper(reply)
+    history = (ConversationTurn("user", "Tell me about salvation."),)
+    map_situation(mapper, "how does that relate to forgiveness?", history)
+    system, user = complete.calls[0]
+    assert system == SYSTEM_PROMPT
+    assert "Tell me about salvation." in user

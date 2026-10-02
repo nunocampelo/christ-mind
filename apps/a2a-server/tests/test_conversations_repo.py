@@ -212,3 +212,87 @@ async def test_rename_unknown_conversation_raises(_require_db: None) -> None:
     provider = SessionProvider(create_db_engine())
     with pytest.raises(ConversationNotFoundError):
         await _read(provider, lambda r: r.rename(_conversation_id(), "no such thread"))
+
+
+async def test_history_before_excludes_current_seq_and_bounds_by_turns(
+    _require_db: None,
+) -> None:
+    provider = SessionProvider(create_db_engine())
+    cid = _conversation_id()
+    try:
+        for i in range(1, 6):
+            await _append(provider, cid, MessageRole.user, f"turn {i}")
+        current = await _append(provider, cid, MessageRole.user, "turn 6 (in flight)")
+
+        history = await _read(
+            provider,
+            lambda r: r.history_before(cid, current.sequence, max_turns=3, max_chars=10_000),
+        )
+        # Bounded to the 3 newest turns strictly before the current one (seqs 3,4,5),
+        # re-ordered oldest-first for prompting; the in-flight turn 6 is excluded.
+        assert [m.sequence for m in history] == [3, 4, 5]
+        assert all(m.sequence < current.sequence for m in history)
+    finally:
+        await _read(provider, lambda r: r.delete(cid))
+
+
+async def test_history_before_drops_oldest_past_char_budget(_require_db: None) -> None:
+    provider = SessionProvider(create_db_engine())
+    cid = _conversation_id()
+    try:
+        await _append(provider, cid, MessageRole.user, "A" * 100)
+        await _append(provider, cid, MessageRole.agent, "B" * 100)
+        await _append(provider, cid, MessageRole.user, "C" * 100)
+        current = await _append(provider, cid, MessageRole.user, "current")
+
+        history = await _read(
+            provider,
+            lambda r: r.history_before(cid, current.sequence, max_turns=6, max_chars=200),
+        )
+        # Newest-first fills the budget exactly: "C" (100) + "B" (100) = 200; "A" would
+        # overshoot, so the oldest is dropped. Returned oldest-first.
+        assert [m.content for m in history] == ["B" * 100, "C" * 100]
+    finally:
+        await _read(provider, lambda r: r.delete(cid))
+
+
+async def test_history_before_truncates_the_boundary_message_to_fit_budget(
+    _require_db: None,
+) -> None:
+    provider = SessionProvider(create_db_engine())
+    cid = _conversation_id()
+    try:
+        await _append(provider, cid, MessageRole.user, "B" * 100)
+        await _append(provider, cid, MessageRole.user, "C" * 100)
+        current = await _append(provider, cid, MessageRole.user, "current")
+
+        history = await _read(
+            provider,
+            lambda r: r.history_before(cid, current.sequence, max_turns=6, max_chars=150),
+        )
+        # "C" (100) fits; "B" overshoots, so it is truncated to its newest 50-char tail
+        # rather than dropped or admitted whole. Total == budget, never over.
+        assert [m.content for m in history] == ["B" * 50, "C" * 100]
+        assert sum(len(m.content) for m in history) == 150
+    finally:
+        await _read(provider, lambda r: r.delete(cid))
+
+
+async def test_history_before_truncates_a_single_oversized_turn(_require_db: None) -> None:
+    provider = SessionProvider(create_db_engine())
+    cid = _conversation_id()
+    try:
+        await _append(provider, cid, MessageRole.user, "X" * 10_000)
+        current = await _append(provider, cid, MessageRole.user, "current")
+
+        history = await _read(
+            provider,
+            lambda r: r.history_before(cid, current.sequence, max_turns=6, max_chars=4_000),
+        )
+        # The single prior turn is larger than the whole budget: it must be truncated to
+        # the budget, not admitted whole (the P1 regression).
+        assert len(history) == 1
+        assert history[0].content == "X" * 4_000
+        assert sum(len(m.content) for m in history) == 4_000
+    finally:
+        await _read(provider, lambda r: r.delete(cid))

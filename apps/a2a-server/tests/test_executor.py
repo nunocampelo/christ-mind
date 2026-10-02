@@ -12,8 +12,11 @@ from typing import Any
 import pytest
 from a2a.types import Task, TaskArtifactUpdateEvent, TaskState, TaskStatusUpdateEvent
 
+from application.mapping.map_situation import ConversationTurn
+
 from mind_of_christ_agent.application.answer import (
     AgentAnswer,
+    AgentRequest,
     CitedClaim,
     InferredChain,
 )
@@ -51,8 +54,22 @@ class _RecordingConversations:
     SessionProvider + ConversationRepository so the executor's persistence is observed
     without a DB."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self, history: tuple[ConversationMessage, ...] = ()
+    ) -> None:
         self.appended: list[tuple[str, MessageRole, str, dict[str, Any] | None]] = []
+        self._history = history
+        self.history_before_sequence: int | None = None
+
+    async def history_before(
+        self,
+        conversation_id: str,
+        before_sequence: int,
+        max_turns: int,
+        max_chars: int,
+    ) -> tuple[ConversationMessage, ...]:
+        self.history_before_sequence = before_sequence
+        return tuple(m for m in self._history if m.sequence < before_sequence)
 
     async def append_message(
         self,
@@ -62,13 +79,15 @@ class _RecordingConversations:
         message_json: dict[str, Any] | None = None,
     ) -> ConversationMessage:
         self.appended.append((conversation_id, role, content, message_json))
+        # Continue past any seeded history, as a real append would (max existing seq + 1).
+        base = max((m.sequence for m in self._history), default=0)
         return ConversationMessage(
             conversation_id=conversation_id,
             role=role,
             content=content,
             message_json=message_json,
             timestamp=datetime(2026, 1, 1),
-            sequence=len(self.appended),
+            sequence=base + len(self.appended),
         )
 
     def as_session_provider(self) -> "_FakeSessionProvider":
@@ -322,3 +341,63 @@ async def test_failure_emits_terminal_failed(monkeypatch: pytest.MonkeyPatch) ->
 
     # A failed run keeps the user turn but persists no assistant answer.
     assert [role for _, role, _, _ in conversations.appended] == [MessageRole.user]
+
+
+@pytest.mark.anyio
+async def test_execute_loads_history_and_passes_it_excluding_the_current_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, AgentRequest] = {}
+
+    class _RequestCapturingOrchestrator:
+        last_answer = None
+
+        async def run_stream(self, request: AgentRequest) -> AsyncIterator[object]:
+            captured["request"] = request
+            yield FinalEvent(text="ok")
+
+    @asynccontextmanager
+    async def fake_connect() -> AsyncIterator[object]:
+        yield object()
+
+    monkeypatch.setattr(executor_module, "connect", fake_connect)
+    monkeypatch.setattr(
+        executor_module, "build_orchestrator", lambda _mcp: _RequestCapturingOrchestrator()
+    )
+    monkeypatch.setattr(executor_module, "ConversationRepository", lambda session: session)
+
+    prior = (
+        ConversationMessage(
+            conversation_id="ctx-1",
+            role=MessageRole.user,
+            content="What does the Course say about salvation?",
+            message_json=None,
+            timestamp=datetime(2026, 1, 1),
+            sequence=1,
+        ),
+        ConversationMessage(
+            conversation_id="ctx-1",
+            role=MessageRole.agent,
+            content="Salvation undoes the belief in separation.",
+            message_json=None,
+            timestamp=datetime(2026, 1, 1),
+            sequence=2,
+        ),
+    )
+    conversations = _RecordingConversations(history=prior)
+    await MindOfChristExecutor(
+        sessions=conversations.as_session_provider()  # type: ignore[arg-type]
+    ).execute(
+        _FakeContext("how does that relate to forgiveness?"),  # type: ignore[arg-type]
+        _RecordingQueue(),  # type: ignore[arg-type]
+    )
+
+    # The user turn is appended first (sequence 3), and history is loaded strictly before
+    # that sequence -- so the request carries the two prior turns, not the in-flight one.
+    assert conversations.history_before_sequence == 3
+    request = captured["request"]
+    assert request.history == (
+        ConversationTurn("user", "What does the Course say about salvation?"),
+        ConversationTurn("agent", "Salvation undoes the belief in separation."),
+    )
+    assert request.situation == "how does that relate to forgiveness?"

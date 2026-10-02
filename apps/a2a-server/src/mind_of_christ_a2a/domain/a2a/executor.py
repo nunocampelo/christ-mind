@@ -47,7 +47,13 @@ from a2a.types import Part, Task, TaskState, TaskStatus
 
 from sqlalchemy.exc import IntegrityError
 
-from mind_of_christ_agent.application.answer import AgentRequest
+from application.mapping.map_situation import ConversationTurn
+
+from mind_of_christ_agent.application.answer import (
+    HISTORY_MAX_CHARS,
+    HISTORY_TURNS,
+    AgentRequest,
+)
 from mind_of_christ_agent.application.build import build_orchestrator
 from mind_of_christ_agent.domain.events import FinalEvent, StepStatusEvent, TokenEvent
 from mind_of_christ_agent.infrastructure.mcp_client import connect
@@ -93,14 +99,30 @@ class MindOfChristExecutor(AgentExecutor):
                 continue
         raise RuntimeError("append_message could not allocate a unique sequence")
 
+    async def _load_history(
+        self, conversation_id: str, before_sequence: int
+    ) -> tuple[ConversationTurn, ...]:
+        async with self._sessions.unit_of_work() as session:
+            messages = await ConversationRepository(session).history_before(
+                conversation_id, before_sequence, HISTORY_TURNS, HISTORY_MAX_CHARS
+            )
+        return tuple(
+            ConversationTurn(role=message.role.value, text=message.content)
+            for message in messages
+        )
+
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         task_id = context.task_id or str(uuid.uuid4())
         context_id = context.context_id or str(uuid.uuid4())
         situation = context.get_user_input()
 
         # Persist the user turn before the run: a stopped or failed run keeps the user's
-        # message in history and simply writes no answer.
-        await self._append_message(context_id, MessageRole.user, situation)
+        # message in history and simply writes no answer. Its returned sequence bounds the
+        # history load below, so a follow-up sees prior turns but not the turn in flight.
+        user_message = await self._append_message(
+            context_id, MessageRole.user, situation
+        )
+        history = await self._load_history(context_id, user_message.sequence)
 
         await event_queue.enqueue_event(
             Task(
@@ -117,7 +139,7 @@ class MindOfChristExecutor(AgentExecutor):
         try:
             async with connect() as mcp_client:
                 orchestrator = build_orchestrator(mcp_client)
-                request = AgentRequest(situation=situation)
+                request = AgentRequest(situation=situation, history=history)
                 async for event in orchestrator.run_stream(request):
                     if isinstance(event, StepStatusEvent):
                         await updater.update_status(

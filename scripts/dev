@@ -127,17 +127,31 @@ ensure_database() {
   local sql_url; sql_url="$(swap_db_name "$DATABASE_URL" postgres)"
   local admin_dsn="${sql_url/postgresql+asyncpg:\/\//postgresql:\/\/}"
   info "waiting for Postgres to accept connections"
+  local ready=0
   for _ in $(seq 1 30); do
-    docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U christ >/dev/null 2>&1 && break
+    if docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U christ >/dev/null 2>&1; then
+      ready=1; break
+    fi
     sleep 1
   done
+  [ "$ready" = 1 ] || die "Postgres did not accept connections within 30s"
   if docker compose -f "$COMPOSE_FILE" exec -T postgres \
        psql -U christ -tAc "SELECT 1 FROM pg_database WHERE datname='$db_name'" 2>/dev/null | grep -q 1; then
     info "database '$db_name' exists"
   else
+    # createdb races the existence check (pg_isready can report ready a beat
+    # before the server answers queries); a duplicate-database error here just
+    # means it exists, so treat that one message as success and re-raise anything
+    # else.
     info "creating database '$db_name'"
-    docker compose -f "$COMPOSE_FILE" exec -T postgres \
-      createdb -U christ "$db_name"
+    local out
+    if ! out="$(docker compose -f "$COMPOSE_FILE" exec -T postgres \
+                  createdb -U christ "$db_name" 2>&1)"; then
+      case "$out" in
+        *"already exists"*) info "database '$db_name' already exists" ;;
+        *) die "createdb failed: $out" ;;
+      esac
+    fi
   fi
 }
 

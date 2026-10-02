@@ -95,7 +95,7 @@ class Orchestrator:
         self, request: AgentRequest
     ) -> AsyncIterator[OrchestratorEvent]:
         concepts = await asyncio.to_thread(
-            map_situation, self._mapper, request.situation
+            map_situation, self._mapper, request.situation, request.history
         )
         yield StepStatusEvent(text=f"Mapped situation to {len(concepts)} concept(s)")
 
@@ -186,7 +186,7 @@ class Orchestrator:
             async for delta in self._chat_stream(
                 DECISION_SYSTEM_PROMPT,
                 decision_user_prompt(
-                    request.situation, concepts, tools, observations
+                    request.situation, concepts, tools, observations, request.history
                 ),
             ):
                 chunks.append(delta)
@@ -246,7 +246,9 @@ class Orchestrator:
         text_parts: list[str] = []
         async for delta in self._chat_stream(
             ANSWER_SYSTEM_PROMPT,
-            answer_user_prompt(request.situation, cited_claims, inferred_chains),
+            answer_user_prompt(
+                request.situation, cited_claims, inferred_chains, request.history
+            ),
         ):
             text_parts.append(delta)
             yield TokenEvent(delta=delta)

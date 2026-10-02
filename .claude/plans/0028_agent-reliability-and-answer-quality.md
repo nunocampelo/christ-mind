@@ -176,7 +176,9 @@ can't resolve "that".
   the type there and importing it into the shared mapper would reverse the package dependency (shared
   importing from an app).
 - `AgentRequest` (`apps/agent/.../application/answer.py:60`): `from application.mapping.map_situation
-  import ConversationTurn`, add `history: tuple[ConversationTurn, ...] = ()`. Constants
+  import ConversationTurn`, add `history: tuple[ConversationTurn, ...] = ()`. No extra pydantic config
+  needed — pydantic 2.13.5 accepts a frozen stdlib dataclass as a `BaseModel` field and validates its
+  fields (`role: Literal["user", "agent"]`, `text: str`) from raw input; verified. Constants
   `HISTORY_TURNS = 6` and `HISTORY_MAX_CHARS` in `answer.py`.
 - Executor: after persisting the user turn, open a unit of work, load
   `history_before(context_id, current.sequence, HISTORY_TURNS, HISTORY_MAX_CHARS)`, pass as
