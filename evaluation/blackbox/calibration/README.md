@@ -7,6 +7,11 @@ so this harness is built around controls, not just real answers.
 
 Everything here is a one-off diagnostic, not part of the pytest suite.
 
+Item 3 validation is complete; see [FINDINGS.md](FINDINGS.md) for the corrected tune
+run, evidence-delivery check, and recorded decision. All criteria remain advisory;
+grounding/fidelity do not qualify for graduation. The development holdout remains
+unjudged.
+
 ## Artifacts
 
 - `judging.py` — freeze/re-judge/dump machinery shared with `capture_flagged.py`.

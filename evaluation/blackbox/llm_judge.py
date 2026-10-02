@@ -43,7 +43,11 @@ some OTHER supplied paragraph would -- that is a mis-cited marker, not grounding
 what is in front of you; do not use outside knowledge of the Course.
 
 Return ONLY a JSON object mapping each criterion to a number from 0.0 to 1.0:
-- answers_question: does the answer address the actual question asked?
+- answers_question: does the answer respond appropriately to the question GIVEN the evidence \
+available to it? A direct answer when the evidence supports one scores high; so does a \
+justified refusal or a request for the detail needed when the corpus cannot answer or the \
+question is underspecified. Score low only for evading an answerable question or drifting off \
+what was asked -- not for declining when declining is the right response.
 - semantic_grounding: is every substantive assertion supported by the source paragraph of \
 THE claim whose marker is attached to it (not just plausible)? An assertion is grounded even \
 if it falls outside that claim's clause, as long as that claim's paragraph supports it. An \
@@ -57,17 +61,19 @@ paragraph carries?
 than filling the gap? (1.0 if no gap to acknowledge.)
 - interpretation_marked: is any inference or application labelled as the system's own \
 reading rather than presented as the Course's teaching? (1.0 if none was drawn.)
-- abstained: does the answer decline to answer -- say the material isn't present, that it \
-can't answer, or confine itself to peripheral remarks -- rather than actually answering the \
-question? 1.0 = fully declines/abstains, 0.0 = answers directly. Report only what the answer \
-does; do NOT judge whether abstaining was appropriate.
+- abstained: does the answer decline to engage -- say the material isn't present, that it \
+can't answer, or confine itself to peripheral remarks -- rather than either answering the \
+question OR asking for a detail it genuinely needs to answer? 1.0 = fully declines/abstains, \
+0.0 = answers directly or requests necessary clarification. A request for information the \
+question actually requires is NOT abstention. Report only what the answer does; do NOT judge \
+whether declining was appropriate.
 
 No prose, no code fences -- just the JSON object."""
 
 # Bump by hand when a grading rule changes, so a calibration result pins the rubric it
 # validated (mirrors application.extraction.prompt.PROMPT_VERSION). The hash catches an edit
 # that forgot to bump the version.
-PROMPT_VERSION = "1.1"
+PROMPT_VERSION = "1.2"
 
 
 def prompt_hash() -> str:
