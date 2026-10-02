@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from evaluation.blackbox.calibration.fixtures import (
@@ -229,3 +231,57 @@ def test_failure_reason_survives_into_trials():
     assert len(trials) == 2
     assert all(t.failure_reason == "provider_failure" for t in trials)
     assert all(t.judge_status == "not_evaluated" for t in trials)
+
+
+class _StaticJudge:
+    """Thread-safe: returns a fixed per-fixture score with no shared mutable state, so trial
+    results are identical regardless of thread timing. Sleeps a per-fixture-varying amount so
+    workers finish out of submission order -- the equivalence test then proves the fold is
+    independent of completion order."""
+
+    name = "static"
+
+    def __init__(self, score_by_id: dict[str, float], delay_by_id: dict[str, float]):
+        self._scores = score_by_id
+        self._delays = delay_by_id
+
+    def evaluate(self, case, response) -> list[CriterionResult]:  # noqa: ANN001
+        time.sleep(self._delays.get(case.id, 0.0))
+        score = self._scores[case.id]
+        status = "pass" if score >= 0.6 else "fail"
+        return [
+            CriterionResult(
+                name="semantic_grounding", kind="advisory", status=status, score=score
+            )
+        ]
+
+
+def test_parallel_matches_serial_under_out_of_order_completion():
+    # The core guarantee: with identical trial results, the parallel fold produces a report
+    # byte-equal to the serial one, even when workers complete in reverse submission order.
+    fixtures = [
+        _fixture("a", {"semantic_grounding": "pass"}),
+        _fixture("b", {"semantic_grounding": "fail"}),
+        _fixture("c", {"semantic_grounding": "pass"}),
+    ]
+    scores = {"a": 0.9, "b": 0.2, "c": 0.7}
+    # Earlier-submitted fixtures sleep longer, forcing out-of-order completion.
+    delays = {"a": 0.15, "b": 0.1, "c": 0.0}
+    serial = _evaluate(_StaticJudge(scores, {}), fixtures, repeats=3, concurrency=1)
+    parallel = _evaluate(_StaticJudge(scores, delays), fixtures, repeats=3, concurrency=4)
+    assert serial[0] == parallel[0]  # criteria stats
+    assert serial[1] == parallel[1]  # ordered trials
+
+
+class _RaisingJudge:
+    name = "raising"
+
+    def evaluate(self, case, response) -> list[CriterionResult]:  # noqa: ANN001
+        raise RuntimeError("unexpected bug in the judge")
+
+
+@pytest.mark.parametrize("concurrency", [1, 4])
+def test_unexpected_exception_propagates(concurrency: int):
+    fx = _fixture("f", {"semantic_grounding": "pass"})
+    with pytest.raises(RuntimeError, match="unexpected bug"):
+        _evaluate(_RaisingJudge(), [fx], repeats=3, concurrency=concurrency)

@@ -23,6 +23,7 @@ import hashlib
 import json
 import statistics
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,7 +31,7 @@ from infrastructure.config.env import load_env
 from pydantic import BaseModel
 
 from evaluation.blackbox.calibration.fixtures import Fixture, load_fixtures, read_header
-from evaluation.blackbox.evaluator import Evaluator
+from evaluation.blackbox.evaluator import CriterionResult, Evaluator
 from evaluation.blackbox.llm_judge import (
     PASS_THRESHOLD,
     PROMPT_VERSION,
@@ -95,8 +96,11 @@ class SplitReport(BaseModel):
 
 
 def _evaluate(
-    judge: Evaluator, fixtures: list[Fixture], repeats: int
+    judge: Evaluator, fixtures: list[Fixture], repeats: int, concurrency: int = 1
 ) -> tuple[dict[str, CriterionStats], list[TrialOutcome]]:
+    # Parallel evaluation assumes judge.evaluate is safe to call concurrently; the stock
+    # LLMEvaluator is (stateless aside from a thread-safe httpx-backed client), a stateful
+    # fake judge is not -- run such a judge at concurrency=1.
     fp: Counter[str] = Counter()
     fn: Counter[str] = Counter()
     agree: Counter[str] = Counter()
@@ -110,46 +114,62 @@ def _evaluate(
     per_fixture_scores: dict[str, dict[str, list[float]]] = {}
     trials: list[TrialOutcome] = []
 
-    for fixture in fixtures:
-        case = fixture.case.to_case()
-        for _ in range(repeats):
-            for result in judge.evaluate(case, fixture.response):
-                human = fixture.verdicts.get(result.name)
-                if human is None or human.verdict == "not_applicable":
-                    continue
-                judged[result.name] += 1
-                trials.append(
-                    TrialOutcome(
-                        fixture_id=fixture.id,
-                        criterion=result.name,
-                        human=human.verdict,
-                        judge_status=result.status,
-                        judge_score=result.score,
-                        failure_reason=result.failure_reason or "",
-                    )
+    tasks = [fixture for fixture in fixtures for _ in range(repeats)]
+    cases = {fixture.id: fixture.case.to_case() for fixture in fixtures}
+
+    def judge_one(fixture: Fixture) -> list[CriterionResult]:
+        return list(judge.evaluate(cases[fixture.id], fixture.response))
+
+    # Calls run on worker threads but are consumed in submission order (executor.map), so the
+    # fold below -- and thus every counter and the trials list -- is independent of which
+    # thread finished first. cancel_futures drops queued work on an escaping error; calls
+    # already in flight cannot be cancelled and run to completion.
+    executor = ThreadPoolExecutor(max_workers=concurrency)
+    try:
+        results = list(executor.map(judge_one, tasks))
+    except BaseException:
+        executor.shutdown(cancel_futures=True)
+        raise
+    executor.shutdown()
+
+    for fixture, fixture_results in zip(tasks, results):
+        for result in fixture_results:
+            human = fixture.verdicts.get(result.name)
+            if human is None or human.verdict == "not_applicable":
+                continue
+            judged[result.name] += 1
+            trials.append(
+                TrialOutcome(
+                    fixture_id=fixture.id,
+                    criterion=result.name,
+                    human=human.verdict,
+                    judge_status=result.status,
+                    judge_score=result.score,
+                    failure_reason=result.failure_reason or "",
                 )
-                per_fixture_status.setdefault(result.name, {}).setdefault(
+            )
+            per_fixture_status.setdefault(result.name, {}).setdefault(
+                fixture.id, []
+            ).append(result.status)
+            if result.score is not None:
+                per_fixture_scores.setdefault(result.name, {}).setdefault(
                     fixture.id, []
-                ).append(result.status)
-                if result.score is not None:
-                    per_fixture_scores.setdefault(result.name, {}).setdefault(
-                        fixture.id, []
-                    ).append(result.score)
-                if result.status == "not_evaluated":
-                    if result.failure_reason == "provider_failure":
-                        provider_fail[result.name] += 1
-                    elif result.failure_reason == "incomplete_coverage":
-                        incomplete[result.name] += 1
-                    elif result.failure_reason == "parse_failure":
-                        parse_fail[result.name] += 1
-                    else:
-                        unscored[result.name] += 1
-                elif result.status == human.verdict:
-                    agree[result.name] += 1
-                elif result.status == "pass" and human.verdict == "fail":
-                    fp[result.name] += 1
+                ).append(result.score)
+            if result.status == "not_evaluated":
+                if result.failure_reason == "provider_failure":
+                    provider_fail[result.name] += 1
+                elif result.failure_reason == "incomplete_coverage":
+                    incomplete[result.name] += 1
+                elif result.failure_reason == "parse_failure":
+                    parse_fail[result.name] += 1
                 else:
-                    fn[result.name] += 1
+                    unscored[result.name] += 1
+            elif result.status == human.verdict:
+                agree[result.name] += 1
+            elif result.status == "pass" and human.verdict == "fail":
+                fp[result.name] += 1
+            else:
+                fn[result.name] += 1
 
     report: dict[str, CriterionStats] = {}
     for name in sorted(judged):
@@ -195,7 +215,18 @@ def main() -> None:
         default=5,
         help="times to re-judge each frozen fixture (stability sample)",
     )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=8,
+        help="max concurrent judge calls (1 = serial)",
+    )
     args = parser.parse_args()
+
+    if args.repeats < 1:
+        raise SystemExit("--repeats must be >= 1")
+    if args.concurrency < 1:
+        raise SystemExit("--concurrency must be >= 1")
 
     load_env()
     fixtures = load_fixtures(args.fixtures)
@@ -208,7 +239,7 @@ def main() -> None:
         raise SystemExit(f"no fixtures in the {split!r} split")
 
     judge = make_llm_judge()
-    criteria, trials = _evaluate(judge, subset, args.repeats)
+    criteria, trials = _evaluate(judge, subset, args.repeats, args.concurrency)
     report = SplitReport(
         split=split,
         fixtures=len(subset),
@@ -231,6 +262,7 @@ def main() -> None:
         "fixtures_header": read_header(args.fixtures),
         "split": split,
         "repeats": args.repeats,
+        "concurrency": args.concurrency,
     }
 
     _RESULTS_DIR.mkdir(exist_ok=True)
