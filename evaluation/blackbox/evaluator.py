@@ -43,6 +43,14 @@ class CriterionResult(BaseModel):
     status: Literal["pass", "fail", "not_evaluated"]
     score: float | None = None
     detail: str = ""
+    # Why a `not_evaluated` happened, as a typed enum callers bucket on -- never by matching
+    # `detail` prose. `provider_failure`: the completion call raised; `parse_failure`: the
+    # reply was unparseable JSON or a field was malformed/missing; `incomplete_coverage`: a
+    # grounding array that parsed but did not account for every cited marker. Empty for a
+    # real pass/fail.
+    failure_reason: Literal["provider_failure", "parse_failure", "incomplete_coverage"] | None = (
+        None
+    )
 
 
 class CaseResult(BaseModel):

@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+# Dev launcher for the mind-of-christ stack: backend (a2a-server) + UI (web),
+# wired to a chosen Postgres database. One terminal, one gesture.
+#
+#   scripts/dev up            # backend + UI against christ_mind (default)
+#   scripts/dev up eval       # ... against christ_mind_eval
+#   scripts/dev up foo        # ... against a database literally named "foo"
+#   scripts/dev backend eval  # just the backend
+#   scripts/dev ui            # just the UI
+#   scripts/dev db eval -m    # ensure Postgres + eval DB exist, then migrate
+#
+# Why a wrapper at all: the local stack has one non-obvious coupling. The agent
+# card advertises AGENT_PUBLIC_URL/a2a as its endpoint, and the browser dials that
+# absolute URL; the Vite dev server is fixed on :5273 and proxies /a2a to the
+# backend. So the backend must advertise localhost:5273 (the Vite origin), NOT its
+# own :8765, or the browser preflights /a2a cross-origin and gets a 405. This
+# script bakes that in. Switching DBs is just swapping the database-name segment of
+# DATABASE_URL — "up eval" is the whole thing.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VENV="$REPO_ROOT/.venv"
+WEB_DIR="$REPO_ROOT/apps/web"
+COMPOSE_FILE="$REPO_ROOT/apps/a2a-server/docker-compose.yml"
+ALEMBIC_INI="$REPO_ROOT/apps/a2a-server/alembic.ini"
+
+# The Vite dev origin the agent card must advertise (see header). Vite is on 5273
+# with strictPort, so this is fixed, not configurable.
+UI_PORT=5273
+UI_ORIGIN="http://localhost:$UI_PORT"
+
+BACKEND_PORT=8765
+RUN_RELOAD=1
+RUN_MIGRATE=0
+
+die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+info() { printf '\033[36m==>\033[0m %s\n' "$*" >&2; }
+
+usage() {
+  cat >&2 <<'EOF'
+scripts/dev — launch the mind-of-christ stack (backend + UI) against a chosen DB.
+
+Usage:
+  scripts/dev up [db]       backend + UI together (default command)
+  scripts/dev backend [db]  just the a2a-server (uvicorn)
+  scripts/dev ui [db]       just the Vite dev server
+  scripts/dev db [db]       ensure Postgres is up and the target DB exists
+  scripts/dev down          stop Postgres (docker compose down)
+
+Commands:
+  up [db]        backend + UI together (default command)
+  backend [db]   just the a2a-server (uvicorn)
+  ui [db]        just the Vite dev server
+  db [db]        ensure Postgres is up and the target DB exists; -m to migrate
+  down           stop Postgres (docker compose down)
+
+db target (default: christ_mind):
+  main | christ_mind       -> christ_mind
+  eval | christ_mind_eval  -> christ_mind_eval
+  <other>                  -> used verbatim as the database name
+
+Flags:
+  -p, --port N   backend port (default 8765)
+  -m, --migrate  run `alembic upgrade head` against the target DB (db/up/backend)
+  --no-reload    run uvicorn without --reload
+  -h, --help     this help
+EOF
+}
+
+# Map a friendly db token to an actual database name. Unknown tokens pass through
+# verbatim so new databases need no code change here.
+resolve_db_name() {
+  case "${1:-}" in
+    ""|main|christ_mind) echo "christ_mind" ;;
+    eval|christ_mind_eval) echo "christ_mind_eval" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+# Swap only the database-name segment of a DATABASE_URL, keeping
+# driver/creds/host/port — the same rule evaluation/blackbox/harness.py uses.
+swap_db_name() {
+  local url="$1" name="$2"
+  printf '%s/%s\n' "${url%/*}" "$name"
+}
+
+load_env() {
+  [ -f "$REPO_ROOT/.env" ] || die ".env not found at repo root (copy .env.example)"
+  set -a
+  # shellcheck disable=SC1091
+  . "$REPO_ROOT/.env"
+  set +a
+}
+
+require_backend_prereqs() {
+  [ -x "$VENV/bin/uvicorn" ] || die "no .venv (run: python3.14 -m venv .venv && see CLAUDE.md Commands)"
+  [ -n "${DATABASE_URL:-}" ] || die "DATABASE_URL unset (check .env)"
+}
+
+require_ui_prereqs() {
+  command -v npm >/dev/null || die "npm not found on PATH"
+  [ -d "$WEB_DIR/node_modules" ] || die "apps/web/node_modules missing (run: npm --prefix apps/web install)"
+}
+
+# --- Postgres / migrations -------------------------------------------------
+
+postgres_running() {
+  docker compose -f "$COMPOSE_FILE" ps --status running --quiet postgres 2>/dev/null | grep -q .
+}
+
+ensure_postgres() {
+  command -v docker >/dev/null || die "docker not found (needed to start Postgres)"
+  if postgres_running; then
+    info "Postgres already running"
+  else
+    info "starting Postgres (docker compose up -d)"
+    docker compose -f "$COMPOSE_FILE" up -d postgres
+  fi
+}
+
+# Create the target database if it isn't there. The compose Postgres only
+# auto-creates christ_mind (POSTGRES_DB); any other target (eval, custom) must be
+# created explicitly. Idempotent.
+ensure_database() {
+  local db_name="$1"
+  local sql_url; sql_url="$(swap_db_name "$DATABASE_URL" postgres)"
+  local admin_dsn="${sql_url/postgresql+asyncpg:\/\//postgresql:\/\/}"
+  info "waiting for Postgres to accept connections"
+  for _ in $(seq 1 30); do
+    docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U christ >/dev/null 2>&1 && break
+    sleep 1
+  done
+  if docker compose -f "$COMPOSE_FILE" exec -T postgres \
+       psql -U christ -tAc "SELECT 1 FROM pg_database WHERE datname='$db_name'" 2>/dev/null | grep -q 1; then
+    info "database '$db_name' exists"
+  else
+    info "creating database '$db_name'"
+    docker compose -f "$COMPOSE_FILE" exec -T postgres \
+      createdb -U christ "$db_name"
+  fi
+}
+
+migrate() {
+  info "alembic upgrade head -> $DATABASE_URL"
+  DATABASE_URL="$DATABASE_URL" "$VENV/bin/alembic" -c "$ALEMBIC_INI" upgrade head
+}
+
+# --- process runners -------------------------------------------------------
+
+run_backend() {
+  require_backend_prereqs
+  export AGENT_PUBLIC_URL="${AGENT_PUBLIC_URL_OVERRIDE:-$UI_ORIGIN}"
+  export PORT="$BACKEND_PORT"
+  export HOST="127.0.0.1"
+  local reload=(--reload); [ "$RUN_RELOAD" = 1 ] || reload=()
+  info "backend  DATABASE_URL=$DATABASE_URL"
+  info "backend  AGENT_PUBLIC_URL=$AGENT_PUBLIC_URL  port=$PORT"
+  exec "$VENV/bin/uvicorn" mind_of_christ_a2a.main:app \
+    "${reload[@]}" --host "$HOST" --port "$BACKEND_PORT"
+}
+
+run_ui() {
+  require_ui_prereqs
+  export VITE_A2A_PORT="$BACKEND_PORT"
+  info "ui       proxying /a2a -> http://127.0.0.1:$BACKEND_PORT  (open $UI_ORIGIN)"
+  exec npm --prefix "$WEB_DIR" run dev
+}
+
+# Prefix each line of a child's output with a colored marker so interleaved
+# backend/ui logs stay legible in the single terminal.
+prefix_stream() {
+  local tag="$1" color="$2"
+  while IFS= read -r line; do
+    printf '\033[%sm[%s]\033[0m %s\n' "$color" "$tag" "$line"
+  done
+}
+
+run_up() {
+  require_backend_prereqs
+  require_ui_prereqs
+  export AGENT_PUBLIC_URL="${AGENT_PUBLIC_URL_OVERRIDE:-$UI_ORIGIN}"
+  export PORT="$BACKEND_PORT" HOST="127.0.0.1" VITE_A2A_PORT="$BACKEND_PORT"
+
+  local reload=(--reload); [ "$RUN_RELOAD" = 1 ] || reload=()
+  info "backend  DATABASE_URL=$DATABASE_URL  port=$BACKEND_PORT"
+  info "ui       open $UI_ORIGIN"
+
+  local pids=()
+  cleanup() {
+    trap - INT TERM EXIT
+    info "shutting down"
+    for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
+    wait 2>/dev/null || true
+  }
+  trap cleanup INT TERM EXIT
+
+  { "$VENV/bin/uvicorn" mind_of_christ_a2a.main:app "${reload[@]}" \
+      --host "$HOST" --port "$BACKEND_PORT" 2>&1 | prefix_stream backend 35; } &
+  pids+=($!)
+  { npm --prefix "$WEB_DIR" run dev 2>&1 | prefix_stream ui 36; } &
+  pids+=($!)
+
+  # Exit (and trigger cleanup) as soon as either process dies.
+  wait -n
+}
+
+# --- arg parsing -----------------------------------------------------------
+
+CMD=""
+DB_TOKEN=""
+
+parse_args() {
+  [ $# -gt 0 ] || { CMD="up"; return; }
+  CMD="$1"; shift
+  case "$CMD" in up|backend|ui|db|down|-h|--help) ;; *) die "unknown command: $CMD (try --help)";; esac
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -p|--port) BACKEND_PORT="${2:?--port needs a value}"; shift 2 ;;
+      -m|--migrate) RUN_MIGRATE=1; shift ;;
+      --no-reload) RUN_RELOAD=0; shift ;;
+      -h|--help) CMD="--help"; shift ;;
+      -*) die "unknown flag: $1" ;;
+      *) [ -z "$DB_TOKEN" ] || die "unexpected argument: $1"; DB_TOKEN="$1"; shift ;;
+    esac
+  done
+}
+
+main() {
+  parse_args "$@"
+  case "$CMD" in -h|--help) usage; exit 0 ;; esac
+
+  if [ "$CMD" = "down" ]; then
+    command -v docker >/dev/null || die "docker not found"
+    info "docker compose down"
+    docker compose -f "$COMPOSE_FILE" down
+    exit 0
+  fi
+
+  load_env
+  local db_name; db_name="$(resolve_db_name "$DB_TOKEN")"
+  DATABASE_URL="$(swap_db_name "${DATABASE_URL:?DATABASE_URL unset in .env}" "$db_name")"
+  export DATABASE_URL
+
+  case "$CMD" in
+    db)
+      ensure_postgres
+      ensure_database "$db_name"
+      [ "$RUN_MIGRATE" = 1 ] && migrate || info "skipping migrations (pass -m to run them)"
+      ;;
+    backend)
+      ensure_postgres
+      ensure_database "$db_name"
+      [ "$RUN_MIGRATE" = 1 ] && migrate
+      run_backend
+      ;;
+    ui)
+      run_ui
+      ;;
+    up)
+      ensure_postgres
+      ensure_database "$db_name"
+      [ "$RUN_MIGRATE" = 1 ] && migrate
+      run_up
+      ;;
+  esac
+}
+
+main "$@"

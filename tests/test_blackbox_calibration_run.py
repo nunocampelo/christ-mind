@@ -166,3 +166,66 @@ def test_control_sharing_baseline_split_is_allowed():
         derived_from="real-x",
     )
     _reject_split_leakage([base, control])
+
+
+class _UnavailableJudge:
+    """Emits a single not_evaluated semantic_grounding result with a fixed failure_reason, so
+    a test can assert each unavailable cause lands in the right bucket and never as FP/FN."""
+
+    name = "unavailable"
+
+    def __init__(self, reason: str | None):
+        self._reason = reason
+
+    def evaluate(self, case, response) -> list[CriterionResult]:  # noqa: ANN001
+        return [
+            CriterionResult(
+                name="semantic_grounding",
+                kind="advisory",
+                status="not_evaluated",
+                failure_reason=self._reason,  # type: ignore[arg-type]
+            )
+        ]
+
+
+@pytest.mark.parametrize(
+    "reason,field",
+    [
+        ("provider_failure", "provider_failure"),
+        ("parse_failure", "parse_failure"),
+        ("incomplete_coverage", "incomplete_coverage"),
+    ],
+)
+def test_unavailable_judgment_lands_in_its_bucket_not_fp_fn(reason: str, field: str):
+    # A human "fail" with a judge not_evaluated must NOT be read as a false negative, and a
+    # human "pass" with not_evaluated must NOT be a false positive -- an unavailable judgment
+    # is no judgment. Each cause is counted in its own bucket.
+    fail_fx = _fixture("f-fail", {"semantic_grounding": "fail"})
+    pass_fx = _fixture("f-pass", {"semantic_grounding": "pass"})
+    criteria, _ = _evaluate(_UnavailableJudge(reason), [fail_fx, pass_fx], repeats=2)
+    stats = criteria["semantic_grounding"]
+    assert stats.false_positive == 0
+    assert stats.false_negative == 0
+    assert stats.agree == 0
+    assert getattr(stats, field) == 4  # 2 fixtures x 2 repeats
+    buckets = {"provider_failure", "parse_failure", "incomplete_coverage", "unscored"}
+    assert all(getattr(stats, b) == 0 for b in buckets - {field})
+
+
+def test_reasonless_not_evaluated_is_unscored_not_parse_failure():
+    # A deliberate out-of-scope not_evaluated (failure_reason None) must NOT inflate
+    # parse_failure -- it lands in its own `unscored` bucket.
+    fx = _fixture("f", {"semantic_grounding": "fail"})
+    criteria, _ = _evaluate(_UnavailableJudge(None), [fx], repeats=2)
+    stats = criteria["semantic_grounding"]
+    assert stats.unscored == 2
+    assert stats.parse_failure == 0
+    assert stats.false_positive == 0 and stats.false_negative == 0
+
+
+def test_failure_reason_survives_into_trials():
+    fx = _fixture("f", {"semantic_grounding": "fail"})
+    _, trials = _evaluate(_UnavailableJudge("provider_failure"), [fx], repeats=2)
+    assert len(trials) == 2
+    assert all(t.failure_reason == "provider_failure" for t in trials)
+    assert all(t.judge_status == "not_evaluated" for t in trials)

@@ -52,6 +52,10 @@ class TrialOutcome(BaseModel):
     human: str
     judge_status: str
     judge_score: float | None
+    # The judge's typed reason when judge_status is not_evaluated, so a reviewer sees WHY a
+    # judgment was unavailable (provider vs parse vs incomplete coverage) rather than only that
+    # it was. Empty for a real pass/fail, or for an out-of-scope not_evaluated with no reason.
+    failure_reason: str = ""
 
 
 class CriterionStats(BaseModel):
@@ -60,7 +64,17 @@ class CriterionStats(BaseModel):
     agree: int
     false_positive: int
     false_negative: int
+    # The causes of an unavailable judgment, kept separate so a before/after comparison isn't
+    # confounded by lumping a flaky provider call in with a malformed reply or incomplete
+    # grounding coverage. `parse_failure` also absorbs a missing scalar field (reply came back,
+    # field absent). `unscored` is a not_evaluated the judge raised DELIBERATELY with no failure
+    # reason -- an out-of-scope criterion (premature_abstention off `sufficient`) or nothing to
+    # ground -- not a failure at all; separated so it never inflates parse_failure. None of
+    # these counts as a false positive or negative.
+    provider_failure: int
     parse_failure: int
+    incomplete_coverage: int
+    unscored: int
     agreement_rate: float | None
     # Stability is WITHIN a fixture across repeats, never pooled across fixtures (different
     # fixtures legitimately get different scores -- pooling their spread measures the fixtures,
@@ -86,7 +100,10 @@ def _evaluate(
     fp: Counter[str] = Counter()
     fn: Counter[str] = Counter()
     agree: Counter[str] = Counter()
+    provider_fail: Counter[str] = Counter()
     parse_fail: Counter[str] = Counter()
+    incomplete: Counter[str] = Counter()
+    unscored: Counter[str] = Counter()
     judged: Counter[str] = Counter()
     # Per (criterion, fixture): the judge statuses and scores seen across repeats.
     per_fixture_status: dict[str, dict[str, list[str]]] = {}
@@ -108,6 +125,7 @@ def _evaluate(
                         human=human.verdict,
                         judge_status=result.status,
                         judge_score=result.score,
+                        failure_reason=result.failure_reason or "",
                     )
                 )
                 per_fixture_status.setdefault(result.name, {}).setdefault(
@@ -118,7 +136,14 @@ def _evaluate(
                         fixture.id, []
                     ).append(result.score)
                 if result.status == "not_evaluated":
-                    parse_fail[result.name] += 1
+                    if result.failure_reason == "provider_failure":
+                        provider_fail[result.name] += 1
+                    elif result.failure_reason == "incomplete_coverage":
+                        incomplete[result.name] += 1
+                    elif result.failure_reason == "parse_failure":
+                        parse_fail[result.name] += 1
+                    else:
+                        unscored[result.name] += 1
                 elif result.status == human.verdict:
                     agree[result.name] += 1
                 elif result.status == "pass" and human.verdict == "fail":
@@ -142,7 +167,10 @@ def _evaluate(
             agree=agree[name],
             false_positive=fp[name],
             false_negative=fn[name],
+            provider_failure=provider_fail[name],
             parse_failure=parse_fail[name],
+            incomplete_coverage=incomplete[name],
+            unscored=unscored[name],
             agreement_rate=round(agree[name] / n, 3) if n else None,
             verdict_flips=flips,
             fixtures_with_multiple_repeats=len(multi),
@@ -214,9 +242,11 @@ def main() -> None:
     print(f"\n[{split}] {report.fixtures} fixtures x {args.repeats} repeats")
     for name, stats in report.criteria.items():
         print(
-            f"  {name}: agree {stats.agreement_rate} "
+            f"  {name}: judged {stats.judged} agree {stats.agreement_rate} "
             f"FP {stats.false_positive} FN {stats.false_negative} "
-            f"parse_fail {stats.parse_failure} flips {stats.verdict_flips} "
+            f"provider_fail {stats.provider_failure} parse_fail {stats.parse_failure} "
+            f"incomplete {stats.incomplete_coverage} unscored {stats.unscored} "
+            f"flips {stats.verdict_flips} "
             f"within_stdev {stats.mean_within_fixture_stdev}"
         )
     print(f"\nwrote {out}")
