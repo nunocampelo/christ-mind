@@ -63,35 +63,48 @@ export const sourceReference = (claim: CitedClaim): string => {
 
 // The graph explorer's source locator. Discriminated on `kind` rather than a boolean: a
 // boolean can't tell an ACIM import ordinal from an unknown-source fallback, and a
-// populated verse field doesn't establish canonical validity on its own.
+// populated verse field doesn't establish canonical validity on its own. `compact` is the
+// one-line reference the reader shows; `edition`/`id` go into the "Source details"
+// disclosure, so they're carried separately rather than folded into the compact string.
 //
 // ACIM locators are deliberately NOT rendered as canonical Chapter/Section/Paragraph
 // citations: the numbers are positional block ordinals assigned at import (see
-// docs/graph-explorer-inspection.md), so they surface as a stored location with the
-// dataset edition and raw id, flagged as unverified. Bible verse refs are real citations.
+// docs/graph-explorer-inspection.md), so they carry an explicit "not a verified citation"
+// caveat. Bible verse refs are real citations and carry none.
+export const LocatorKind = {
+  acim: "acim",
+  verse: "verse",
+  fallback: "fallback",
+} as const;
+export type LocatorKind = (typeof LocatorKind)[keyof typeof LocatorKind];
+
 export type GraphLocator =
-  | { kind: "acim"; title: string; storedLocation: string; edition: string; id: string }
-  | { kind: "verse"; title: string; location: string }
-  | { kind: "fallback"; title: string };
+  | { kind: typeof LocatorKind.acim; compact: string; caveat: true; edition: string; id: string }
+  | { kind: typeof LocatorKind.verse; compact: string; id: string }
+  | { kind: typeof LocatorKind.fallback; compact: string };
 
 export const graphSourceLocator = (p: PassageRef): GraphLocator => {
   if (p.book === "ACIM" && p.chapter) {
-    const parts = [`Chapter ${p.chapter}`];
+    const parts = ["A Course in Miracles", `Ch ${p.chapter}`];
     if (p.section === 0) parts.push("Introduction");
-    else if (p.section != null) parts.push(`Section ${p.section}`);
+    else if (p.section != null) parts.push(`Sec ${p.section}`);
     if (p.paragraph != null) parts.push(`Block ${p.paragraph}`);
     return {
-      kind: "acim",
-      title: "A Course in Miracles",
-      storedLocation: parts.join(" · "),
+      kind: LocatorKind.acim,
+      compact: parts.join(" · "),
+      caveat: true,
       edition: p.edition,
       id: p.source_id,
     };
   }
 
   if (p.book && p.verse != null) {
-    return { kind: "verse", title: p.book, location: `${p.chapter}:${p.verse}` };
+    return {
+      kind: LocatorKind.verse,
+      compact: `${p.book} ${p.chapter}:${p.verse}`,
+      id: p.source_id,
+    };
   }
 
-  return { kind: "fallback", title: p.source_id };
+  return { kind: LocatorKind.fallback, compact: p.source_id };
 };

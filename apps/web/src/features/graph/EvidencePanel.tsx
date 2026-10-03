@@ -7,15 +7,20 @@ import type {
   Polarity,
 } from "@/api/graphArtifact";
 import { type GraphIndex, passageForClaim } from "@/features/graph/graphModel";
-import { type GraphLocator, graphSourceLocator } from "@/api/sourceRef";
+import { type GraphLocator, LocatorKind, graphSourceLocator } from "@/api/sourceRef";
 import { qualifierLabels } from "@/features/graph/qualifiers";
-import "@/components/chat/chat.css";
 
 // A selected relationship, either a drawn edge or a non-projectable participating claim.
 // Both carry the semantic fields + the join key the evidence panel needs.
+export const SelectionKind = {
+  edge: "edge",
+  nonProjectable: "non_projectable",
+} as const;
+export type SelectionKind = (typeof SelectionKind)[keyof typeof SelectionKind];
+
 export type Selection =
-  | { kind: "edge"; edge: GraphEdge }
-  | { kind: "non_projectable"; claim: NonProjectable };
+  | { kind: typeof SelectionKind.edge; edge: GraphEdge }
+  | { kind: typeof SelectionKind.nonProjectable; claim: NonProjectable };
 
 // Qualifier chips: polarity/mode/attribution shown as text, never only as styling, so a
 // negated or ego-attributed claim can't be read as a flat Course assertion. Wording comes
@@ -42,42 +47,35 @@ const Qualifiers = ({
   );
 };
 
-// Source locator. ACIM numbers are positional block ordinals assigned at import, not the
+// Compact source reference beneath the passage, with a "Source details" disclosure for
+// source metadata. ACIM numbers are positional block ordinals assigned at import, not the
 // Course's canonical Principle/verse numbers (see docs/graph-explorer-inspection.md), so
-// they're labelled as a stored location with the dataset edition and raw id, and marked as
-// not a verified citation — never rendered as a plain Chapter/Section/Paragraph reference
-// that would imply bibliographic certainty. Bible verse refs are genuine citations.
-const SourceLocator = ({ locator }: { locator: GraphLocator }) => {
-  if (locator.kind === "acim") {
-    return (
-      <div className="graph-evidence-locator" data-testid="source-locator">
-        <span className="graph-evidence-locator-title">{locator.title}</span>
-        <span className="graph-evidence-locator-stored">
-          Stored location: {locator.storedLocation}
-        </span>
-        <span className="graph-evidence-locator-edition">
-          Dataset edition: “{locator.edition}” · ID: <code>{locator.id}</code>
-        </span>
-        <span className="graph-evidence-locator-disclaimer">
-          Not a verified canonical citation.
-        </span>
-      </div>
-    );
-  }
-  if (locator.kind === "verse") {
-    return (
-      <span className="graph-evidence-locator" data-testid="source-locator">
-        <span className="graph-evidence-locator-title">{locator.title}</span>
-        <span className="graph-evidence-locator-stored">{locator.location}</span>
-      </span>
-    );
-  }
-  return (
-    <span className="graph-evidence-locator" data-testid="source-locator">
-      <span className="graph-evidence-locator-title">{locator.title}</span>
-    </span>
-  );
-};
+// they carry an explicit "not a verified citation" caveat on the compact line and the
+// dataset edition + raw id in the details. Bible verse refs are genuine citations. The
+// details disclosure holds information about the SOURCE only — never why a claim is or
+// isn't drawn in the graph.
+const SourceReference = ({ locator }: { locator: GraphLocator }) => (
+  <div className="graph-reader-ref" data-testid="source-reference">
+    <span className="graph-reader-ref-compact">{locator.compact}</span>
+    {locator.kind === LocatorKind.acim && (
+      <span className="graph-reader-caveat">(stored location, not a verified citation)</span>
+    )}
+    {locator.kind !== LocatorKind.fallback && (
+      <details className="graph-reader-details" data-testid="source-details">
+        <summary>Source details</summary>
+        {locator.kind === LocatorKind.acim ? (
+          <span>
+            Dataset edition: “{locator.edition}” · ID: <code>{locator.id}</code>
+          </span>
+        ) : (
+          <span>
+            ID: <code>{locator.id}</code>
+          </span>
+        )}
+      </details>
+    )}
+  </div>
+);
 
 const EvidencePanel = ({
   selection,
@@ -89,7 +87,7 @@ const EvidencePanel = ({
   const fields =
     selection === null
       ? null
-      : selection.kind === "edge"
+      : selection.kind === SelectionKind.edge
         ? selection.edge
         : selection.claim;
 
@@ -108,43 +106,31 @@ const EvidencePanel = ({
     );
   }
 
-  const object = fields.object;
-  const gloss =
-    object === null
-      ? `${fields.subject} ${fields.verb_phrase}`
-      : `${fields.subject} ${fields.verb_phrase} ${object}`;
   const locator = passage ? graphSourceLocator(passage) : null;
 
   return (
     <aside className="graph-evidence" data-testid="evidence-panel">
-      <p className="graph-evidence-gloss">
-        {fields.polarity === "negated" ? `Not: ${gloss}` : gloss}
-      </p>
       <Qualifiers
         polarity={fields.polarity}
         mode={fields.mode}
         attribution={fields.attribution}
       />
-      {selection.kind === "non_projectable" && (
+      {selection.kind === SelectionKind.nonProjectable && (
         <p className="graph-evidence-excluded" data-testid="exclusion-reason">
-          Not drawn as an edge: {selection.claim.reason.replace(/_/g, " ")}
+          Not shown in graph: {selection.claim.reason.replace(/_/g, " ")}
         </p>
       )}
 
       {passage ? (
         <>
-          <blockquote className="cited-claim-evidence" data-testid="evidence-clause">
-            {passage.evidence.clause}
+          <blockquote className="graph-reader-passage" data-testid="passage">
+            {passage.evidence.before}
+            <mark className="graph-reader-clause" data-testid="passage-clause">
+              {passage.evidence.clause}
+            </mark>
+            {passage.evidence.after}
           </blockquote>
-          <details className="cited-context" data-testid="evidence-context">
-            <summary className="cited-context-toggle">Show in context</summary>
-            <blockquote className="cited-context-passage">
-              {passage.evidence.before}
-              <mark className="cited-context-clause">{passage.evidence.clause}</mark>
-              {passage.evidence.after}
-            </blockquote>
-          </details>
-          {locator && <SourceLocator locator={locator} />}
+          {locator && <SourceReference locator={locator} />}
         </>
       ) : (
         <p className="graph-evidence-hint" data-testid="evidence-missing">

@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
 import { type GraphIndex, type Neighborhood } from "@/features/graph/graphModel";
-import type { Selection } from "@/features/graph/EvidencePanel";
+import { type Selection, SelectionKind } from "@/features/graph/EvidencePanel";
+import { qualifierLabels } from "@/features/graph/qualifiers";
 
 // The Cytoscape canvas. Deliberately thin: it renders the current neighborhood and reports
 // edge selection back up. It does NOT own neighborhood/filter state — that lives in the page
@@ -85,6 +86,8 @@ const stylesheetFor = (t: Palette): cytoscape.StylesheetJson => [
       label: "data(label)",
       "font-size": "10px",
       "font-family": "inherit",
+      "text-wrap": "wrap",
+      "text-justification": "center",
       color: t.mutedForeground,
       "curve-style": "bezier",
       "control-point-step-size": 48,
@@ -134,15 +137,23 @@ const elementsFor = (nb: Neighborhood, index: GraphIndex): ElementDefinition[] =
       classes: id === centerId ? "center" : "",
     };
   });
-  const edges: ElementDefinition[] = nb.edges.map((e) => ({
-    data: {
-      id: e.claim_id,
-      source: e.source_node_id,
-      target: e.target_node_id,
-      label: e.verb_phrase,
-    },
-    classes: e.polarity === "negated" ? "negated" : "",
-  }));
+  const edges: ElementDefinition[] = nb.edges.map((e) => {
+    // Qualifiers go on a second label line so a conditional/negated/attributed relationship
+    // can't be read on the canvas as a flat Course assertion. Same wording as the list and
+    // evidence panel (shared helper); the dashed line for negation is a redundant cue, not
+    // the only one.
+    const quals = qualifierLabels(e.polarity, e.mode, e.attribution);
+    const label = quals.length > 0 ? `${e.verb_phrase}\n(${quals.join(" · ")})` : e.verb_phrase;
+    return {
+      data: {
+        id: e.claim_id,
+        source: e.source_node_id,
+        target: e.target_node_id,
+        label,
+      },
+      classes: e.polarity === "negated" ? "negated" : "",
+    };
+  });
   return [...nodes, ...edges];
 };
 
@@ -183,7 +194,7 @@ const GraphCanvas = ({
       container: containerRef.current,
       style: stylesheetFor(currentPalette()),
       elements: [],
-      minZoom: 0.3,
+      minZoom: 0.05,
       maxZoom: 2.5,
       // layout runs per content update below, not on every re-render
     });
@@ -230,7 +241,7 @@ const GraphCanvas = ({
     if (!cy) return;
     cy.edges().removeClass("selected");
     cy.nodes().removeClass("selected-end");
-    if (selection?.kind === "edge") {
+    if (selection?.kind === SelectionKind.edge) {
       cy.getElementById(selection.edge.claim_id).addClass("selected");
     }
   }, [selection]);

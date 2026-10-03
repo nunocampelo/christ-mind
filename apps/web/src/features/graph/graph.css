@@ -176,14 +176,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+  flex: none;
+  max-height: 6rem;
+  overflow-y: auto;
 }
 
 .graph-evidence-empty {
   color: var(--muted-foreground);
-}
-.graph-evidence-gloss {
-  font-weight: 600;
-  margin-bottom: 0.5rem;
 }
 .graph-evidence-excluded {
   font-size: 0.8rem;
@@ -210,27 +209,43 @@
   font-weight: 600;
 }
 
-.graph-evidence-locator {
+.graph-reader-passage {
+  margin: 0;
+  padding: 0.25rem 0;
+  line-height: 1.7;
+  color: var(--foreground);
+}
+.graph-reader-clause {
+  background: color-mix(in oklch, var(--primary) 24%, transparent);
+  color: var(--foreground);
+  border-radius: 0.2rem;
+  padding: 0 0.1rem;
+}
+.graph-reader-ref {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
-  margin-top: 0.75rem;
+  gap: 0.15rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
   font-size: 0.8rem;
 }
-.graph-evidence-locator-title {
+.graph-reader-ref-compact {
   font-weight: 600;
   color: var(--foreground);
 }
-.graph-evidence-locator-stored,
-.graph-evidence-locator-edition {
-  color: var(--muted-foreground);
-}
-.graph-evidence-locator-edition code {
-  font-size: 0.76rem;
-}
-.graph-evidence-locator-disclaimer {
+.graph-reader-caveat {
   font-style: italic;
   color: var(--muted-foreground);
+}
+.graph-reader-details {
+  color: var(--muted-foreground);
+}
+.graph-reader-details summary {
+  cursor: pointer;
+}
+.graph-reader-details code {
+  font-size: 0.76rem;
 }
 
 @media (max-width: 60rem) {

@@ -52,12 +52,12 @@ describe("GraphPage exploration", () => {
     expect(screen.getByTestId("nonprojectable-list")).toHaveTextContent("forgiveness makes");
   });
 
-  it("selects an edge from the list, rendering evidence, qualifiers, and highlight", async () => {
+  it("reads the full passage with the clause highlighted, no redundant repetition", async () => {
     const user = userEvent.setup();
     renderGraph(loadOf(makeArtifact()));
     await start(user);
 
-    // the negated parallel edge: polarity must survive into the gloss and a qualifier chip
+    // the negated parallel edge: polarity shows as a qualifier chip
     const negated = (await screen.findAllByTestId("rel-edge")).find((b) =>
       b.textContent?.includes("undoes fear in"),
     )!;
@@ -65,15 +65,23 @@ describe("GraphPage exploration", () => {
     expect(negated).toHaveTextContent("· Negated");
     await user.click(negated);
 
-    const panel = screen.getByTestId("evidence-panel");
-    expect(panel).toHaveTextContent("Not: forgiveness undoes fear in healing");
     expect(screen.getByTestId("qualifiers")).toHaveTextContent("Negated");
-    expect(screen.getByTestId("evidence-clause")).toHaveTextContent("forgiveness undoes fear");
-    // highlight: the clause is wrapped in <mark> inside the context blockquote
-    const context = screen.getByTestId("evidence-context");
-    expect(context.querySelector("mark")?.textContent).toBe("forgiveness undoes fear");
+
+    // the whole passage is visible at once, with the supporting clause marked in place
+    const passage = screen.getByTestId("passage");
+    expect(passage).toHaveTextContent("forgiveness undoes fear entirely.");
+    expect(screen.getByTestId("passage-clause").textContent).toBe("forgiveness undoes fear");
+    expect(passage.querySelector("mark")).not.toBeNull();
     // non-BMP context survives verbatim (never re-sliced on offsets)
-    expect(context).toHaveTextContent("👁");
+    expect(passage).toHaveTextContent("👁");
+
+    // the old redundancy is gone: no gloss sentence, no standalone clause quote, no
+    // collapsed "Show in context"
+    expect(screen.queryByTestId("evidence-clause")).toBeNull();
+    expect(screen.queryByTestId("evidence-context")).toBeNull();
+    const panel = screen.getByTestId("evidence-panel");
+    expect(panel).not.toHaveTextContent("Not: forgiveness undoes fear in healing");
+
     expect(negated).toHaveAttribute("data-active", "true");
   });
 
@@ -89,27 +97,33 @@ describe("GraphPage exploration", () => {
     expect(plain.textContent).not.toContain("·");
   });
 
-  it("labels an ACIM locator as a stored, unverified location", async () => {
+  it("shows a compact ACIM reference with an inline caveat and source-only details", async () => {
     const user = userEvent.setup();
     renderGraph(loadOf(makeArtifact()));
     await start(user);
 
     await user.click(await screen.findByTestId("rel-nonprojectable"));
-    const locator = screen.getByTestId("source-locator");
-    expect(locator).toHaveTextContent("A Course in Miracles");
-    expect(locator).toHaveTextContent("Stored location: Chapter 1 · Section 1 · Block 1");
-    expect(locator).toHaveTextContent("Dataset edition: “Sparkly Edition”");
-    expect(locator).toHaveTextContent("ID: s6");
-    expect(locator).toHaveTextContent("Not a verified canonical citation.");
+    const ref = screen.getByTestId("source-reference");
+    expect(ref).toHaveTextContent("A Course in Miracles · Ch 1 · Sec 1 · Block 1");
+    expect(ref).toHaveTextContent("(stored location, not a verified citation)");
+
+    const details = screen.getByTestId("source-details");
+    expect(details).toHaveTextContent("Dataset edition: “Sparkly Edition”");
+    expect(details).toHaveTextContent("ID: s6");
+    // "Source details" is about the SOURCE only — never why the claim isn't drawn
+    expect(details).not.toHaveTextContent("missing object");
+    expect(details).not.toHaveTextContent("Not shown in graph");
   });
 
-  it("selects a non-projectable claim and names its exclusion reason", async () => {
+  it("names the exclusion reason above the passage, not in source details", async () => {
     const user = userEvent.setup();
     renderGraph(loadOf(makeArtifact()));
     await start(user);
 
     await user.click(await screen.findByTestId("rel-nonprojectable"));
-    expect(screen.getByTestId("exclusion-reason")).toHaveTextContent("missing object");
+    expect(screen.getByTestId("exclusion-reason")).toHaveTextContent(
+      "Not shown in graph: missing object",
+    );
   });
 
   it("selects an edge from the canvas stub", async () => {
@@ -137,7 +151,7 @@ describe("GraphPage exploration", () => {
     await user.click(await screen.findByTestId("rel-nonprojectable"));
     const panel = screen.getByTestId("evidence-panel");
     expect(panel).toHaveTextContent("atonement");
-    expect(screen.getByTestId("evidence-clause")).toHaveTextContent("atonement");
+    expect(screen.getByTestId("passage-clause")).toHaveTextContent("atonement");
     // qualifiers survive on a non-projectable claim too
     expect(screen.getByTestId("qualifiers")).toHaveTextContent("Conditional");
     expect(screen.getByTestId("qualifiers")).toHaveTextContent("Attributed to ego");

@@ -12,7 +12,7 @@ import {
   defaultFilters,
   neighborhood,
 } from "@/features/graph/graphModel";
-import type { Selection } from "@/features/graph/EvidencePanel";
+import { type Selection, SelectionKind } from "@/features/graph/EvidencePanel";
 import EvidencePanel from "@/features/graph/EvidencePanel";
 import Controls from "@/features/graph/Controls";
 import GraphCanvas from "@/features/graph/GraphCanvas";
@@ -190,7 +190,7 @@ const GraphPage = ({
               selection={selection}
               onSelectEdge={(claimId) => {
                 const edge = view.edges.find((e) => e.claim_id === claimId);
-                if (edge) setSelection({ kind: "edge", edge });
+                if (edge) setSelection({ kind: SelectionKind.edge, edge });
               }}
             />
             <div className="graph-expand" data-testid="expand-row">

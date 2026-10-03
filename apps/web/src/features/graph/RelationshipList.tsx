@@ -1,6 +1,6 @@
 import type { GraphEdge, NonProjectable } from "@/api/graphArtifact";
 import { type GraphIndex, type Neighborhood } from "@/features/graph/graphModel";
-import type { Selection } from "@/features/graph/EvidencePanel";
+import { type Selection, SelectionKind } from "@/features/graph/EvidencePanel";
 import { qualifierLabels } from "@/features/graph/qualifiers";
 import { cn } from "@/lib/cn";
 
@@ -25,9 +25,9 @@ const QualifierSuffix = ({ labels }: { labels: string[] }) =>
   );
 
 const sel = (selection: Selection | null): string | null =>
-  selection?.kind === "edge"
+  selection?.kind === SelectionKind.edge
     ? selection.edge.claim_id
-    : selection?.kind === "non_projectable"
+    : selection?.kind === SelectionKind.nonProjectable
       ? selection.claim.claim_id
       : null;
 
@@ -59,7 +59,7 @@ const RelationshipList = ({
                 data-testid="rel-edge"
                 data-active={edge.claim_id === selectedId}
                 aria-current={edge.claim_id === selectedId}
-                onClick={() => onSelect({ kind: "edge", edge })}
+                onClick={() => onSelect({ kind: SelectionKind.edge, edge })}
                 className={cn(
                   "graph-rel-item",
                   edge.claim_id === selectedId && "graph-rel-item-active",
@@ -94,7 +94,7 @@ const RelationshipList = ({
                   data-testid="rel-nonprojectable"
                   data-active={claim.claim_id === selectedId}
                   aria-current={claim.claim_id === selectedId}
-                  onClick={() => onSelect({ kind: "non_projectable", claim })}
+                  onClick={() => onSelect({ kind: SelectionKind.nonProjectable, claim })}
                   className={cn(
                     "graph-rel-item graph-rel-item-muted",
                     claim.claim_id === selectedId && "graph-rel-item-active",

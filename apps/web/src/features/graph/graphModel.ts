@@ -14,7 +14,7 @@ import {
   passageKey,
 } from "@/api/graphArtifact";
 
-export const NEIGHBORHOOD_CAP = 20;
+export const NEIGHBORHOOD_CAP = 30;
 
 export type Direction = "both" | "incoming" | "outgoing";
 
