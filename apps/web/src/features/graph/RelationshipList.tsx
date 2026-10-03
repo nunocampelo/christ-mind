@@ -1,19 +1,28 @@
 import type { GraphEdge, NonProjectable } from "@/api/graphArtifact";
 import { type GraphIndex, type Neighborhood } from "@/features/graph/graphModel";
 import type { Selection } from "@/features/graph/EvidencePanel";
+import { qualifierLabels } from "@/features/graph/qualifiers";
 import { cn } from "@/lib/cn";
 
 // The relationship list: the same connections the canvas draws, as readable directed text,
 // plus a clearly separated list of participating claims that cannot be drawn. Keyboard- and
-// click-selectable; selecting opens the same evidence panel as a canvas edge.
+// click-selectable; selecting opens the same evidence panel as a canvas edge. Qualifiers
+// (negation/mode/attribution) ride alongside every claim so a conditional or ego-attributed
+// claim can't be read as a flat Course assertion before it's selected.
 
 const directionArrow = (edge: GraphEdge, centerId: string): string =>
   edge.source_node_id === centerId ? "→" : "←"; // outgoing → / incoming ←
 
 const edgeText = (edge: GraphEdge): string =>
-  edge.polarity === "negated"
-    ? `${edge.subject} ${edge.verb_phrase} ${edge.object} (negated)`
-    : `${edge.subject} ${edge.verb_phrase} ${edge.object}`;
+  `${edge.subject} ${edge.verb_phrase} ${edge.object}`;
+
+const QualifierSuffix = ({ labels }: { labels: string[] }) =>
+  labels.length === 0 ? null : (
+    <span className="graph-rel-qualifiers" data-testid="rel-qualifiers">
+      {" · "}
+      {labels.join(" · ")}
+    </span>
+  );
 
 const sel = (selection: Selection | null): string | null =>
   selection?.kind === "edge"
@@ -59,7 +68,12 @@ const RelationshipList = ({
                 <span className="graph-rel-arrow" aria-hidden="true">
                   {directionArrow(edge, centerId)}
                 </span>
-                <span className="graph-rel-text">{edgeText(edge)}</span>
+                <span className="graph-rel-text">
+                  {edgeText(edge)}
+                  <QualifierSuffix
+                    labels={qualifierLabels(edge.polarity, edge.mode, edge.attribution)}
+                  />
+                </span>
                 {far && <span className="graph-rel-far">{far.label}</span>}
               </button>
             </li>
@@ -89,6 +103,9 @@ const RelationshipList = ({
                   <span className="graph-rel-text">
                     {claim.subject} {claim.verb_phrase}
                     {claim.object ? ` ${claim.object}` : ""}
+                    <QualifierSuffix
+                      labels={qualifierLabels(claim.polarity, claim.mode, claim.attribution)}
+                    />
                   </span>
                   <span className="graph-rel-reason">{claim.reason.replace(/_/g, " ")}</span>
                 </button>

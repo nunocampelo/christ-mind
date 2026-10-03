@@ -61,6 +61,8 @@ describe("GraphPage exploration", () => {
     const negated = (await screen.findAllByTestId("rel-edge")).find((b) =>
       b.textContent?.includes("undoes fear in"),
     )!;
+    // the suffix is visible in the list itself, before selection
+    expect(negated).toHaveTextContent("· Negated");
     await user.click(negated);
 
     const panel = screen.getByTestId("evidence-panel");
@@ -73,6 +75,32 @@ describe("GraphPage exploration", () => {
     // non-BMP context survives verbatim (never re-sliced on offsets)
     expect(context).toHaveTextContent("👁");
     expect(negated).toHaveAttribute("data-active", "true");
+  });
+
+  it("shows no qualifier suffix on a plain Course assertion", async () => {
+    const user = userEvent.setup();
+    renderGraph(loadOf(makeArtifact()));
+    await start(user);
+
+    // c_causes: affirmed / assertion / course → no suffix
+    const plain = (await screen.findAllByTestId("rel-edge")).find((b) =>
+      b.textContent?.includes("brings about"),
+    )!;
+    expect(plain.textContent).not.toContain("·");
+  });
+
+  it("labels an ACIM locator as a stored, unverified location", async () => {
+    const user = userEvent.setup();
+    renderGraph(loadOf(makeArtifact()));
+    await start(user);
+
+    await user.click(await screen.findByTestId("rel-nonprojectable"));
+    const locator = screen.getByTestId("source-locator");
+    expect(locator).toHaveTextContent("A Course in Miracles");
+    expect(locator).toHaveTextContent("Stored location: Chapter 1 · Section 1 · Block 1");
+    expect(locator).toHaveTextContent("Dataset edition: “Sparkly Edition”");
+    expect(locator).toHaveTextContent("ID: s6");
+    expect(locator).toHaveTextContent("Not a verified canonical citation.");
   });
 
   it("selects a non-projectable claim and names its exclusion reason", async () => {
@@ -91,6 +119,28 @@ describe("GraphPage exploration", () => {
 
     await user.click(await screen.findByTestId("graph-canvas-stub"));
     expect(screen.getByTestId("evidence-panel")).toHaveTextContent("forgiveness brings about healing");
+  });
+
+  it("reaches a concept that appears only in a non-projectable claim", async () => {
+    const user = userEvent.setup();
+    renderGraph(loadOf(makeArtifact()));
+    await screen.findByTestId("graph-no-selection");
+
+    // atonement has a node but no drawable edge — searchable and selectable.
+    await user.type(screen.getByTestId("search-input"), "atonement");
+    const results = await screen.findAllByTestId("search-result");
+    expect(results).toHaveLength(1);
+    await user.click(results[0]);
+
+    // no drawable relationships, but its claim is listed and inspectable
+    expect(await screen.findByTestId("graph-no-relationships")).toBeInTheDocument();
+    await user.click(await screen.findByTestId("rel-nonprojectable"));
+    const panel = screen.getByTestId("evidence-panel");
+    expect(panel).toHaveTextContent("atonement");
+    expect(screen.getByTestId("evidence-clause")).toHaveTextContent("atonement");
+    // qualifiers survive on a non-projectable claim too
+    expect(screen.getByTestId("qualifiers")).toHaveTextContent("Conditional");
+    expect(screen.getByTestId("qualifiers")).toHaveTextContent("Attributed to ego");
   });
 });
 

@@ -24,6 +24,10 @@ export const F = node("e:f1", "forgiveness", ["Forgiveness", "forgiveness"], "f1
 export const H = node("m:healing", "healing", ["healing"]);
 export const G = node("m:God", "God", ["God"]);
 export const RM = node("m:right-mindedness", "right-mindedness", ["right-mindedness"]);
+// A concept that participates ONLY in a non-projectable claim: it has a node (so it is
+// searchable) but no drawable edge. Mirrors the Python exporter registering endpoints
+// independent of drawability.
+export const AT = node("m:atonement", "atonement", ["atonement"]);
 
 const edge = (over: Partial<GraphEdge> & Pick<GraphEdge, "claim_id">): GraphEdge => ({
   source_node_id: F.node_id,
@@ -109,6 +113,24 @@ export const NP: NonProjectable = {
   evidence_end: 11,
 };
 
+// Non-projectable claim whose subject (atonement) appears in no drawable edge — the only
+// way to reach it is via its node. Conditional + ego-attributed so qualifier rendering is
+// observable on a non-projectable claim too.
+export const NP_ATONEMENT: NonProjectable = {
+  claim_id: "np2",
+  subject: "atonement",
+  object: null,
+  predicate: "makes",
+  verb_phrase: "would make",
+  polarity: "affirmed",
+  mode: "conditional",
+  attribution: "ego",
+  reason: "missing_object",
+  source_id: "s7",
+  evidence_start: 0,
+  evidence_end: 9,
+};
+
 // Passages carry pre-sliced segments; the non-BMP astral char lives in a clause whose span
 // the frontend must never re-slice on code-unit offsets.
 const passage = (over: Partial<PassageRef> & Pick<PassageRef, "source_id" | "evidence">): PassageRef => ({
@@ -151,18 +173,22 @@ export const PASSAGES: PassageRef[] = [
     source_id: "s6",
     evidence: { before: "", clause: "forgiveness makes", after: " all things new", evidence_start: 2, evidence_end: 11 },
   }),
+  passage({
+    source_id: "s7",
+    evidence: { before: "", clause: "atonement", after: " would be undone", evidence_start: 0, evidence_end: 9 },
+  }),
 ];
 
 export const makeArtifact = (): GraphArtifact => ({
   metadata: {
     schema_version: SCHEMA_VERSION,
     content_hash: "test-hash",
-    claim_count: 6,
+    claim_count: 7,
     resolution_entity_count: 1,
-    source_count: 6,
+    source_count: 7,
   },
-  nodes: [F, H, G, RM],
+  nodes: [F, H, G, RM, AT],
   edges: [E_CAUSES, E_CAUSES_NEG, E_INCOMING, E_SELF, E_IS],
-  non_projectable: [NP],
+  non_projectable: [NP, NP_ATONEMENT],
   passages: PASSAGES,
 });

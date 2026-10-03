@@ -97,6 +97,9 @@ export interface Neighborhood {
   edges: GraphEdge[];
   neighbors: GraphNode[];
   nonProjectable: NonProjectable[];
+  // every predicate present on this center's eligible edges, before the filter and cap, so
+  // the filter row offers the full set rather than only the predicates that survived.
+  allPredicates: Predicate[];
   counts: NeighborhoodCounts;
 }
 
@@ -128,7 +131,9 @@ export const neighborhood = (
         : // "both": dedupe self-loops that appear in both lists
           dedupeByClaim([...outgoing, ...incoming]);
 
-  const totalEligible = dedupeByClaim([...outgoing, ...incoming]).length;
+  const allEligible = dedupeByClaim([...outgoing, ...incoming]);
+  const totalEligible = allEligible.length;
+  const allPredicates = [...new Set(allEligible.map((e) => e.predicate))].sort();
   const filtered = byDirection.filter((e) => matchesFilters(e, filters));
   const ordered = orderEdges(filtered, centerId);
   const shown = ordered.slice(0, cap);
@@ -150,6 +155,7 @@ export const neighborhood = (
     edges: shown,
     neighbors,
     nonProjectable,
+    allPredicates,
     counts: {
       displayed: shown.length,
       availableAfterFilter: filtered.length,

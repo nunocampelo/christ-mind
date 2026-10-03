@@ -1,10 +1,10 @@
 {
   "counts": {
-    "catalogued_nodes": 4216,
+    "catalogued_nodes": 4308,
     "edges": 3763,
     "input_claims": 3984,
     "merged_nodes": 225,
-    "nodes": 4216,
+    "nodes": 4308,
     "non_projectable": 221,
     "non_projectable_by_reason": {
       "missing_object": 221
@@ -56460,7 +56460,7 @@
   ],
   "metadata": {
     "claim_count": 3984,
-    "content_hash": "789fb10cd6d46fd1faf888eb5611a473a5ab9becd437c68b4549d508a1e62342",
+    "content_hash": "c4ad30e45534dcb9e9bb64107cbfd9f6a71e129a885f709dd774f7c697508be1",
     "resolution_entity_count": 4308,
     "schema_version": "0030.graph-projection.2",
     "source_count": 405
@@ -57297,6 +57297,14 @@
       "node_id": "e:0668df71347b24cd"
     },
     {
+      "entity_id": "0674c8738ddcc140",
+      "expressions": [
+        "proper use of defenses"
+      ],
+      "label": "proper use of defenses",
+      "node_id": "e:0674c8738ddcc140"
+    },
+    {
       "entity_id": "067d54644437b7db",
       "expressions": [
         "reason for their own peace"
@@ -57490,6 +57498,14 @@
       "node_id": "e:07b825107cb9ccba"
     },
     {
+      "entity_id": "07b8858ba6e62816",
+      "expressions": [
+        "no form of devotion"
+      ],
+      "label": "no form of devotion",
+      "node_id": "e:07b8858ba6e62816"
+    },
+    {
       "entity_id": "07d715edb696fb5f",
       "expressions": [
         "power"
@@ -57560,6 +57576,14 @@
       ],
       "label": "the Atonement of Christ",
       "node_id": "e:087476693faa46a9"
+    },
+    {
+      "entity_id": "087df4accb4a0b19",
+      "expressions": [
+        "man who does not feel that he is imprisoned"
+      ],
+      "label": "man who does not feel that he is imprisoned",
+      "node_id": "e:087df4accb4a0b19"
     },
     {
       "entity_id": "0886c6a3730fbeaf",
@@ -57832,6 +57856,14 @@
       "node_id": "e:0ac7f483f703da66"
     },
     {
+      "entity_id": "0acc538ac9dbd18d",
+      "expressions": [
+        "relationship between the time a miracle TAKES and the time it COVERS"
+      ],
+      "label": "relationship between the time a miracle TAKES and the time it COVERS",
+      "node_id": "e:0acc538ac9dbd18d"
+    },
+    {
       "entity_id": "0acd9d63190b0e8c",
       "expressions": [
         "collapsing time"
@@ -57894,6 +57926,14 @@
       ],
       "label": "what man believes in",
       "node_id": "e:0b1cfcd717f49fa9"
+    },
+    {
+      "entity_id": "0b24a68739c7a705",
+      "expressions": [
+        "only beings of a like order"
+      ],
+      "label": "only beings of a like order",
+      "node_id": "e:0b24a68739c7a705"
     },
     {
       "entity_id": "0b2dac694987fe04",
@@ -58414,6 +58454,14 @@
       "node_id": "e:0ed81feb2cb7c602"
     },
     {
+      "entity_id": "0ee012322bcdc999",
+      "expressions": [
+        "ONLY foundation"
+      ],
+      "label": "ONLY foundation",
+      "node_id": "e:0ee012322bcdc999"
+    },
+    {
       "entity_id": "0ee87d6e104a9140",
       "expressions": [
         "ego's fear of the idea of God"
@@ -58462,6 +58510,14 @@
       ],
       "label": "fundamental error of all those who believe they have usurped the power of God",
       "node_id": "e:0f605122c8b3372b"
+    },
+    {
+      "entity_id": "0f6e58c979707afb",
+      "expressions": [
+        "one who lives in fear"
+      ],
+      "label": "one who lives in fear",
+      "node_id": "e:0f6e58c979707afb"
     },
     {
       "entity_id": "0f7b0b3fcbb44f9f",
@@ -58582,6 +58638,14 @@
       ],
       "label": "my goal",
       "node_id": "e:106418f380e58382"
+    },
+    {
+      "entity_id": "106c4bb064e4caf9",
+      "expressions": [
+        "vacillations between free and imprisoned will"
+      ],
+      "label": "vacillations between free and imprisoned will",
+      "node_id": "e:106c4bb064e4caf9"
     },
     {
       "entity_id": "106fe181b5ed1ec9",
@@ -59098,6 +59162,14 @@
       "node_id": "e:13f6df6b81279274"
     },
     {
+      "entity_id": "14020c1d6518dd78",
+      "expressions": [
+        "Soul's demands"
+      ],
+      "label": "Soul's demands",
+      "node_id": "e:14020c1d6518dd78"
+    },
+    {
       "entity_id": "140641d51a45e3b1",
       "expressions": [
         "self-esteem in ego terms"
@@ -59242,6 +59314,14 @@
       "node_id": "e:1529a8f1d78e19ee"
     },
     {
+      "entity_id": "154043627c2c3a9d",
+      "expressions": [
+        "state in which you bring your will under my guidance without much conscious effort"
+      ],
+      "label": "state in which you bring your will under my guidance without much conscious effort",
+      "node_id": "e:154043627c2c3a9d"
+    },
+    {
       "entity_id": "15438129cd77c402",
       "expressions": [
         "this worthiness"
@@ -59272,6 +59352,14 @@
       ],
       "label": "ego as if it were a separate thing acting on its own",
       "node_id": "e:1552365091da64f9"
+    },
+    {
+      "entity_id": "15a1b09aa2bb8334",
+      "expressions": [
+        "your belief in darkness and in hiding"
+      ],
+      "label": "your belief in darkness and in hiding",
+      "node_id": "e:15a1b09aa2bb8334"
     },
     {
       "entity_id": "15a6c4eae63780f6",
@@ -59442,6 +59530,14 @@
       ],
       "label": "attribute in YOU",
       "node_id": "e:16a1ab5077eaf913"
+    },
+    {
+      "entity_id": "16af0a8084a5cf73",
+      "expressions": [
+        "man's own errors"
+      ],
+      "label": "man's own errors",
+      "node_id": "e:16af0a8084a5cf73"
     },
     {
       "entity_id": "16b442c7ce43f117",
@@ -60025,6 +60121,14 @@
       "node_id": "e:1b1fc6732cec80cd"
     },
     {
+      "entity_id": "1b1ff21346dc87eb",
+      "expressions": [
+        "your lives"
+      ],
+      "label": "your lives",
+      "node_id": "e:1b1ff21346dc87eb"
+    },
+    {
       "entity_id": "1b250ea199bec73d",
       "expressions": [
         "projection"
@@ -60438,6 +60542,14 @@
       "node_id": "e:1e54a25bd6e12567"
     },
     {
+      "entity_id": "1e6178e30992818e",
+      "expressions": [
+        "meaning of the Last Judgement"
+      ],
+      "label": "meaning of the Last Judgement",
+      "node_id": "e:1e6178e30992818e"
+    },
+    {
       "entity_id": "1e7f7afbfff0b364",
       "expressions": [
         "reliability fall naturally into place"
@@ -60615,6 +60727,14 @@
       ],
       "label": "miracles you are NOT asked to perform",
       "node_id": "e:1fc27892c9e3f859"
+    },
+    {
+      "entity_id": "1fcbf44da82d1fed",
+      "expressions": [
+        "time-space belief"
+      ],
+      "label": "time-space belief",
+      "node_id": "e:1fcbf44da82d1fed"
     },
     {
       "entity_id": "1fcd7a89ea8a377c",
@@ -60879,6 +60999,14 @@
       "node_id": "e:2194d4eb31c27535"
     },
     {
+      "entity_id": "21a4b3297ec62caa",
+      "expressions": [
+        "need to learn from many smaller lessons"
+      ],
+      "label": "need to learn from many smaller lessons",
+      "node_id": "e:21a4b3297ec62caa"
+    },
+    {
       "entity_id": "21bba1492d155e78",
       "expressions": [
         "Holy Spirit",
@@ -61119,6 +61247,14 @@
       ],
       "label": "REINTERPRETED",
       "node_id": "e:235e7ab105222472"
+    },
+    {
+      "entity_id": "23674f9783d76176",
+      "expressions": [
+        "trust in me"
+      ],
+      "label": "trust in me",
+      "node_id": "e:23674f9783d76176"
     },
     {
       "entity_id": "236aa8b25313f7ab",
@@ -61516,6 +61652,14 @@
       ],
       "label": "all of the defenses which man can choose to use constructively OR destructively",
       "node_id": "e:2595cd4d11db4157"
+    },
+    {
+      "entity_id": "259aa8ef98a8b91d",
+      "expressions": [
+        "history"
+      ],
+      "label": "history",
+      "node_id": "e:259aa8ef98a8b91d"
     },
     {
       "entity_id": "25a63e52a98f6fda",
@@ -62249,6 +62393,14 @@
       "node_id": "e:2c17cf66192f4a96"
     },
     {
+      "entity_id": "2c437c2f25861a4f",
+      "expressions": [
+        "order of difficulty in miracles"
+      ],
+      "label": "order of difficulty in miracles",
+      "node_id": "e:2c437c2f25861a4f"
+    },
+    {
       "entity_id": "2c5db8c914d72acd",
       "expressions": [
         "Freud"
@@ -62557,6 +62709,14 @@
       ],
       "label": "your not understanding healing",
       "node_id": "e:2f30b179b7f16b08"
+    },
+    {
+      "entity_id": "2f527edce575a72a",
+      "expressions": [
+        "my chosen receiving and sending channels"
+      ],
+      "label": "my chosen receiving and sending channels",
+      "node_id": "e:2f527edce575a72a"
     },
     {
       "entity_id": "2f549b8fabbcc5e7",
@@ -63301,6 +63461,14 @@
       "node_id": "e:344cf48a3895c599"
     },
     {
+      "entity_id": "34525f5f7b0df248",
+      "expressions": [
+        "man can make himself true"
+      ],
+      "label": "man can make himself true",
+      "node_id": "e:34525f5f7b0df248"
+    },
+    {
       "entity_id": "346ee470d7e2ae11",
       "expressions": [
         "such distinctions"
@@ -63621,6 +63789,14 @@
       "node_id": "e:36ac4b1ce837301a"
     },
     {
+      "entity_id": "36b1476682f7077f",
+      "expressions": [
+        "Angels"
+      ],
+      "label": "Angels",
+      "node_id": "e:36b1476682f7077f"
+    },
+    {
       "entity_id": "36b1cf8433cd6ebb",
       "expressions": [
         "all aspects of fear"
@@ -63683,6 +63859,14 @@
       ],
       "label": "whole process",
       "node_id": "e:376c122e97499fd1"
+    },
+    {
+      "entity_id": "3772dd7ccf995335",
+      "expressions": [
+        "wholly benign lesson the Atonement teaches"
+      ],
+      "label": "wholly benign lesson the Atonement teaches",
+      "node_id": "e:3772dd7ccf995335"
     },
     {
       "entity_id": "377341e40744005b",
@@ -64093,6 +64277,14 @@
       "node_id": "e:3b5f702c742fe77d"
     },
     {
+      "entity_id": "3b7d955bd2e9301f",
+      "expressions": [
+        "attempt to relate the unrelated"
+      ],
+      "label": "attempt to relate the unrelated",
+      "node_id": "e:3b7d955bd2e9301f"
+    },
+    {
       "entity_id": "3b801c552658b019",
       "expressions": [
         "ingenuity",
@@ -64255,6 +64447,14 @@
       "node_id": "e:3c8acf667613543c"
     },
     {
+      "entity_id": "3c96c1aa84609a8c",
+      "expressions": [
+        "this voluntary dispiriting"
+      ],
+      "label": "this voluntary dispiriting",
+      "node_id": "e:3c96c1aa84609a8c"
+    },
+    {
       "entity_id": "3ca903ab8e91e77a",
       "expressions": [
         "perfectly reasonable question"
@@ -64390,6 +64590,14 @@
       ],
       "label": "without the will to attack",
       "node_id": "e:3d6b5bba55bc370c"
+    },
+    {
+      "entity_id": "3d705151923162b2",
+      "expressions": [
+        "ALL shallow roots"
+      ],
+      "label": "ALL shallow roots",
+      "node_id": "e:3d705151923162b2"
     },
     {
       "entity_id": "3d9b0911b3d7bd8d",
@@ -65250,6 +65458,14 @@
       ],
       "label": "a very powerful creator",
       "node_id": "e:44af19aeebcced4b"
+    },
+    {
+      "entity_id": "44af4470f8f685d4",
+      "expressions": [
+        "real questions"
+      ],
+      "label": "real questions",
+      "node_id": "e:44af4470f8f685d4"
     },
     {
       "entity_id": "44b5eb285bfefe7b",
@@ -66520,6 +66736,14 @@
       "node_id": "e:4d75ee1f3da620e4"
     },
     {
+      "entity_id": "4d834fa811f4169e",
+      "expressions": [
+        "content of revelation"
+      ],
+      "label": "content of revelation",
+      "node_id": "e:4d834fa811f4169e"
+    },
+    {
       "entity_id": "4d8a98323bdaa570",
       "expressions": [
         "misperceptions in yourself AND in others simultaneously"
@@ -66856,6 +67080,14 @@
       ],
       "label": "asking questions about God",
       "node_id": "e:505631bdafef5459"
+    },
+    {
+      "entity_id": "50603c1da3c46403",
+      "expressions": [
+        "this sadness"
+      ],
+      "label": "this sadness",
+      "node_id": "e:50603c1da3c46403"
     },
     {
       "entity_id": "50684cb0be434537",
@@ -67702,6 +67934,14 @@
       ],
       "label": "ANY mind which truly wants it",
       "node_id": "e:569d49e5af702b12"
+    },
+    {
+      "entity_id": "56a672586ce5ecaa",
+      "expressions": [
+        "compromise approach to mind AND body"
+      ],
+      "label": "compromise approach to mind AND body",
+      "node_id": "e:56a672586ce5ecaa"
     },
     {
       "entity_id": "56ace4fbfa970b11",
@@ -68919,6 +69159,14 @@
       "node_id": "e:605e01eae23a7b1e"
     },
     {
+      "entity_id": "606f09080c009948",
+      "expressions": [
+        "one of a lesser order standing before a greater one"
+      ],
+      "label": "one of a lesser order standing before a greater one",
+      "node_id": "e:606f09080c009948"
+    },
+    {
       "entity_id": "607e522f1192ae44",
       "expressions": [
         "ego's characteristic busyness with non-essentials"
@@ -69230,6 +69478,14 @@
       ],
       "label": "yourself from the truth",
       "node_id": "e:637d0971ec7c3eb6"
+    },
+    {
+      "entity_id": "639a50fe0285a35f",
+      "expressions": [
+        "what is perfect can be rendered imperfect, or wanting"
+      ],
+      "label": "what is perfect can be rendered imperfect, or wanting",
+      "node_id": "e:639a50fe0285a35f"
     },
     {
       "entity_id": "63a94bf14ce22462",
@@ -69676,6 +69932,14 @@
       "node_id": "e:6668fc8c5a17d390"
     },
     {
+      "entity_id": "669168da4e0e908e",
+      "expressions": [
+        "nothing unreal"
+      ],
+      "label": "nothing unreal",
+      "node_id": "e:669168da4e0e908e"
+    },
+    {
       "entity_id": "66b820025124aa9a",
       "expressions": [
         "their interaction as a means of ego preservation"
@@ -69754,6 +70018,14 @@
       ],
       "label": "course in miracles",
       "node_id": "e:66fcb2de3a2d29d6"
+    },
+    {
+      "entity_id": "66fd30173d699c68",
+      "expressions": [
+        "old habit pattern"
+      ],
+      "label": "old habit pattern",
+      "node_id": "e:66fd30173d699c68"
     },
     {
       "entity_id": "670b284a62b64ff3",
@@ -70162,6 +70434,14 @@
       ],
       "label": "you ARE here",
       "node_id": "e:69441a1520bc837b"
+    },
+    {
+      "entity_id": "695f461161ad6f46",
+      "expressions": [
+        "some emptiness or lack"
+      ],
+      "label": "some emptiness or lack",
+      "node_id": "e:695f461161ad6f46"
     },
     {
       "entity_id": "696ed911713dbe0e",
@@ -70713,6 +70993,14 @@
       "node_id": "e:6d5bda0bf1bb6db4"
     },
     {
+      "entity_id": "6d5bec96521e48b3",
+      "expressions": [
+        "nothing real"
+      ],
+      "label": "nothing real",
+      "node_id": "e:6d5bec96521e48b3"
+    },
+    {
       "entity_id": "6d5ec87b2aa68db5",
       "expressions": [
         "mind in the Soul's service"
@@ -71027,6 +71315,14 @@
       "node_id": "e:6fc0ae20b944d9c3"
     },
     {
+      "entity_id": "6ffa8102c56226b7",
+      "expressions": [
+        "love and fear"
+      ],
+      "label": "love and fear",
+      "node_id": "e:6ffa8102c56226b7"
+    },
+    {
       "entity_id": "6ffc0e6dde72dd53",
       "expressions": [
         "their child or pupil or patient"
@@ -71113,6 +71409,14 @@
       ],
       "label": "superficial",
       "node_id": "e:707ecbfbee9c3582"
+    },
+    {
+      "entity_id": "708b19dab78e241f",
+      "expressions": [
+        "belief in death"
+      ],
+      "label": "belief in death",
+      "node_id": "e:708b19dab78e241f"
     },
     {
       "entity_id": "70bc81e28e9f17e3",
@@ -71252,6 +71556,14 @@
       "node_id": "e:71eee6267762cc87"
     },
     {
+      "entity_id": "7200a09df18ca25c",
+      "expressions": [
+        "state created by fear"
+      ],
+      "label": "state created by fear",
+      "node_id": "e:7200a09df18ca25c"
+    },
+    {
       "entity_id": "721626b101ad2993",
       "expressions": [
         "a sufficiently great hold over a mind"
@@ -71341,6 +71653,14 @@
       "node_id": "e:72ed877dbe5170b6"
     },
     {
+      "entity_id": "72f28383d036150b",
+      "expressions": [
+        "no sense in his efforts"
+      ],
+      "label": "no sense in his efforts",
+      "node_id": "e:72f28383d036150b"
+    },
+    {
       "entity_id": "72f89f8432e31480",
       "expressions": [
         "offense"
@@ -71372,6 +71692,14 @@
       ],
       "label": "a single unequivocal call",
       "node_id": "e:734ca9d15a406652"
+    },
+    {
+      "entity_id": "7361776132b81edf",
+      "expressions": [
+        "man MUST think of himself this way"
+      ],
+      "label": "man MUST think of himself this way",
+      "node_id": "e:7361776132b81edf"
     },
     {
       "entity_id": "73654d95e0e60b76",
@@ -71706,6 +72034,14 @@
       "node_id": "e:75da13a1559ce9d0"
     },
     {
+      "entity_id": "75dda4756fb73a6a",
+      "expressions": [
+        "another way"
+      ],
+      "label": "another way",
+      "node_id": "e:75dda4756fb73a6a"
+    },
+    {
       "entity_id": "75e73f39e59cd4c8",
       "expressions": [
         "a process which literally alters both"
@@ -71745,6 +72081,14 @@
       ],
       "label": "principle",
       "node_id": "e:763f2223af429e92"
+    },
+    {
+      "entity_id": "76510d45d6328386",
+      "expressions": [
+        "some will to accomplish"
+      ],
+      "label": "some will to accomplish",
+      "node_id": "e:76510d45d6328386"
     },
     {
       "entity_id": "765ec50a3195f3a8",
@@ -72294,6 +72638,14 @@
       "node_id": "e:7a154d138bf046c7"
     },
     {
+      "entity_id": "7a15d88153371928",
+      "expressions": [
+        "outcome of their misthought"
+      ],
+      "label": "outcome of their misthought",
+      "node_id": "e:7a15d88153371928"
+    },
+    {
       "entity_id": "7a27350667c3128e",
       "expressions": [
         "calm being of God's Kingdom"
@@ -72697,6 +73049,14 @@
       "node_id": "e:7cc14447d0ecfe1c"
     },
     {
+      "entity_id": "7ccb4d786fb409d7",
+      "expressions": [
+        "sense of separation"
+      ],
+      "label": "sense of separation",
+      "node_id": "e:7ccb4d786fb409d7"
+    },
+    {
       "entity_id": "7cf348a211e65703",
       "expressions": [
         "God’s Miracles"
@@ -72946,6 +73306,14 @@
       "node_id": "e:7f5648d5ec8ed560"
     },
     {
+      "entity_id": "7f5c34357d94e0e5",
+      "expressions": [
+        "miracle worker's mind"
+      ],
+      "label": "miracle worker's mind",
+      "node_id": "e:7f5c34357d94e0e5"
+    },
+    {
       "entity_id": "7f5f763ce46157f3",
       "expressions": [
         "both a brother AND a Son"
@@ -73099,6 +73467,14 @@
       ],
       "label": "power of God",
       "node_id": "e:80235119fe3a60fd"
+    },
+    {
+      "entity_id": "80515244c6b9eaf1",
+      "expressions": [
+        "myths and magic"
+      ],
+      "label": "myths and magic",
+      "node_id": "e:80515244c6b9eaf1"
     },
     {
       "entity_id": "80956157c640ff61",
@@ -73478,6 +73854,22 @@
       ],
       "label": "from the bottom up",
       "node_id": "e:83a330aaef53f81c"
+    },
+    {
+      "entity_id": "83ca68be6227af2f",
+      "expressions": [
+        "guide"
+      ],
+      "label": "guide",
+      "node_id": "e:83ca68be6227af2f"
+    },
+    {
+      "entity_id": "83cbfee8c5b5a040",
+      "expressions": [
+        "neither type of confusion"
+      ],
+      "label": "neither type of confusion",
+      "node_id": "e:83cbfee8c5b5a040"
     },
     {
       "entity_id": "83e1b9011a1fed05",
@@ -74047,6 +74439,14 @@
       "node_id": "e:87f1d1a018ef71c1"
     },
     {
+      "entity_id": "880613a3247e4beb",
+      "expressions": [
+        "miracles as such"
+      ],
+      "label": "miracles as such",
+      "node_id": "e:880613a3247e4beb"
+    },
+    {
       "entity_id": "8809ec642e761acc",
       "expressions": [
         "perceptual turning-point"
@@ -74077,6 +74477,14 @@
       ],
       "label": "your own miracles",
       "node_id": "e:88300803cca6c6b2"
+    },
+    {
+      "entity_id": "883a6cf5dc68f2c0",
+      "expressions": [
+        "his own purpose"
+      ],
+      "label": "his own purpose",
+      "node_id": "e:883a6cf5dc68f2c0"
     },
     {
       "entity_id": "883c0a051d64d48c",
@@ -74174,6 +74582,14 @@
       ],
       "label": "quite simple",
       "node_id": "e:88eaf806680f2099"
+    },
+    {
+      "entity_id": "88f4d55ab0cc1a0c",
+      "expressions": [
+        "protection of the angels"
+      ],
+      "label": "protection of the angels",
+      "node_id": "e:88f4d55ab0cc1a0c"
     },
     {
       "entity_id": "891077df92167c68",
@@ -74330,6 +74746,14 @@
       "node_id": "e:89f36334ff93d103"
     },
     {
+      "entity_id": "89f717aa67b7e634",
+      "expressions": [
+        "ordinary considerations of time and space"
+      ],
+      "label": "ordinary considerations of time and space",
+      "node_id": "e:89f717aa67b7e634"
+    },
+    {
       "entity_id": "8a0d88f5283aa294",
       "expressions": [
         "Spiritual eye's ability to perceive totally"
@@ -74384,6 +74808,14 @@
       ],
       "label": "truly innocent",
       "node_id": "e:8a371d3cde917e7b"
+    },
+    {
+      "entity_id": "8a48f6e52c402b90",
+      "expressions": [
+        "ALL perception"
+      ],
+      "label": "ALL perception",
+      "node_id": "e:8a48f6e52c402b90"
     },
     {
       "entity_id": "8a515708f72067c0",
@@ -74599,6 +75031,14 @@
       ],
       "label": "him perfectly invulnerable",
       "node_id": "e:8b5f236007d8c80c"
+    },
+    {
+      "entity_id": "8b663a6acb83580c",
+      "expressions": [
+        "all sense of separation"
+      ],
+      "label": "all sense of separation",
+      "node_id": "e:8b663a6acb83580c"
     },
     {
       "entity_id": "8b6c25bd261f2062",
@@ -75280,6 +75720,14 @@
       ],
       "label": "state of grace forever",
       "node_id": "e:90c10dc91bbb0816"
+    },
+    {
+      "entity_id": "90d0652d69daa23d",
+      "expressions": [
+        "nothing but the truth"
+      ],
+      "label": "nothing but the truth",
+      "node_id": "e:90d0652d69daa23d"
     },
     {
       "entity_id": "90d256333306849d",
@@ -75973,6 +76421,14 @@
       "node_id": "e:9612a3c0b8a7a67a"
     },
     {
+      "entity_id": "962c17f0fa8da276",
+      "expressions": [
+        "no effort"
+      ],
+      "label": "no effort",
+      "node_id": "e:962c17f0fa8da276"
+    },
+    {
       "entity_id": "965183b083e4cde9",
       "expressions": [
         "a matter of will"
@@ -76396,6 +76852,14 @@
       "node_id": "e:99b3968b0d125adf"
     },
     {
+      "entity_id": "99b836846d727aaa",
+      "expressions": [
+        "Egocentricity and communion"
+      ],
+      "label": "Egocentricity and communion",
+      "node_id": "e:99b836846d727aaa"
+    },
+    {
       "entity_id": "99ccfae3ac0b9b01",
       "expressions": [
         "projection as related to both mental health and mental illness"
@@ -76498,6 +76962,14 @@
       ],
       "label": "communicating His Mind to every mind",
       "node_id": "e:9a739ac1cf5d0abb"
+    },
+    {
+      "entity_id": "9a7446295109ad4b",
+      "expressions": [
+        "what he cannot see"
+      ],
+      "label": "what he cannot see",
+      "node_id": "e:9a7446295109ad4b"
     },
     {
       "entity_id": "9a8016d2c5bba137",
@@ -77581,12 +78053,28 @@
       "node_id": "e:a272bd00ebbc37a3"
     },
     {
+      "entity_id": "a279f2ec50e30de7",
+      "expressions": [
+        "whether you judge right or wrong"
+      ],
+      "label": "whether you judge right or wrong",
+      "node_id": "e:a279f2ec50e30de7"
+    },
+    {
       "entity_id": "a291541660536cfa",
       "expressions": [
         "a means of making false associations, and obtaining pleasure from them"
       ],
       "label": "a means of making false associations, and obtaining pleasure from them",
       "node_id": "e:a291541660536cfa"
+    },
+    {
+      "entity_id": "a2afdc215377be57",
+      "expressions": [
+        "power of this denial"
+      ],
+      "label": "power of this denial",
+      "node_id": "e:a2afdc215377be57"
     },
     {
       "entity_id": "a2cadf24d883431f",
@@ -78949,6 +79437,14 @@
       "node_id": "e:ac52ccda5ed29f1e"
     },
     {
+      "entity_id": "ac99f652454429ff",
+      "expressions": [
+        "content of any particular ego-illusion"
+      ],
+      "label": "content of any particular ego-illusion",
+      "node_id": "e:ac99f652454429ff"
+    },
+    {
       "entity_id": "acb326db57ef2e25",
       "expressions": [
         "the glorious creations of a glorious Father"
@@ -79108,6 +79604,14 @@
       ],
       "label": "less predatory",
       "node_id": "e:adb0f0d8ecca6c0f"
+    },
+    {
+      "entity_id": "adb14bab6d9a452e",
+      "expressions": [
+        "“idle” thoughts"
+      ],
+      "label": "“idle” thoughts",
+      "node_id": "e:adb14bab6d9a452e"
     },
     {
       "entity_id": "adca5146416ee419",
@@ -79631,6 +80135,14 @@
       "node_id": "e:b102babc8b0afe76"
     },
     {
+      "entity_id": "b109cf38362a8dfb",
+      "expressions": [
+        "your sanity"
+      ],
+      "label": "your sanity",
+      "node_id": "e:b109cf38362a8dfb"
+    },
+    {
       "entity_id": "b14815f74e1ff9a6",
       "expressions": [
         "WHAT",
@@ -79888,6 +80400,14 @@
       ],
       "label": "what is all-encompassing",
       "node_id": "e:b2c97df9ac53659c"
+    },
+    {
+      "entity_id": "b2d09819759d9c88",
+      "expressions": [
+        "only LOVE"
+      ],
+      "label": "only LOVE",
+      "node_id": "e:b2d09819759d9c88"
     },
     {
       "entity_id": "b2d73254f8eb9025",
@@ -80355,6 +80875,14 @@
       ],
       "label": "when they believe that what they are trying to learn is of VALUE to them",
       "node_id": "e:b5b3e357e9f28155"
+    },
+    {
+      "entity_id": "b5bdf770577d4066",
+      "expressions": [
+        "only the mind"
+      ],
+      "label": "only the mind",
+      "node_id": "e:b5bdf770577d4066"
     },
     {
       "entity_id": "b5bea41b6c623f7c",
@@ -80959,6 +81487,14 @@
       "node_id": "e:b981a4c85719756b"
     },
     {
+      "entity_id": "b9890931e55065be",
+      "expressions": [
+        "every member of the family of God"
+      ],
+      "label": "every member of the family of God",
+      "node_id": "e:b9890931e55065be"
+    },
+    {
       "entity_id": "b996eacbeee3c2c2",
       "expressions": [
         "perfect comfort"
@@ -81153,6 +81689,14 @@
       "node_id": "e:bb166a97ac5c6c1d"
     },
     {
+      "entity_id": "bb1e8427a3183bee",
+      "expressions": [
+        "those who call truly"
+      ],
+      "label": "those who call truly",
+      "node_id": "e:bb1e8427a3183bee"
+    },
+    {
       "entity_id": "bb2335fc924f4877",
       "expressions": [
         "meek's strength"
@@ -81344,6 +81888,14 @@
       ],
       "label": "imprisonment",
       "node_id": "e:bc1b7d6e393af40d"
+    },
+    {
+      "entity_id": "bc1b9c42081ac9ed",
+      "expressions": [
+        "all such thinking"
+      ],
+      "label": "all such thinking",
+      "node_id": "e:bc1b9c42081ac9ed"
     },
     {
       "entity_id": "bc39707d33fb1835",
@@ -82027,6 +82579,14 @@
       "node_id": "e:c11521e04850ac15"
     },
     {
+      "entity_id": "c11ba3364e6ee25d",
+      "expressions": [
+        "strong chain of Atonement"
+      ],
+      "label": "strong chain of Atonement",
+      "node_id": "e:c11ba3364e6ee25d"
+    },
+    {
       "entity_id": "c126e8abb1dd4798",
       "expressions": [
         "judgement will someday be used against YOU"
@@ -82041,6 +82601,14 @@
       ],
       "label": "a way that has any real effect",
       "node_id": "e:c13d6d715d49e32e"
+    },
+    {
+      "entity_id": "c1401fffe50428eb",
+      "expressions": [
+        "validity and behavior"
+      ],
+      "label": "validity and behavior",
+      "node_id": "e:c1401fffe50428eb"
     },
     {
       "entity_id": "c14d5e581b84be64",
@@ -82089,6 +82657,14 @@
       ],
       "label": "frightening concept",
       "node_id": "e:c1823fe40d57655f"
+    },
+    {
+      "entity_id": "c18696709825b475",
+      "expressions": [
+        "yourselves"
+      ],
+      "label": "yourselves",
+      "node_id": "e:c18696709825b475"
     },
     {
       "entity_id": "c187549eddc59eb2",
@@ -82382,6 +82958,14 @@
       "node_id": "e:c369a4ceac405a10"
     },
     {
+      "entity_id": "c37340e58b1ded0b",
+      "expressions": [
+        "reason for fear to remain with him"
+      ],
+      "label": "reason for fear to remain with him",
+      "node_id": "e:c37340e58b1ded0b"
+    },
+    {
       "entity_id": "c386d2037e5624a6",
       "expressions": [
         "a sign of understanding"
@@ -82647,6 +83231,14 @@
       "node_id": "e:c590b3c924c35c2f"
     },
     {
+      "entity_id": "c5b2909044292cd5",
+      "expressions": [
+        "anything about me"
+      ],
+      "label": "anything about me",
+      "node_id": "e:c5b2909044292cd5"
+    },
+    {
       "entity_id": "c5c4b58afcf4e385",
       "expressions": [
         "what else BUT you"
@@ -82838,6 +83430,14 @@
       ],
       "label": "that “a little knowledge” is a meaningless phrase",
       "node_id": "e:c70be39503618cc8"
+    },
+    {
+      "entity_id": "c7183510892e4d3b",
+      "expressions": [
+        "separation of method and content"
+      ],
+      "label": "separation of method and content",
+      "node_id": "e:c7183510892e4d3b"
     },
     {
       "entity_id": "c719fa77d73c49f4",
@@ -84020,6 +84620,14 @@
       "node_id": "e:d0465722071bb475"
     },
     {
+      "entity_id": "d04afb0d2f5f4178",
+      "expressions": [
+        "confusion within Its levels"
+      ],
+      "label": "confusion within Its levels",
+      "node_id": "e:d04afb0d2f5f4178"
+    },
+    {
       "entity_id": "d0623a0a8f03b00e",
       "expressions": [
         "effectiveness of the present speed-up"
@@ -84324,6 +84932,14 @@
       ],
       "label": "data from one realm of discourse",
       "node_id": "e:d2b07eb125fe0987"
+    },
+    {
+      "entity_id": "d2b3b4c60f8f7874",
+      "expressions": [
+        "other gods"
+      ],
+      "label": "other gods",
+      "node_id": "e:d2b3b4c60f8f7874"
     },
     {
       "entity_id": "d2b5b25c597cff86",
@@ -85186,6 +85802,14 @@
       "node_id": "e:d92ccab435da2792"
     },
     {
+      "entity_id": "d93e9933c443fa44",
+      "expressions": [
+        "better way"
+      ],
+      "label": "better way",
+      "node_id": "e:d93e9933c443fa44"
+    },
+    {
       "entity_id": "d93f36da73b1b153",
       "expressions": [
         "those who deny Him"
@@ -85289,6 +85913,14 @@
       ],
       "label": "compromising in connection with all TANGENTIAL questions",
       "node_id": "e:d9c79fcf1e989f4d"
+    },
+    {
+      "entity_id": "d9e6ae2f79daa498",
+      "expressions": [
+        "readiness and accomplishment"
+      ],
+      "label": "readiness and accomplishment",
+      "node_id": "e:d9e6ae2f79daa498"
     },
     {
       "entity_id": "d9f35eb161f00e4d",
@@ -85660,6 +86292,14 @@
       "node_id": "e:ddb1f3fa6bc95bab"
     },
     {
+      "entity_id": "ddc9e669194254ce",
+      "expressions": [
+        "child"
+      ],
+      "label": "child",
+      "node_id": "e:ddc9e669194254ce"
+    },
+    {
       "entity_id": "ddce06b4715d0b33",
       "expressions": [
         "these limits for YOURS"
@@ -85812,6 +86452,14 @@
       "node_id": "e:dea22b229c21aeb5"
     },
     {
+      "entity_id": "deb0925f5e0dabf9",
+      "expressions": [
+        "sleeping eye"
+      ],
+      "label": "sleeping eye",
+      "node_id": "e:deb0925f5e0dabf9"
+    },
+    {
       "entity_id": "ded7d554ea8441fb",
       "expressions": [
         "belief that the body created its own illness"
@@ -85946,6 +86594,14 @@
       ],
       "label": "believing they are deprived",
       "node_id": "e:dffa1bcb8dfc7de7"
+    },
+    {
+      "entity_id": "dffae5fa2c28c726",
+      "expressions": [
+        "God and man"
+      ],
+      "label": "God and man",
+      "node_id": "e:dffae5fa2c28c726"
     },
     {
       "entity_id": "e00ff8c45b3146b5",
@@ -86754,6 +87410,14 @@
       ],
       "label": "confusion of levels",
       "node_id": "e:e5775d3e18264ce7"
+    },
+    {
+      "entity_id": "e57ea3165e2d4a9e",
+      "expressions": [
+        "projection in the wrong sense"
+      ],
+      "label": "projection in the wrong sense",
+      "node_id": "e:e57ea3165e2d4a9e"
     },
     {
       "entity_id": "e5826ebe16f44208",
@@ -87651,6 +88315,14 @@
       "node_id": "e:ec2c1116acba540d"
     },
     {
+      "entity_id": "ec3f30fe82847d4f",
+      "expressions": [
+        "intervals"
+      ],
+      "label": "intervals",
+      "node_id": "e:ec3f30fe82847d4f"
+    },
+    {
       "entity_id": "ec46e839d88c9d78",
       "expressions": [
         "ALL judgement"
@@ -87806,6 +88478,14 @@
       ],
       "label": "His",
       "node_id": "e:ed832d4ce5d4df77"
+    },
+    {
+      "entity_id": "ed8abf1668c4ac0e",
+      "expressions": [
+        "branch that bears no fruit"
+      ],
+      "label": "branch that bears no fruit",
+      "node_id": "e:ed8abf1668c4ac0e"
     },
     {
       "entity_id": "ed9a03f6caf05c3e",
@@ -88344,6 +89024,14 @@
       "node_id": "e:f093ecf032f4975d"
     },
     {
+      "entity_id": "f0a551fe4a40a89c",
+      "expressions": [
+        "man's Spiritual eye"
+      ],
+      "label": "man's Spiritual eye",
+      "node_id": "e:f0a551fe4a40a89c"
+    },
+    {
       "entity_id": "f0c2c907639c7628",
       "expressions": [
         "KNOWING",
@@ -88440,6 +89128,14 @@
       ],
       "label": "misguided",
       "node_id": "e:f15b13b8bdbc568c"
+    },
+    {
+      "entity_id": "f1653e23591406a5",
+      "expressions": [
+        "real meaning of the separation"
+      ],
+      "label": "real meaning of the separation",
+      "node_id": "e:f1653e23591406a5"
     },
     {
       "entity_id": "f167dc698116d650",
@@ -88553,6 +89249,14 @@
       ],
       "label": "everything he retains",
       "node_id": "e:f28b386abf214d0a"
+    },
+    {
+      "entity_id": "f28f7077b7b5ba47",
+      "expressions": [
+        "the two beliefs"
+      ],
+      "label": "the two beliefs",
+      "node_id": "e:f28f7077b7b5ba47"
     },
     {
       "entity_id": "f2c13682bff37eb2",
@@ -89466,6 +90170,14 @@
       "node_id": "e:f932e81110848665"
     },
     {
+      "entity_id": "f9353f851b38f46d",
+      "expressions": [
+        "religiously ego-oriented"
+      ],
+      "label": "religiously ego-oriented",
+      "node_id": "e:f9353f851b38f46d"
+    },
+    {
       "entity_id": "f93546860d7dc0fd",
       "expressions": [
         "both time AND matter"
@@ -89736,6 +90448,14 @@
       ],
       "label": "you are SEPARATE",
       "node_id": "e:fa8d2f2ab3689dd1"
+    },
+    {
+      "entity_id": "fa95e5080882f52b",
+      "expressions": [
+        "few"
+      ],
+      "label": "few",
+      "node_id": "e:fa95e5080882f52b"
     },
     {
       "entity_id": "fa9c4b84b48db846",
@@ -90131,6 +90851,14 @@
       "node_id": "e:fd118ef2a8bb15bf"
     },
     {
+      "entity_id": "fd2c5a3b83d12483",
+      "expressions": [
+        "particular result"
+      ],
+      "label": "particular result",
+      "node_id": "e:fd2c5a3b83d12483"
+    },
+    {
       "entity_id": "fd4db904f74ca075",
       "expressions": [
         "a reasonable amount of obedience for his greater wisdom"
@@ -90193,6 +90921,14 @@
       ],
       "label": "one ego for everyone he perceives",
       "node_id": "e:fdd87a167e851280"
+    },
+    {
+      "entity_id": "fdd9f110e4271aad",
+      "expressions": [
+        "error of perceiving levels"
+      ],
+      "label": "error of perceiving levels",
+      "node_id": "e:fdd9f110e4271aad"
     },
     {
       "entity_id": "fddc463753138fd3",

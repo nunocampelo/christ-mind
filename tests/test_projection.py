@@ -64,6 +64,25 @@ def test_missing_object_is_non_projectable_not_dropped():
     assert proj.non_projectable[0].claim.claim_id == "c1"
 
 
+def test_non_projectable_subject_still_registers_a_node():
+    # A concept appearing only in a non-projectable (missing-object) claim must still get a
+    # node, or it can't be searched and its claim can't be reached through the explorer.
+    claims = [_claim("c1", "atonement", None, verb_phrase="is")]
+    proj = build_projection(claims, _resolver({}))
+    assert proj.edges == ()
+    assert [n.label for n in proj.nodes] == ["atonement"]
+
+
+def test_blank_subject_still_registers_the_object_node():
+    # Endpoint registration is per-endpoint, not all-or-nothing: a blank subject does not
+    # suppress a usable object's node.
+    claims = [_claim("c1", "   ", "forgiveness")]
+    proj = build_projection(claims, _resolver({}))
+    assert proj.edges == ()
+    assert proj.non_projectable[0].reason == ExclusionReason.SUBJECT_NOT_DRAWABLE
+    assert [n.label for n in proj.nodes] == ["forgiveness"]
+
+
 def test_is_claim_does_not_merge_distinct_entities():
     claims = [_claim("c1", "God", "God's Thoughts", predicate=Predicate.IS)]
     proj = build_projection(claims, _resolver({}))

@@ -131,10 +131,9 @@ const GraphPage = ({
     );
   }
 
-  // predicates present on the current center, for the filter row
-  const availablePredicates: Predicate[] = view
-    ? [...new Set(view.edges.map((e) => e.predicate))].sort()
-    : [];
+  // every predicate on the current center's eligible edges (pre-filter, pre-cap), for the
+  // filter row — so picking one predicate doesn't hide the others.
+  const availablePredicates: Predicate[] = view ? view.allPredicates : [];
 
   return (
     <div className="graph-page" data-testid="graph-page">

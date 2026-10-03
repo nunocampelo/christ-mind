@@ -117,7 +117,17 @@ def build_projection(
         return node_id
 
     for claim in claims:
+        # Register every usable endpoint up front, independent of drawability, so a concept
+        # that only ever appears in non-projectable claims still gets a node -- otherwise it
+        # can't be searched and its claims can't be reached through the explorer at all.
         subject_drawable = bool(claim.subject.strip())
+        object_drawable = claim.object is not None and bool(claim.object.strip())
+        if subject_drawable:
+            register(claim.subject)
+        if object_drawable:
+            assert claim.object is not None  # narrowed by object_drawable
+            register(claim.object)
+
         if not subject_drawable:
             non_projectable.append(
                 NonProjectableClaim(claim, ExclusionReason.SUBJECT_NOT_DRAWABLE)

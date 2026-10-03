@@ -168,6 +168,14 @@ const GraphCanvas = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  // The tap handler is bound once at mount, but the neighborhood (and the callback that
+  // resolves an edge id against it) changes as the user explores. Route taps through a ref
+  // so the mount-time handler always calls the current callback, not the one captured on
+  // the first render.
+  const onSelectEdgeRef = useRef(onSelectEdge);
+  useEffect(() => {
+    onSelectEdgeRef.current = onSelectEdge;
+  });
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -179,7 +187,7 @@ const GraphCanvas = ({
       maxZoom: 2.5,
       // layout runs per content update below, not on every re-render
     });
-    cy.on("tap", "edge", (evt) => onSelectEdge(evt.target.id()));
+    cy.on("tap", "edge", (evt) => onSelectEdgeRef.current(evt.target.id()));
     cyRef.current = cy;
 
     // Recolor live when the theme flips (.dark toggles on <html>).

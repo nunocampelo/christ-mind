@@ -1,4 +1,5 @@
 import type { CitedClaim } from "@/api/agentApi";
+import type { PassageRef } from "@/api/graphArtifact";
 
 // Section numbers are small (single digits, occasionally low teens across the full Text),
 // so the table only needs to cover tens.
@@ -58,4 +59,39 @@ export const sourceReferenceParts = (claim: CitedClaim): SourceReferenceParts =>
 export const sourceReference = (claim: CitedClaim): string => {
   const { title, location } = sourceReferenceParts(claim);
   return location ? `${title} ${location}` : title;
+};
+
+// The graph explorer's source locator. Discriminated on `kind` rather than a boolean: a
+// boolean can't tell an ACIM import ordinal from an unknown-source fallback, and a
+// populated verse field doesn't establish canonical validity on its own.
+//
+// ACIM locators are deliberately NOT rendered as canonical Chapter/Section/Paragraph
+// citations: the numbers are positional block ordinals assigned at import (see
+// docs/graph-explorer-inspection.md), so they surface as a stored location with the
+// dataset edition and raw id, flagged as unverified. Bible verse refs are real citations.
+export type GraphLocator =
+  | { kind: "acim"; title: string; storedLocation: string; edition: string; id: string }
+  | { kind: "verse"; title: string; location: string }
+  | { kind: "fallback"; title: string };
+
+export const graphSourceLocator = (p: PassageRef): GraphLocator => {
+  if (p.book === "ACIM" && p.chapter) {
+    const parts = [`Chapter ${p.chapter}`];
+    if (p.section === 0) parts.push("Introduction");
+    else if (p.section != null) parts.push(`Section ${p.section}`);
+    if (p.paragraph != null) parts.push(`Block ${p.paragraph}`);
+    return {
+      kind: "acim",
+      title: "A Course in Miracles",
+      storedLocation: parts.join(" · "),
+      edition: p.edition,
+      id: p.source_id,
+    };
+  }
+
+  if (p.book && p.verse != null) {
+    return { kind: "verse", title: p.book, location: `${p.chapter}:${p.verse}` };
+  }
+
+  return { kind: "fallback", title: p.source_id };
 };

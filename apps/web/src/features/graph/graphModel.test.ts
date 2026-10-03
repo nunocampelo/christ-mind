@@ -91,6 +91,23 @@ describe("neighborhood", () => {
     expect(index().nodeById.get(RM.node_id)).toBeDefined();
   });
 
+  it("exposes every eligible predicate, independent of the active filter and the cap", () => {
+    const all = ["causes", "expresses", "requires", "undoes"];
+    // no filter: all four predicates on forgiveness's eligible edges
+    expect(neighborhood(index(), F.node_id, defaultFilters())!.allPredicates).toEqual(all);
+    // a predicate filter must NOT narrow the options (else picking one hides the rest)
+    const filtered = neighborhood(
+      index(),
+      F.node_id,
+      filters({ predicates: new Set<Predicate>(["causes"]) }),
+    )!;
+    expect(filtered.allPredicates).toEqual(all);
+    // and the cap must NOT narrow them (the "first N edges all share one predicate" case)
+    const capped = neighborhood(index(), F.node_id, defaultFilters(), 1)!;
+    expect(capped.edges).toHaveLength(1);
+    expect(capped.allPredicates).toEqual(all);
+  });
+
   it("orders edges deterministically (predicate, far endpoint, claim)", () => {
     const once = neighborhood(index(), F.node_id, defaultFilters())!.edges.map((e) => e.claim_id);
     const twice = neighborhood(index(), F.node_id, defaultFilters())!.edges.map((e) => e.claim_id);
