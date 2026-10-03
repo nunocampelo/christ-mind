@@ -5,15 +5,34 @@ import type { ComponentProps } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { AgentAnswer, AgentStreamEvent } from "@/api/agentApi";
 import App from "@/App";
+import AppLayout from "@/AppLayout";
 
-// App reads the route param, so every render goes through the router with both routes
-// mounted. `at` sets the starting URL (default "/" = a fresh chat).
-const renderApp = (props: ComponentProps<typeof App> = {}, at = "/") =>
+// App now reads its conversation list through AppLayout's outlet context, so every render
+// goes through the layout route (which owns the sidebar) with both chat routes mounted
+// under it. The sidebar seams (listConversations/renameConversation/deleteConversation) go
+// on AppLayout; the chat seams (streamFn/recoverFn/loadConversation) stay on App. `at` sets
+// the starting URL (default "/" = a fresh chat).
+type HarnessProps = ComponentProps<typeof App> & ComponentProps<typeof AppLayout>;
+
+const renderApp = (
+  { listConversations, renameConversation, deleteConversation, ...appProps }: HarnessProps = {},
+  at = "/",
+) =>
   render(
     <MemoryRouter initialEntries={[at]}>
       <Routes>
-        <Route path="/" element={<App {...props} />} />
-        <Route path="/c/:conversationId" element={<App {...props} />} />
+        <Route
+          element={
+            <AppLayout
+              listConversations={listConversations}
+              renameConversation={renameConversation}
+              deleteConversation={deleteConversation}
+            />
+          }
+        >
+          <Route path="/" element={<App {...appProps} />} />
+          <Route path="/c/:conversationId" element={<App {...appProps} />} />
+        </Route>
       </Routes>
     </MemoryRouter>,
   );

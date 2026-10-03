@@ -215,8 +215,14 @@ run_up() {
   { npm --prefix "$WEB_DIR" run dev 2>&1 | prefix_stream ui 36; } &
   pids+=($!)
 
-  # Exit (and trigger cleanup) as soon as either process dies.
-  wait -n
+  # Exit (and trigger cleanup) as soon as either process dies. `wait -n` would be
+  # the one-liner, but it needs Bash 4.3+; macOS ships 3.2, so poll the pids.
+  while :; do
+    for pid in "${pids[@]}"; do
+      kill -0 "$pid" 2>/dev/null || return
+    done
+    sleep 1
+  done
 }
 
 # --- arg parsing -----------------------------------------------------------

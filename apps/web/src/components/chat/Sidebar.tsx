@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import type { ConversationSummary } from "@/api/conversationsApi";
 
@@ -58,6 +58,15 @@ const XIcon = () => (
   <svg {...iconProps}>
     <path d="M18 6 6 18" />
     <path d="m6 6 12 12" />
+  </svg>
+);
+
+const GraphIcon = () => (
+  <svg {...iconProps} className="h-4 w-4">
+    <circle cx="5" cy="6" r="2.5" />
+    <circle cx="18" cy="7" r="2.5" />
+    <circle cx="12" cy="18" r="2.5" />
+    <path d="M7.3 7.1 10 16M15.9 8.6 13 16M7 6.4h8.5" />
   </svg>
 );
 
@@ -191,7 +200,9 @@ const Sidebar = ({
   loading,
   onRename,
   onDelete,
-}: SidebarProps) => (
+}: SidebarProps) => {
+  const onGraph = useLocation().pathname === "/graph";
+  return (
   <aside className="flex h-dvh w-64 shrink-0 flex-col border-r border-border bg-muted/30">
     <div className="p-3">
       <Link
@@ -201,6 +212,27 @@ const Sidebar = ({
       >
         <ComposeIcon />
         New chat
+      </Link>
+    </div>
+
+    <p className="px-4 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      Explore
+    </p>
+    <div className="px-2 pb-3">
+      <Link
+        to="/graph"
+        data-testid="graph-link"
+        data-active={onGraph}
+        aria-current={onGraph ? "page" : undefined}
+        className={cn(
+          "flex items-center gap-2 rounded-[var(--radius-app)] px-3 py-2 text-sm",
+          onGraph
+            ? "bg-muted font-medium text-foreground"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+      >
+        <GraphIcon />
+        Course graph
       </Link>
     </div>
 
@@ -228,6 +260,7 @@ const Sidebar = ({
       )}
     </nav>
   </aside>
-);
+  );
+};
 
 export default Sidebar;

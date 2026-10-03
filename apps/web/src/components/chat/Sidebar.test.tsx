@@ -130,4 +130,42 @@ describe("Sidebar", () => {
     expect(onDelete).not.toHaveBeenCalled();
     expect(screen.getByTestId("delete-conversation")).toBeInTheDocument();
   });
+
+  describe("Explore section", () => {
+    it("renders the Course graph link to /graph on a chat route", () => {
+      renderSidebar({ conversations: [summary("a", "First")] }, "/c/a");
+      const link = screen.getByTestId("graph-link");
+      expect(link).toHaveAttribute("href", "/graph");
+      expect(link).toHaveTextContent("Course graph");
+    });
+
+    it("marks the Course graph link active only on /graph", () => {
+      renderSidebar({}, "/graph");
+      const link = screen.getByTestId("graph-link");
+      expect(link).toHaveAttribute("data-active", "true");
+      expect(link).toHaveAttribute("aria-current", "page");
+    });
+
+    it("does not mark the Course graph link active on a chat route", () => {
+      renderSidebar({ conversations: [summary("a", "First")] }, "/c/a");
+      const link = screen.getByTestId("graph-link");
+      expect(link).toHaveAttribute("data-active", "false");
+      expect(link).not.toHaveAttribute("aria-current");
+    });
+
+    it("highlights no conversation row when on /graph", () => {
+      renderSidebar(
+        { conversations: [summary("a", "First"), summary("b", "Second")] },
+        "/graph",
+      );
+      const items = screen.getAllByTestId("conversation-item");
+      expect(items.every((i) => i.getAttribute("data-active") === "false")).toBe(true);
+    });
+
+    it("renders the Course graph link with an empty conversation list", () => {
+      renderSidebar({ conversations: [], loading: true }, "/graph");
+      expect(screen.getByTestId("graph-link")).toBeInTheDocument();
+      expect(screen.getByTestId("conversation-list")).toHaveTextContent("Loading…");
+    });
+  });
 });

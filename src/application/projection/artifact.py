@@ -31,7 +31,7 @@ from application.retrieval.evidence import EvidenceResolutionError, source_for_i
 from domain.claims.models import Attribution, Mode, Polarity, Predicate
 from domain.sources.models import Source
 
-SCHEMA_VERSION = "0030.graph-projection.1"
+SCHEMA_VERSION = "0030.graph-projection.2"
 
 
 class EvidenceSegments(BaseModel):
@@ -74,6 +74,10 @@ class EdgeRecord(BaseModel):
     mode: Mode
     attribution: Attribution
     source_id: str
+    # The evidence span is the claim's join to its passage (source_id + span); the
+    # frontend needs it to pull the right quoted clause for this edge.
+    evidence_start: int
+    evidence_end: int
 
 
 class NodeRecord(BaseModel):
@@ -94,6 +98,8 @@ class NonProjectableRecord(BaseModel):
     attribution: Attribution
     reason: ExclusionReason
     source_id: str
+    evidence_start: int
+    evidence_end: int
 
 
 class CoverageCounts(BaseModel):
@@ -155,6 +161,8 @@ def _edge_record(edge: ProjectionEdge) -> EdgeRecord:
         mode=c.mode,
         attribution=c.attribution,
         source_id=c.source_id,
+        evidence_start=c.evidence_start,
+        evidence_end=c.evidence_end,
     )
 
 
@@ -195,6 +203,8 @@ def build_artifact(
             attribution=n.claim.attribution,
             reason=n.reason,
             source_id=n.claim.source_id,
+            evidence_start=n.claim.evidence_start,
+            evidence_end=n.claim.evidence_end,
         )
         for n in projection.non_projectable
     ]

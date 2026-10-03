@@ -411,12 +411,12 @@ describe("useA2AChat", () => {
       (async function* () {
         await recoverGate;
         // Repeated label (recovery re-polls the same working status) must dedupe.
-        yield { kind: "status", state: "TASK_STATE_WORKING", text: "Calling find_claims" };
-        yield { kind: "status", state: "TASK_STATE_WORKING", text: "Calling find_claims" };
-        yield { kind: "status", state: "TASK_STATE_WORKING", text: "find_claims returned" };
-        yield { kind: "text", delta: "Forgiveness undoes it.", replace: true };
-        yield { kind: "answer", answer: ANSWER };
-        yield { kind: "status", state: "TASK_STATE_COMPLETED", text: "" };
+        yield { kind: "status", state: "TASK_STATE_WORKING", text: "Calling find_claims" } as AgentStreamEvent;
+        yield { kind: "status", state: "TASK_STATE_WORKING", text: "Calling find_claims" } as AgentStreamEvent;
+        yield { kind: "status", state: "TASK_STATE_WORKING", text: "find_claims returned" } as AgentStreamEvent;
+        yield { kind: "text", delta: "Forgiveness undoes it.", replace: true } as AgentStreamEvent;
+        yield { kind: "answer", answer: ANSWER } as AgentStreamEvent;
+        yield { kind: "status", state: "TASK_STATE_COMPLETED", text: "" } as AgentStreamEvent;
       })(),
     );
     const { result } = renderHook(() => useA2AChat({ streamFn, recoverFn }));

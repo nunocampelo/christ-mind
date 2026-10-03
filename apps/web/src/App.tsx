@@ -2,21 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { AgentStreamEvent } from "@/api/agentApi";
 import {
-  deleteConversation as defaultDeleteConversation,
   getConversation as defaultGetConversation,
-  listConversations as defaultListConversations,
-  renameConversation as defaultRenameConversation,
   turnsFromConversation,
   type ConversationDetail,
-  type ConversationSummary,
 } from "@/api/conversationsApi";
+import { useChatContext } from "@/AppLayout";
 import ChatLanding from "@/components/chat/ChatLanding";
 import Composer from "@/components/chat/Composer";
 import ScrollToBottomButton from "@/components/chat/ScrollToBottomButton";
-import Sidebar from "@/components/chat/Sidebar";
 import Transcript from "@/components/chat/Transcript";
 import useA2AChat, { type Turn } from "@/hooks/useA2AChat";
-import useConversations from "@/hooks/useConversations";
 import useScrollAnchor from "@/hooks/useScrollAnchor";
 import useScrollToBottom from "@/hooks/useScrollToBottom";
 import useTypeToFocus from "@/hooks/useTypeToFocus";
@@ -31,9 +26,6 @@ interface AppProps {
     taskId: string,
   ) => AsyncGenerator<AgentStreamEvent, void, void>;
   loadConversation?: (id: string) => Promise<ConversationDetail | null>;
-  listConversations?: () => Promise<ConversationSummary[]>;
-  renameConversation?: (id: string, summary: string) => Promise<void>;
-  deleteConversation?: (id: string) => Promise<void>;
 }
 
 interface ChatProps {
@@ -150,26 +142,20 @@ const Chat = ({
 
 type Seeds = { turns: Turn[] };
 
-/** Route-driven shell: the `/c/:conversationId` param is the active conversation. App
-    resolves that conversation's history into seeds, renders the sidebar, and remounts the
-    keyed chat column on navigation. `loadConversation`/`listConversations`/`streamFn`/
-    `recoverFn` are the test seams (defaults: the real APIs). */
+/** The chat column, mounted by `AppLayout` via <Outlet>. The `/c/:conversationId` param is
+    the active conversation; App resolves its history into seeds and remounts the keyed chat
+    on navigation. The sidebar and the conversation list live in the layout; `refetch` comes
+    down through the outlet context so a new conversation's first turn still refreshes it.
+    `loadConversation`/`streamFn`/`recoverFn` are the test seams (defaults: the real APIs). */
 const App = ({
   streamFn,
   recoverFn,
   loadConversation,
-  listConversations,
-  renameConversation,
-  deleteConversation,
 }: AppProps = {}) => {
   const load = loadConversation ?? defaultGetConversation;
-  const rename = renameConversation ?? defaultRenameConversation;
-  const remove = deleteConversation ?? defaultDeleteConversation;
   const { conversationId } = useParams();
   const navigate = useNavigate();
-  const { conversations, refetch } = useConversations({
-    listFn: listConversations ?? defaultListConversations,
-  });
+  const { refetch } = useChatContext();
 
   // The id a *live* chat minted for itself on its first turn. When the route catches up to
   // this id, the chat that owns it is already mounted and mid-stream — so we must NOT treat
@@ -229,45 +215,17 @@ const App = ({
     [navigate, refetch],
   );
 
-  const onRename = useCallback(
-    (id: string, summary: string) => {
-      void rename(id, summary).then(refetch);
-    },
-    [rename, refetch],
-  );
-
-  const onDelete = useCallback(
-    (id: string) => {
-      void remove(id).then(() => {
-        // Deleting the conversation you're viewing drops you into a fresh chat.
-        if (id === conversationId) navigate("/", { replace: true });
-        return refetch();
-      });
-    },
-    [remove, refetch, conversationId, navigate],
-  );
-
-  return (
-    <div className="flex h-dvh">
-      <Sidebar
-        conversations={conversations}
-        activeConversationId={conversationId}
-        onRename={onRename}
-        onDelete={onDelete}
-      />
-      {seeds === null ? (
-        <div className="min-w-0 flex-1 bg-background" />
-      ) : (
-        <Chat
-          key={isSelfAssigned ? "new" : (conversationId ?? "new")}
-          streamFn={streamFn}
-          recoverFn={recoverFn}
-          initialContextId={conversationId ?? ""}
-          initialTurns={seeds.turns}
-          onConversationId={onConversationId}
-        />
-      )}
-    </div>
+  return seeds === null ? (
+    <div className="min-w-0 flex-1 bg-background" />
+  ) : (
+    <Chat
+      key={isSelfAssigned ? "new" : (conversationId ?? "new")}
+      streamFn={streamFn}
+      recoverFn={recoverFn}
+      initialContextId={conversationId ?? ""}
+      initialTurns={seeds.turns}
+      onConversationId={onConversationId}
+    />
   );
 };
 
