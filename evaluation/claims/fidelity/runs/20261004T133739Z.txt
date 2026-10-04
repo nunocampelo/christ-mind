@@ -1,0 +1,39 @@
+oracle (synthetic fixtures) -- feeding gold back as the prediction
+
+[t3-1-5 condition+reference+occurrence]
+  variant        v1
+  literal loose  P 0.000  R 0.000  (tp 0, fp 0)
+  qualification  P 1.000  R 1.000  (tp 1, fp 0, fn 0)
+  requirement    P n/a  R n/a  (tp 0, fp 0, fn 0)
+  description    P n/a  R n/a  (tp 0, fp 0, fn 0)
+  condition      P 1.000  R 1.000  (tp 1, fp 0, fn 0)
+    content 1/1  scope 1/1  attachment 1/1
+  reference      P 1.000  R 1.000  (tp 1, fp 0, fn 0)
+    referent 1/1  abstention 0  unsupported_resolution 0
+  unsupported inference  0
+
+[t3-4-4 unresolved reference]
+  variant        v1
+  literal loose  P 0.000  R 0.000  (tp 0, fp 0)
+  qualification  P n/a  R n/a  (tp 0, fp 0, fn 0)
+  requirement    P n/a  R n/a  (tp 0, fp 0, fn 0)
+  description    P n/a  R n/a  (tp 0, fp 0, fn 0)
+  condition      P n/a  R n/a  (tp 0, fp 0, fn 0)
+    content 0/0  scope 0/0  attachment 0/0
+  reference      P 1.000  R 1.000  (tp 1, fp 0, fn 0)
+    referent 0/1  abstention 1  unsupported_resolution 0
+  unsupported inference  0
+
+[t3-1-6 requirement+description+literal]
+  variant        v1
+  literal loose  P 1.000  R 1.000  (tp 1, fp 0)
+  qualification  P n/a  R n/a  (tp 0, fp 0, fn 0)
+  requirement    P 1.000  R 1.000  (tp 1, fp 0, fn 0)
+  description    P 1.000  R 1.000  (tp 1, fp 0, fn 0)
+  condition      P n/a  R n/a  (tp 0, fp 0, fn 0)
+    content 0/0  scope 0/0  attachment 0/0
+  reference      P n/a  R n/a  (tp 0, fp 0, fn 0)
+    referent 0/0  abstention 0  unsupported_resolution 0
+  unsupported inference  0
+
+oracle OK: every dimension exercised and perfect, abstention honoured

@@ -2,6 +2,7 @@
 scores as intended, independent of the others."""
 
 import itertools
+from dataclasses import replace
 
 import pytest
 
@@ -19,6 +20,7 @@ from domain.sources.models import Source
 from evaluation.claims.fidelity.fixtures import entry
 from evaluation.claims.fidelity.score_fidelity import (
     GoldAnchorError,
+    _maximum_weight_matching,
     Prediction,
     score_fidelity,
 )
@@ -459,7 +461,7 @@ def test_variant_selection_prefers_semantic_correctness_then_lowest_id():
     assert _score(Prediction("p", (occ,)), tie).chosen_variant_id == "v1"
 
 
-def test_ambiguous_gold_mention_gets_no_credit():
+def test_ambiguous_gold_mention_is_invalid_gold():
     # The mention occurs twice in the evidence quote, so its location is ambiguous; even an
     # identical prediction cannot be credited -- the quote must pin the mention.
     source = Source(id="p", book="ACIM", chapter=1, text="this and this again")
@@ -474,8 +476,8 @@ def test_ambiguous_gold_mention_gets_no_credit():
         variants=(Variant("v1"),),
         exhaustive=True,
     )
-    report = score_fidelity(Prediction("p", (ambiguous,)), (), gold, (), source)
-    assert report.reference.referent_matches == 0
+    with pytest.raises(GoldAnchorError):
+        score_fidelity(Prediction("p", (ambiguous,)), (), gold, (), source)
 
 
 def test_source_mismatch_raises():
@@ -498,3 +500,122 @@ def test_interpreted_reading_does_not_pass_as_literal():
     report = _score(Prediction("p", (literal,)), gold)
     assert report.qualification.true_positives == 0
     assert report.unsupported == 1
+
+
+@pytest.mark.parametrize(
+    "rows,columns",
+    [(0, 0), (0, 2), (2, 0), (1, 3), (1, 4), (4, 1),
+     (2, 2), (2, 3), (3, 2), (3, 3)],
+)
+def test_weighted_matching_matches_exhaustive_assignment_oracle(rows, columns):
+    # States: absent edge, wrong reading, correct reading. Enumerate assignments independently.
+    for states in itertools.product(range(3), repeat=rows * columns):
+        edges = [states[i * columns:(i + 1) * columns] for i in range(rows)]
+        weight = min(rows, columns) + 1
+        weights = [
+            [0 if cell == 0 else 1 + weight * (cell == 2) for cell in row]
+            for row in edges
+        ]
+        matching = _maximum_weight_matching(weights)
+        matched = [(p, g) for g, p in enumerate(matching) if p != -1]
+        assert len({p for p, _ in matched}) == len(matched)
+        assert all(edges[p][g] != 0 for p, g in matched)
+        actual = (sum(edges[p][g] == 2 for p, g in matched), len(matched))
+        expected = (0, 0)
+        for assignment in itertools.product(range(-1, columns), repeat=rows):
+            chosen = [g for g in assignment if g != -1]
+            if len(set(chosen)) != len(chosen):
+                continue
+            pairs = [(p, g) for p, g in enumerate(assignment) if g != -1]
+            if any(edges[p][g] == 0 for p, g in pairs):
+                continue
+            expected = max(
+                expected, (sum(edges[p][g] == 2 for p, g in pairs), len(pairs))
+            )
+        assert actual == expected
+
+
+@pytest.mark.parametrize("weights", [[[1, 1], [1, 0]], [[4, 1], [4, 0]]])
+def test_matching_reroutes_pairs_to_maximize_total(weights):
+    assert _maximum_weight_matching(weights) == [1, 0]
+
+
+def test_two_wrong_conditions_both_align_regardless_of_order():
+    source = Source(id="p", book="ACIM", chapter=1, text="alpha beta gamma")
+    g1 = replace(_condition(), evidence="alpha beta", condition_text="first")
+    g2 = replace(_condition(), evidence="gamma", condition_text="second")
+    broad = replace(_condition(), evidence=source.text, condition_text="wrong broad")
+    narrow = replace(_condition(), evidence="beta", condition_text="wrong narrow")
+    for order in itertools.permutations((broad, narrow)):
+        report = score_fidelity(
+            Prediction("p", order), (),
+            _authored(shared=(g1, g2), exhaustive=True), (), source,
+        )
+        assert report.condition.presence.true_positives == 2
+        assert report.condition.presence.false_positives == 0
+        assert report.condition.presence.false_negatives == 0
+        assert report.condition.fully_correct == 0
+        assert report.unsupported == 2
+
+
+@pytest.mark.parametrize("resolution", list(ResolutionStatus))
+def test_reference_support_mismatch_loses_full_credit_only(resolution):
+    reference = entry(
+        "p", DerivedKind.RESOLVED_REFERENCE, "Without this", mention="this",
+        referent="correction" if resolution is ResolutionStatus.RESOLVED else None,
+        resolution=resolution,
+    )
+    predicted = replace(reference, support=Support.LITERAL)
+    report = _score(
+        Prediction("p", (predicted,)),
+        _authored(shared=(reference,), exhaustive=True),
+    )
+    assert report.reference.fully_correct == 0
+    assert report.unsupported == 1
+    assert report.reference.referent_matches == (resolution is ResolutionStatus.RESOLVED)
+    assert report.reference.abstention == (resolution is ResolutionStatus.UNRESOLVED)
+
+
+@pytest.mark.parametrize("location", ["shared", "chosen", "unchosen"])
+def test_gold_entry_source_mismatch_is_invalid_gold(location):
+    good = entry("p", DerivedKind.OCCURRENCE, "Forgiveness", base_concept="c")
+    bad = replace(good, source_id="other")
+    gold = _authored(
+        shared=(bad,) if location == "shared" else (),
+        variants=(
+            Variant("a", (bad if location == "chosen" else good,)),
+            Variant("z", (bad if location == "unchosen" else good,)),
+        ),
+    )
+    with pytest.raises(ValueError, match="gold entry source"):
+        _score(Prediction("p", (good,)), gold)
+
+
+@pytest.mark.parametrize("mention", [None, "", " ", "absent", "this"])
+def test_invalid_gold_mentions_raise_but_predictions_are_scoring_misses(mention):
+    source = Source(id="p", book="ACIM", chapter=1, text="this and this again")
+    valid = entry(
+        "p", DerivedKind.RESOLVED_REFERENCE, "this again", mention="this", referent="x"
+    )
+    invalid = replace(valid, evidence=source.text, mention=mention)
+    with pytest.raises(GoldAnchorError):
+        score_fidelity(Prediction("p"), (), _authored(shared=(invalid,)), (), source)
+    report = score_fidelity(
+        Prediction("p", (invalid,)), (),
+        _authored(shared=(valid,), exhaustive=True), (), source,
+    )
+    assert report.reference.referent_matches == 0
+    assert report.reference.fully_correct == 0
+    assert report.unsupported == 1
+
+
+def test_same_span_wrong_conditions_have_stable_diagnostics():
+    first = _condition(text="first", scope="one")
+    second = _condition(text="second", scope="two")
+    predicted = (replace(first, scope="wrong"), replace(second, scope="wrong"))
+    reports = [
+        _score(Prediction("p", order), _authored(shared=gold_order, exhaustive=True))
+        for order in itertools.permutations(predicted)
+        for gold_order in itertools.permutations((first, second))
+    ]
+    assert all(report == reports[0] for report in reports)

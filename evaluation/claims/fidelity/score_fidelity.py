@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from application.extraction.spans import EvidenceError, validate_span
 from domain.claims.models import Claim
+from domain.derivation.identity import compute_annotation_id
 from domain.derivation.models import (
     DerivedEntry,
     DerivedGold,
@@ -137,7 +138,10 @@ def _anchor_gold(source: Source, entries: Sequence[DerivedEntry]) -> list[_Ancho
             raise GoldAnchorError(
                 f"gold entry {entry.annotation_id} for {entry.source_id} has invalid evidence"
             ) from e
-        anchored.append(_Anchored(entry, start, end))
+        anchored_entry = _Anchored(entry, start, end)
+        if entry.kind is DerivedKind.RESOLVED_REFERENCE and _mention_span(anchored_entry) is None:
+            raise GoldAnchorError("gold reference mention must occur exactly once in evidence")
+        anchored.append(anchored_entry)
     return anchored
 
 
@@ -189,78 +193,85 @@ class _Alignment:
 type _CoreMatch = Callable[[_Anchored, _Anchored], bool]
 
 
-def _max_matching(
-    pred_k: list[_Anchored], gold_k: list[_Anchored], allowed: Callable[[int, int], bool]
-) -> list[int]:
-    """Kuhn's augmenting-path matching over the allowed (pred, gold) edges. Returns
-    `match_gold`: gold index -> pred index, or -1. Deterministic given the input orders."""
-    adjacency = [[j for j in range(len(gold_k)) if allowed(i, j)] for i in range(len(pred_k))]
-    match_gold = [-1] * len(gold_k)
+def _maximum_weight_matching(weights: list[list[int]]) -> list[int]:
+    """Rectangular Hungarian assignment; zero-weight edges leave entries unmatched."""
+    if not weights:
+        return []
+    rows, gold_count = len(weights), len(weights[0])
+    columns = gold_count + rows
+    row_potential = [0] * (rows + 1)
+    column_potential = [0] * (columns + 1)
+    matched_row = [0] * (columns + 1)
+    previous = [0] * (columns + 1)
+    infinity = sum(max(row, default=0) for row in weights) + 1
 
-    def augment(p_index: int, seen: list[bool]) -> bool:
-        for g_index in adjacency[p_index]:
-            if seen[g_index]:
-                continue
-            seen[g_index] = True
-            if match_gold[g_index] == -1 or augment(match_gold[g_index], seen):
-                match_gold[g_index] = p_index
-                return True
-        return False
+    for row in range(1, rows + 1):
+        matched_row[0] = row
+        column = 0
+        distance = [infinity] * (columns + 1)
+        used = [False] * (columns + 1)
+        while True:
+            used[column] = True
+            current_row = matched_row[column]
+            delta, next_column = infinity, 0
+            for candidate in range(1, columns + 1):
+                if used[candidate]:
+                    continue
+                weight = (
+                    weights[current_row - 1][candidate - 1]
+                    if candidate <= gold_count else 0
+                )
+                cost = -weight - row_potential[current_row] - column_potential[candidate]
+                if cost < distance[candidate]:
+                    distance[candidate] = cost
+                    previous[candidate] = column
+                if distance[candidate] < delta:
+                    delta, next_column = distance[candidate], candidate
+            for candidate in range(columns + 1):
+                if used[candidate]:
+                    row_potential[matched_row[candidate]] += delta
+                    column_potential[candidate] -= delta
+                else:
+                    distance[candidate] -= delta
+            column = next_column
+            if matched_row[column] == 0:
+                break
+        while column:
+            predecessor = previous[column]
+            matched_row[column] = matched_row[predecessor]
+            column = predecessor
 
-    for p_index in range(len(pred_k)):
-        augment(p_index, [False] * len(gold_k))
-    return match_gold
+    return [
+        matched_row[column] - 1
+        if matched_row[column] and weights[matched_row[column] - 1][column - 1] > 0
+        else -1
+        for column in range(1, gold_count + 1)
+    ]
 
 
 def _span_pairs(
     pred: list[_Anchored], gold: list[_Anchored], kind: DerivedKind, core_match: _CoreMatch
 ) -> tuple[list[tuple[_Anchored, _Anchored]], list[_Anchored], list[_Anchored]]:
-    """One-to-one matching of same-kind entries that **maximizes semantically-correct pairs
-    first, then total pairs**. Two entries sharing an evidence span pair to the partner they
-    actually read alike, so a self-prediction never mismatches its own entries; among equal
-    outcomes the choice is fixed by span-sorted order, independent of input order."""
-    pred_k = sorted(
-        (a for a in pred if a.entry.kind is kind), key=lambda a: (a.start, a.end)
-    )
-    gold_k = sorted(
-        (a for a in gold if a.entry.kind is kind), key=lambda a: (a.start, a.end)
-    )
+    """Maximize correct pairs, then total pairs, with content-based ordering for ties."""
+    def key(a: _Anchored) -> tuple[int, int, str]:
+        return a.start, a.end, compute_annotation_id(a.entry)
 
-    def correct_edge(i: int, j: int) -> bool:
-        return _overlaps(pred_k[i], gold_k[j]) and core_match(pred_k[i], gold_k[j])
-
-    def any_edge(i: int, j: int) -> bool:
-        return _overlaps(pred_k[i], gold_k[j])
-
-    # Lock in a maximum set of correct pairs, then augment with remaining overlaps so wrong
-    # pairs only fill slots a correct pairing couldn't have used.
-    match_gold = _max_matching(pred_k, gold_k, correct_edge)
-    matched_pred = {p for p in match_gold if p != -1}
-    adjacency = [
-        [j for j in range(len(gold_k)) if any_edge(i, j)] if i not in matched_pred else []
-        for i in range(len(pred_k))
+    pred_k = sorted((a for a in pred if a.entry.kind is kind), key=key)
+    gold_k = sorted((a for a in gold if a.entry.kind is kind), key=key)
+    if not pred_k or not gold_k:
+        return [], pred_k, gold_k
+    # One correct edge outweighs every possible gain in total paired entries.
+    correct_weight = min(len(pred_k), len(gold_k)) + 1
+    weights = [
+        [
+            1 + correct_weight * core_match(p, g) if _overlaps(p, g) else 0
+            for g in gold_k
+        ]
+        for p in pred_k
     ]
-
-    def augment(p_index: int, seen: list[bool]) -> bool:
-        for g_index in adjacency[p_index]:
-            if seen[g_index]:
-                continue
-            seen[g_index] = True
-            # Never displace a locked correct pair: only re-route unmatched gold slots.
-            if match_gold[g_index] == -1:
-                match_gold[g_index] = p_index
-                return True
-        return False
-
-    for p_index in range(len(pred_k)):
-        if p_index not in matched_pred:
-            if augment(p_index, [False] * len(gold_k)):
-                matched_pred.add(p_index)
-
-    pairs: list[tuple[_Anchored, _Anchored]] = []
-    for g_index, p_index in enumerate(match_gold):
-        if p_index != -1:
-            pairs.append((pred_k[p_index], gold_k[g_index]))
+    match_gold = _maximum_weight_matching(weights)
+    matched_pred = {p for p in match_gold if p != -1}
+    pairs = [(pred_k[p], gold_k[g]) for g, p in enumerate(match_gold) if p != -1]
     unmatched_pred = [p for i, p in enumerate(pred_k) if i not in matched_pred]
     unmatched_gold = [g for j, g in enumerate(gold_k) if match_gold[j] == -1]
     return pairs, unmatched_pred, unmatched_gold
@@ -424,7 +435,7 @@ def _mention_span(a: _Anchored) -> tuple[int, int] | None:
     well-defined location and so cannot match -- the author/tool must quote evidence that pins
     the mention unambiguously."""
     mention = a.entry.mention
-    if mention is None:
+    if mention is None or not mention.strip():
         return None
     first = a.entry.evidence.find(mention)
     if first < 0 or a.entry.evidence.find(mention, first + 1) != -1:
@@ -446,7 +457,7 @@ def _reference_match(p: _Anchored, g: _Anchored, _c: _Correspondence) -> bool:
     """A correct reference resolves the SAME mention the same way: identical mention span,
     same resolution status, and for a resolved one, the same referent. Matching abstention
     (both UNRESOLVED, same mention) is a correct reading."""
-    if not _same_mention(p, g):
+    if not _same_mention(p, g) or not _status_eq(p, g):
         return False
     if g.entry.resolution is ResolutionStatus.UNRESOLVED:
         return p.entry.resolution is ResolutionStatus.UNRESOLVED
@@ -598,6 +609,9 @@ def _objective(report: FidelityReport) -> _Objective:
 
 
 def _check_sources(source: Source, prediction: Prediction, gold: DerivedGold) -> None:
+    gold_entries = gold.shared + tuple(e for v in gold.variants for e in v.entries)
+    if any(entry.source_id != gold.source_id for entry in gold_entries):
+        raise ValueError("gold entry source does not match gold source")
     if source.id != gold.source_id:
         raise ValueError(f"source {source.id!r} does not match gold {gold.source_id!r}")
     if prediction.source_id != gold.source_id:
