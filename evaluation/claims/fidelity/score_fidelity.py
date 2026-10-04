@@ -1,0 +1,634 @@
+"""Scores a predicted derived layer against the derived gold, per dimension.
+
+The scorer never matches on predicted ids. It *aligns* a prediction to a gold entry of the
+same kind, preferring a **field-exact** match and only then falling back to span overlap --
+so the result does not depend on prediction order, and an aligned-but-wrong pair is visibly
+distinct from a correct one. A dimension's **true positive requires both alignment and a
+correct reading**: span overlap alone is never sufficient support. An aligned pair whose
+semantic fields disagree is a false positive (a wrong reading) AND a false negative (the
+gold entry went unmet), and -- where the gold's derived layer is `exhaustive` -- counts as
+an **unsupported inference**, alongside predictions that align to no gold entry at all.
+
+For a gold with alternative readings, one variant is chosen for the whole report by a
+deterministic objective; a prediction aligning only to a rejected variant's gold is a false
+positive, so a cross-variant mix is never credited.
+
+Span validity (quote real, unique) is only a precondition for anchoring; it is NOT evidence
+that a span *supports* a reading. Gold is anchored strictly: a missing or ambiguous gold
+quote raises rather than silently degrading to a scoring miss.
+"""
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+
+from application.extraction.spans import EvidenceError, validate_span
+from domain.claims.models import Claim
+from domain.derivation.models import (
+    DerivedEntry,
+    DerivedGold,
+    DerivedKind,
+    PropositionSig,
+    ResolutionStatus,
+    Variant,
+)
+from domain.sources.models import Source
+from evaluation.claims.score import ScoreReport, _normalize, score_claims
+
+
+class GoldAnchorError(ValueError):
+    """A gold entry's evidence quote is missing or ambiguous in the source. Unlike a
+    prediction's un-anchorable span (which is just a scoring miss), invalid gold invalidates
+    the benchmark, so it is raised loudly rather than swallowed."""
+
+
+@dataclass(frozen=True)
+class Prediction:
+    """A flat predicted derived layer -- no variants. Entries carry their own evidence
+    quotes and content; the scorer anchors each quote in the source to get offsets."""
+
+    source_id: str
+    entries: tuple[DerivedEntry, ...] = ()
+
+
+@dataclass(frozen=True)
+class DimensionScore:
+    """tp/fp/fn for one dimension. `precision`/`recall` return None ("n/a") when there is
+    nothing predicted / nothing in gold respectively, so a dimension with no applicable
+    items never reports a misleading perfect (or zero) rate."""
+
+    true_positives: int
+    false_positives: int
+    false_negatives: int
+
+    @property
+    def precision(self) -> float | None:
+        predicted = self.true_positives + self.false_positives
+        return self.true_positives / predicted if predicted else None
+
+    @property
+    def recall(self) -> float | None:
+        expected = self.true_positives + self.false_negatives
+        return self.true_positives / expected if expected else None
+
+
+@dataclass(frozen=True)
+class ConditionScore:
+    """Condition preservation, scored independently of `mode`: four sub-checks over aligned
+    CONDITION pairs plus presence (unmatched gold/prediction). Each sub-check counts how many
+    aligned pairs agree on that field. `fully_correct` is the pairs correct on ALL fields --
+    used for variant selection, where presence alone would let readings tie."""
+
+    presence: DimensionScore
+    content_matches: int
+    scope_matches: int
+    attachment_matches: int
+    aligned: int
+    fully_correct: int
+
+
+@dataclass(frozen=True)
+class ReferenceScore:
+    presence: DimensionScore
+    referent_matches: int
+    aligned: int
+    abstention: int
+    unsupported_resolution: int
+    fully_correct: int
+
+
+@dataclass(frozen=True)
+class FidelityReport:
+    literal: ScoreReport
+    condition: ConditionScore
+    reference: ReferenceScore
+    qualification: DimensionScore
+    requirement: DimensionScore
+    description: DimensionScore
+    unsupported: int
+    chosen_variant_id: str | None
+
+
+@dataclass(frozen=True)
+class _Anchored:
+    entry: DerivedEntry
+    start: int
+    end: int
+
+
+def _anchor_prediction(source: Source, entries: Sequence[DerivedEntry]) -> list[_Anchored]:
+    anchored = []
+    for entry in entries:
+        try:
+            start, end = validate_span(source, entry.evidence)
+        except EvidenceError:
+            # An un-anchorable prediction span can't overlap any gold; -1 keeps it out of
+            # alignment so it falls through to the false-positive count for its kind.
+            start, end = -1, -1
+        anchored.append(_Anchored(entry, start, end))
+    return anchored
+
+
+def _anchor_gold(source: Source, entries: Sequence[DerivedEntry]) -> list[_Anchored]:
+    anchored = []
+    for entry in entries:
+        try:
+            start, end = validate_span(source, entry.evidence)
+        except EvidenceError as e:
+            raise GoldAnchorError(
+                f"gold entry {entry.annotation_id} for {entry.source_id} has invalid evidence"
+            ) from e
+        anchored.append(_Anchored(entry, start, end))
+    return anchored
+
+
+def _overlaps(a: _Anchored, b: _Anchored) -> bool:
+    if a.start < 0 or b.start < 0:
+        return False
+    return a.start < b.end and b.start < a.end
+
+
+# A field predicate decides whether an aligned pair reads the SAME way, given the
+# cross-kind presence correspondence (needed only to compare id-valued links like a
+# description's `describes` through alignment rather than by raw fingerprint).
+type _FieldMatch = Callable[[_Anchored, _Anchored, "_Correspondence"], bool]
+
+
+@dataclass(frozen=True)
+class _Correspondence:
+    """Which predicted entry presence-aligns to which gold entry, keyed both ways on
+    annotation id. Built from span+kind alignment ALONE (not field correctness), so an
+    id-valued link resolves to its partner even when the two entries' own fields differ."""
+
+    pred_to_gold: dict[str, str]
+    gold_to_pred: dict[str, str]
+
+
+@dataclass(frozen=True)
+class _Alignment:
+    """One-to-one pairing of predictions to gold of a single kind. `correct` pairs read the
+    same way under the field predicate; `wrong` pairs are aligned by span but read
+    differently; the rest are unmatched."""
+
+    correct: list[tuple[_Anchored, _Anchored]]
+    wrong: list[tuple[_Anchored, _Anchored]]
+    unmatched_pred: list[_Anchored]
+    unmatched_gold: list[_Anchored]
+
+    @property
+    def aligned(self) -> int:
+        return len(self.correct) + len(self.wrong)
+
+    @property
+    def pairs(self) -> list[tuple[_Anchored, _Anchored]]:
+        return self.correct + self.wrong
+
+
+# Whether two same-kind entries read alike, ignoring id-valued links (which need the
+# correspondence, built AFTER matching). This is the matching preference, so same-span
+# entries pair to their semantic partner rather than crosswise.
+type _CoreMatch = Callable[[_Anchored, _Anchored], bool]
+
+
+def _max_matching(
+    pred_k: list[_Anchored], gold_k: list[_Anchored], allowed: Callable[[int, int], bool]
+) -> list[int]:
+    """Kuhn's augmenting-path matching over the allowed (pred, gold) edges. Returns
+    `match_gold`: gold index -> pred index, or -1. Deterministic given the input orders."""
+    adjacency = [[j for j in range(len(gold_k)) if allowed(i, j)] for i in range(len(pred_k))]
+    match_gold = [-1] * len(gold_k)
+
+    def augment(p_index: int, seen: list[bool]) -> bool:
+        for g_index in adjacency[p_index]:
+            if seen[g_index]:
+                continue
+            seen[g_index] = True
+            if match_gold[g_index] == -1 or augment(match_gold[g_index], seen):
+                match_gold[g_index] = p_index
+                return True
+        return False
+
+    for p_index in range(len(pred_k)):
+        augment(p_index, [False] * len(gold_k))
+    return match_gold
+
+
+def _span_pairs(
+    pred: list[_Anchored], gold: list[_Anchored], kind: DerivedKind, core_match: _CoreMatch
+) -> tuple[list[tuple[_Anchored, _Anchored]], list[_Anchored], list[_Anchored]]:
+    """One-to-one matching of same-kind entries that **maximizes semantically-correct pairs
+    first, then total pairs**. Two entries sharing an evidence span pair to the partner they
+    actually read alike, so a self-prediction never mismatches its own entries; among equal
+    outcomes the choice is fixed by span-sorted order, independent of input order."""
+    pred_k = sorted(
+        (a for a in pred if a.entry.kind is kind), key=lambda a: (a.start, a.end)
+    )
+    gold_k = sorted(
+        (a for a in gold if a.entry.kind is kind), key=lambda a: (a.start, a.end)
+    )
+
+    def correct_edge(i: int, j: int) -> bool:
+        return _overlaps(pred_k[i], gold_k[j]) and core_match(pred_k[i], gold_k[j])
+
+    def any_edge(i: int, j: int) -> bool:
+        return _overlaps(pred_k[i], gold_k[j])
+
+    # Lock in a maximum set of correct pairs, then augment with remaining overlaps so wrong
+    # pairs only fill slots a correct pairing couldn't have used.
+    match_gold = _max_matching(pred_k, gold_k, correct_edge)
+    matched_pred = {p for p in match_gold if p != -1}
+    adjacency = [
+        [j for j in range(len(gold_k)) if any_edge(i, j)] if i not in matched_pred else []
+        for i in range(len(pred_k))
+    ]
+
+    def augment(p_index: int, seen: list[bool]) -> bool:
+        for g_index in adjacency[p_index]:
+            if seen[g_index]:
+                continue
+            seen[g_index] = True
+            # Never displace a locked correct pair: only re-route unmatched gold slots.
+            if match_gold[g_index] == -1:
+                match_gold[g_index] = p_index
+                return True
+        return False
+
+    for p_index in range(len(pred_k)):
+        if p_index not in matched_pred:
+            if augment(p_index, [False] * len(gold_k)):
+                matched_pred.add(p_index)
+
+    pairs: list[tuple[_Anchored, _Anchored]] = []
+    for g_index, p_index in enumerate(match_gold):
+        if p_index != -1:
+            pairs.append((pred_k[p_index], gold_k[g_index]))
+    unmatched_pred = [p for i, p in enumerate(pred_k) if i not in matched_pred]
+    unmatched_gold = [g for j, g in enumerate(gold_k) if match_gold[j] == -1]
+    return pairs, unmatched_pred, unmatched_gold
+
+
+# Per-NON-DESCRIPTION-kind "reads alike" for matching preference (link-free). Descriptions
+# are matched in a second stage, because their correctness depends on `describes` resolving
+# through the correspondence the other kinds establish (so they can't be matched link-free).
+_CORE_MATCHES: dict[DerivedKind, _CoreMatch] = {}
+_STAGE_ONE_KINDS = tuple(k for k in DerivedKind if k is not DerivedKind.DESCRIPTION)
+
+
+def _record(
+    pairs: list[tuple[_Anchored, _Anchored]], correspondence: _Correspondence
+) -> None:
+    for p, g in pairs:
+        correspondence.pred_to_gold[p.entry.annotation_id] = g.entry.annotation_id
+        correspondence.gold_to_pred[g.entry.annotation_id] = p.entry.annotation_id
+
+
+def _correspondence(pred: list[_Anchored], gold: list[_Anchored]) -> _Correspondence:
+    """Built in two stages so a description's attachment can be judged against where its
+    target actually landed: first the non-description kinds (link-free), then descriptions
+    using a `describes`-aware preference over the stage-one correspondence."""
+    correspondence = _Correspondence({}, {})
+    for kind in _STAGE_ONE_KINDS:
+        pairs, _, _ = _span_pairs(pred, gold, kind, _CORE_MATCHES[kind])
+        _record(pairs, correspondence)
+    pairs, _, _ = _span_pairs(
+        pred, gold, DerivedKind.DESCRIPTION, _description_core(correspondence)
+    )
+    _record(pairs, correspondence)
+    return correspondence
+
+
+def _align(
+    pred: list[_Anchored],
+    gold: list[_Anchored],
+    kind: DerivedKind,
+    field_match: _FieldMatch,
+    correspondence: _Correspondence,
+) -> _Alignment:
+    """Match preferring semantic correctness (so same-span entries pair to their true
+    partner), then label each pair correct/wrong by the full field predicate. Descriptions
+    use a `describes`-aware preference so two same-text descriptions with different targets
+    pair to the right occurrence rather than crosswise."""
+    core = _description_core(correspondence) if kind is DerivedKind.DESCRIPTION else _CORE_MATCHES[kind]
+    pairs, unmatched_pred, unmatched_gold = _span_pairs(pred, gold, kind, core)
+    correct: list[tuple[_Anchored, _Anchored]] = []
+    wrong: list[tuple[_Anchored, _Anchored]] = []
+    for p, g in pairs:
+        (correct if field_match(p, g, correspondence) else wrong).append((p, g))
+    return _Alignment(correct, wrong, unmatched_pred, unmatched_gold)
+
+
+def _dimension_score(alignment: _Alignment) -> DimensionScore:
+    """A true positive needs a field-correct alignment. A `wrong` pair is both a false
+    positive (wrong reading) and a false negative (gold unmet); unmatched predictions add
+    false positives, unmatched gold adds false negatives."""
+    return DimensionScore(
+        true_positives=len(alignment.correct),
+        false_positives=len(alignment.wrong) + len(alignment.unmatched_pred),
+        false_negatives=len(alignment.wrong) + len(alignment.unmatched_gold),
+    )
+
+
+def _presence_score(alignment: _Alignment) -> DimensionScore:
+    """Presence recognizes any aligned pair -- a condition is *there* even if a field is
+    wrong. The field sub-counts carry the correctness; this must not conflate the two."""
+    return DimensionScore(
+        true_positives=alignment.aligned,
+        false_positives=len(alignment.unmatched_pred),
+        false_negatives=len(alignment.unmatched_gold),
+    )
+
+
+def _sig_eq(a: PropositionSig | None, b: PropositionSig | None) -> bool:
+    if a is None or b is None:
+        return a is None and b is None
+    return (
+        _normalize(a.subject) == _normalize(b.subject)
+        and a.predicate == b.predicate
+        and _normalize(a.object) == _normalize(b.object)
+    )
+
+
+def _link_aligns(p_target: str | None, g_target: str | None, c: _Correspondence) -> bool:
+    """An id-valued link (a description's `describes`) is correct when the predicted target
+    presence-aligns to the gold target -- not when their fingerprints are equal."""
+    if p_target is None or g_target is None:
+        return p_target is None and g_target is None
+    return c.pred_to_gold.get(p_target) == g_target
+
+
+def _status_eq(p: _Anchored, g: _Anchored) -> bool:
+    """Interpretation metadata every derived entry carries: an interpreted reading must not
+    pass as a literal extraction, and (outside references, where resolution is scored on its
+    own) a differing resolution status is a different reading."""
+    return p.entry.support is g.entry.support and p.entry.resolution is g.entry.resolution
+
+
+def _occurrence_core(p: _Anchored, g: _Anchored) -> bool:
+    return (
+        _normalize(p.entry.base_concept) == _normalize(g.entry.base_concept)
+        and _normalize(p.entry.scope) == _normalize(g.entry.scope)
+        and _status_eq(p, g)
+    )
+
+
+def _requirement_core(p: _Anchored, g: _Anchored) -> bool:
+    return (
+        _sig_eq(p.entry.reframed_proposition, g.entry.reframed_proposition)
+        and _normalize(p.entry.reframed_mode) == _normalize(g.entry.reframed_mode)
+        and _status_eq(p, g)
+    )
+
+
+def _condition_core(p: _Anchored, g: _Anchored) -> bool:
+    return (
+        _normalize(p.entry.condition_text) == _normalize(g.entry.condition_text)
+        and _normalize(p.entry.scope) == _normalize(g.entry.scope)
+        and _sig_eq(p.entry.attaches_to, g.entry.attaches_to)
+        and _status_eq(p, g)
+    )
+
+
+def _description_core(c: _Correspondence) -> _CoreMatch:
+    """Descriptions read alike when their text and support agree AND their `describes` target
+    maps to the same gold entry under the (stage-one) correspondence -- so two same-text
+    descriptions attaching to different occurrences are distinguished during matching."""
+
+    def match(p: _Anchored, g: _Anchored) -> bool:
+        return (
+            _normalize(p.entry.description_text) == _normalize(g.entry.description_text)
+            and _status_eq(p, g)
+            and _link_aligns(p.entry.describes, g.entry.describes, c)
+        )
+
+    return match
+
+
+def _occurrence_match(p: _Anchored, g: _Anchored, _c: _Correspondence) -> bool:
+    return _occurrence_core(p, g)
+
+
+def _requirement_match(p: _Anchored, g: _Anchored, _c: _Correspondence) -> bool:
+    return _requirement_core(p, g)
+
+
+def _description_match(p: _Anchored, g: _Anchored, c: _Correspondence) -> bool:
+    return _description_core(c)(p, g)
+
+
+def _condition_match(p: _Anchored, g: _Anchored, _c: _Correspondence) -> bool:
+    return _condition_core(p, g)
+
+
+def _mention_span(a: _Anchored) -> tuple[int, int] | None:
+    """The resolved mention's absolute span, requiring it to occur **exactly once** inside the
+    entry's anchored evidence. A mention that is absent, or ambiguous (repeated), has no
+    well-defined location and so cannot match -- the author/tool must quote evidence that pins
+    the mention unambiguously."""
+    mention = a.entry.mention
+    if mention is None:
+        return None
+    first = a.entry.evidence.find(mention)
+    if first < 0 or a.entry.evidence.find(mention, first + 1) != -1:
+        return None
+    return a.start + first, a.start + first + len(mention)
+
+
+def _same_mention(p: _Anchored, g: _Anchored) -> bool:
+    """The SAME mention occurrence: identical absolute boundaries. A longer or shifted
+    mention sharing the quote (e.g. gold "this" vs predicted "this gesture") is not the same
+    reference. A mention that can't be located unambiguously never matches."""
+    if p.entry.mention is None or g.entry.mention is None:
+        return p.entry.mention is None and g.entry.mention is None
+    ps, gs = _mention_span(p), _mention_span(g)
+    return ps is not None and ps == gs
+
+
+def _reference_match(p: _Anchored, g: _Anchored, _c: _Correspondence) -> bool:
+    """A correct reference resolves the SAME mention the same way: identical mention span,
+    same resolution status, and for a resolved one, the same referent. Matching abstention
+    (both UNRESOLVED, same mention) is a correct reading."""
+    if not _same_mention(p, g):
+        return False
+    if g.entry.resolution is ResolutionStatus.UNRESOLVED:
+        return p.entry.resolution is ResolutionStatus.UNRESOLVED
+    return p.entry.resolution is ResolutionStatus.RESOLVED and _normalize(
+        p.entry.referent
+    ) == _normalize(g.entry.referent)
+
+
+def _score_condition(alignment: _Alignment) -> ConditionScore:
+    content = scope = attachment = 0
+    for p, g in alignment.pairs:
+        content += _normalize(p.entry.condition_text) == _normalize(g.entry.condition_text)
+        scope += _normalize(p.entry.scope) == _normalize(g.entry.scope)
+        attachment += _sig_eq(p.entry.attaches_to, g.entry.attaches_to)
+    return ConditionScore(
+        presence=_presence_score(alignment),
+        content_matches=content,
+        scope_matches=scope,
+        attachment_matches=attachment,
+        aligned=alignment.aligned,
+        fully_correct=len(alignment.correct),
+    )
+
+
+def _score_reference(alignment: _Alignment) -> ReferenceScore:
+    """Presence recognizes the aligned mention; referent/abstention carry correctness.
+    Abstention and unsupported-resolution are counted only for the SAME mention (a correct
+    span alignment), so a wrong-mention pair doesn't masquerade as either."""
+    referent = abstention = unsupported = 0
+    for p, g in alignment.pairs:
+        if not _same_mention(p, g):
+            continue
+        if g.entry.resolution is ResolutionStatus.UNRESOLVED:
+            if p.entry.resolution is ResolutionStatus.UNRESOLVED:
+                abstention += 1
+            else:
+                unsupported += 1
+            continue
+        if p.entry.resolution is ResolutionStatus.RESOLVED and _normalize(
+            p.entry.referent
+        ) == _normalize(g.entry.referent):
+            referent += 1
+    return ReferenceScore(
+        presence=_presence_score(alignment),
+        referent_matches=referent,
+        aligned=alignment.aligned,
+        abstention=abstention,
+        unsupported_resolution=unsupported,
+        fully_correct=len(alignment.correct),
+    )
+
+
+def _reference_core(p: _Anchored, g: _Anchored) -> bool:
+    return _reference_match(p, g, _Correspondence({}, {}))
+
+
+# Stage-one kinds only; descriptions are matched via `_description_core(correspondence)`.
+_CORE_MATCHES.update(
+    {
+        DerivedKind.OCCURRENCE: _occurrence_core,
+        DerivedKind.REQUIREMENT: _requirement_core,
+        DerivedKind.CONDITION: _condition_core,
+        DerivedKind.RESOLVED_REFERENCE: _reference_core,
+    }
+)
+
+
+def _variant_entries(gold: DerivedGold, variant: Variant) -> tuple[DerivedEntry, ...]:
+    return gold.shared + variant.entries
+
+
+def _variant_report(
+    source: Source,
+    pred_anchored: list[_Anchored],
+    gold: DerivedGold,
+    variant: Variant,
+    predicted_claims: Sequence[Claim],
+    gold_claims: Sequence[Claim],
+) -> FidelityReport:
+    gold_anchored = _anchor_gold(source, _variant_entries(gold, variant))
+    correspondence = _correspondence(pred_anchored, gold_anchored)
+
+    def align(kind: DerivedKind, match: _FieldMatch) -> _Alignment:
+        return _align(pred_anchored, gold_anchored, kind, match, correspondence)
+
+    condition_align = align(DerivedKind.CONDITION, _condition_match)
+    reference_align = align(DerivedKind.RESOLVED_REFERENCE, _reference_match)
+    occurrence_align = align(DerivedKind.OCCURRENCE, _occurrence_match)
+    requirement_align = align(DerivedKind.REQUIREMENT, _requirement_match)
+    description_align = align(DerivedKind.DESCRIPTION, _description_match)
+
+    return FidelityReport(
+        literal=score_claims(predicted_claims, gold_claims),
+        condition=_score_condition(condition_align),
+        reference=_score_reference(reference_align),
+        qualification=_dimension_score(occurrence_align),
+        requirement=_dimension_score(requirement_align),
+        description=_dimension_score(description_align),
+        unsupported=_unsupported(
+            gold,
+            occurrence_align,
+            requirement_align,
+            description_align,
+            condition_align,
+            reference_align,
+        ),
+        chosen_variant_id=variant.variant_id,
+    )
+
+
+def _unsupported(gold: DerivedGold, *alignments: _Alignment) -> int:
+    """Unsupported inference, counted only where the gold's derived layer is `exhaustive`
+    (else an unmatched prediction may just fall outside incomplete gold). It is a reading the
+    gold does not license: a `wrong` aligned pair (right span, wrong reading) OR a prediction
+    aligning to no gold entry. Matching abstention is NOT unsupported -- it is a `correct`
+    reference pair, so it is excluded by construction."""
+    if not gold.exhaustive:
+        return 0
+    return sum(len(a.wrong) + len(a.unmatched_pred) for a in alignments)
+
+
+@dataclass(frozen=True)
+class _Objective:
+    """Variant-choice key: most fully-correct readings, then fewest false positives, then the
+    lowest variant id. Field-correct counts -- NOT presence -- so variants that differ only
+    in a condition's content or scope don't tie and let an exact prediction pick the wrong
+    one. Comparison is natural (bigger is better) except the id, handled in `_best_variant`."""
+
+    correct: int
+    neg_false_positives: int
+
+
+def _objective(report: FidelityReport) -> _Objective:
+    correct = (
+        report.condition.fully_correct
+        + report.reference.fully_correct
+        + report.qualification.true_positives
+        + report.requirement.true_positives
+        + report.description.true_positives
+    )
+    false_positives = (
+        report.condition.presence.false_positives
+        + report.reference.presence.false_positives
+        + report.qualification.false_positives
+        + report.requirement.false_positives
+        + report.description.false_positives
+    )
+    return _Objective(correct=correct, neg_false_positives=-false_positives)
+
+
+def _check_sources(source: Source, prediction: Prediction, gold: DerivedGold) -> None:
+    if source.id != gold.source_id:
+        raise ValueError(f"source {source.id!r} does not match gold {gold.source_id!r}")
+    if prediction.source_id != gold.source_id:
+        raise ValueError(
+            f"prediction source {prediction.source_id!r} does not match gold {gold.source_id!r}"
+        )
+    for entry in prediction.entries:
+        if entry.source_id != gold.source_id:
+            raise ValueError(
+                f"prediction entry source {entry.source_id!r} does not match {gold.source_id!r}"
+            )
+
+
+def score_fidelity(
+    predicted: Prediction,
+    predicted_claims: Sequence[Claim],
+    gold: DerivedGold,
+    gold_claims: Sequence[Claim],
+    source: Source,
+) -> FidelityReport:
+    _check_sources(source, predicted, gold)
+    pred_anchored = _anchor_prediction(source, predicted.entries)
+    variants = gold.variants or (Variant(variant_id="only"),)
+    reports = [
+        _variant_report(source, pred_anchored, gold, v, predicted_claims, gold_claims)
+        for v in variants
+    ]
+    # Most-correct wins, then fewest false positives, ties broken to the LOWEST variant id
+    # (deterministic, documented). All keys ascending under min().
+    def key(report: FidelityReport) -> tuple[int, int, str]:
+        objective = _objective(report)
+        return (-objective.correct, -objective.neg_false_positives, report.chosen_variant_id or "")
+
+    return min(reports, key=key)

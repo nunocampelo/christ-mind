@@ -12,21 +12,15 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
+from application.extraction.spans import (
+    AmbiguousEvidenceError as AmbiguousEvidenceError,
+    EvidenceError as EvidenceError,
+    EvidenceNotFoundError as EvidenceNotFoundError,
+    validate_span,
+)
 from domain.claims.identity import compute_claim_id
 from domain.claims.models import Attribution, Claim, Mode, Polarity, Predicate
 from domain.sources.models import Source
-
-
-class EvidenceError(ValueError):
-    pass
-
-
-class EvidenceNotFoundError(EvidenceError):
-    pass
-
-
-class AmbiguousEvidenceError(EvidenceError):
-    pass
 
 
 class ExtractionFailedError(Exception):
@@ -173,11 +167,7 @@ def extract_source(source: Source, extractor: ClaimExtractor) -> SourceExtractio
 
 def anchor_claim(source: Source, candidate: CandidateClaim) -> Claim:
     evidence = candidate.evidence
-    start = source.text.find(evidence) if evidence.strip() else -1
-    if start == -1:
-        raise EvidenceNotFoundError("evidence is not a substring of the source text")
-    if source.text.find(evidence, start + 1) != -1:
-        raise AmbiguousEvidenceError("evidence occurs more than once in the source text")
+    start, end = validate_span(source, evidence)
 
     return Claim(
         claim_id=compute_claim_id(
@@ -199,5 +189,5 @@ def anchor_claim(source: Source, candidate: CandidateClaim) -> Claim:
         mode=candidate.mode,
         attribution=candidate.attribution,
         evidence_start=start,
-        evidence_end=start + len(evidence),
+        evidence_end=end,
     )

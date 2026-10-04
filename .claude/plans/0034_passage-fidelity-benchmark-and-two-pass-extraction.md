@@ -259,3 +259,94 @@ annotations and adjudication history, prototype cross-check scoped to t3-1-5; (7
 reserved-report split, plus direct scorer unit tests (not just the oracle round-trip). Two
 smaller: a dedicated span validator (no dummy-claim construction), and representation
 dataclasses in the domain layer with orchestration in application.
+
+## Stage 1 — SHIPPED (scaffold; 2026-10-04)
+
+Stage 1 only, per the agreed sequencing. **Benchmark scaffold** (schema + scorer + runner +
+proof tests, verified on synthetic fixtures); gold passages selected and frozen but
+**unauthored** (authoring is Stage 1b). Stages 1b and 2 remain deferred. A second review
+tightened the scorer contract before coding; all seven of its points are reflected below.
+
+Delivered:
+- `src/application/extraction/spans.py` — `validate_span` + the `Evidence*Error`s moved
+  here; `extract_claims.py` imports them from here (no cycle) and `anchor_claim` now calls
+  `validate_span`. No behaviour change (`tests/test_spans.py` guards the refactor).
+- `src/domain/derivation/{models,identity,serialization}.py` — the derived-gold entities
+  (`DerivedKind` incl. `CONDITION`; `Support`/`ResolutionStatus`/`AuthoringStatus`;
+  `PropositionSig` gold-owned attachment; `DerivedEntry` with typed per-kind content;
+  `Variant`; `DerivedGold` with separate literal/derived authoring status + `exhaustive`).
+  `compute_annotation_id` is the content fingerprint (quote + kind + support + resolution +
+  canonical content; excludes predicted ids / timestamps / notes / variant membership;
+  substantive revision → new id, `adjudication_history` links old→new). Sidecar pydantic
+  models recompute the id on load (never trusted), exactly as `ClaimLine`.
+- `evaluation/claims/fidelity/` — `score_fidelity.py` (align-then-compare by anchored-span
+  overlap + kind, one variant chosen for the whole report, precise n/a semantics, condition
+  scored independently of `mode`, reference abstention vs unsupported-resolution split,
+  unsupported-inference only where gold is `exhaustive`), `run.py` (dev/report split frozen;
+  skips unauthored, reports coverage; `--oracle` over synthetic fixtures; `--report`),
+  `fixtures.py` (shared synthetic cases), and seeded `gold/*.{derived.json,jsonl}` for the
+  9 frozen passages (all unauthored).
+- Tests: `tests/test_fidelity_{identity,serialization,score}.py` + `tests/test_spans.py`.
+  `test_fidelity_score.py` is the real proof — one test per failure mode from Verification.
+
+Verified: `.venv/bin/pyright` clean; `.venv/bin/python -m pytest tests -q` → 410 passed;
+`--oracle` perfect on applicable dimensions, correct n/a elsewhere; dev/report runs report
+`0 authored / N total` coverage and skip unauthored passages.
+
+Second-review fixes folded in (span overlap was being treated as sufficient support):
+- A dimension's **true positive now requires both alignment AND a correct reading** across
+  all kind-specific fields (occurrence base-concept+scope, requirement proposition+mode,
+  description text+target, condition content+scope+attachment). An aligned-but-wrong pair is
+  FP + FN, not a free TP.
+- **Alignment is field-exact-first, then overlap** — deterministic and order-independent
+  even when entries share an evidence quote.
+- **Unsupported inference** now counts wrong readings on valid spans (aligned-but-wrong) as
+  well as unmatched predictions, where gold is `exhaustive`; matching abstention is excluded
+  by construction.
+- **Gold anchored strictly** (`GoldAnchorError`) — invalid gold evidence raises, it never
+  degrades to a silent scoring miss (prediction misses still handled separately).
+- **Sidecar enforces per-kind required/allowed fields + resolution rules + no dangling
+  `describes` links**; the allowed/required sets derive from a `ContentField` enum asserted
+  against `DerivedEntry`'s fields, so a rename can't silently drift.
+- **`--oracle` asserts correctness** (`OracleError`) and fails loudly on a broken round-trip;
+  fixtures now cover requirement, description, and a nonempty literal layer, plus abstention.
+
+Third-review fixes (matching/attachment correctness):
+- **Maximum-cardinality span matching** (augmenting paths / Kuhn's), replacing the greedy
+  first-overlap pass — order-independent and provably optimal even when a broad prediction
+  overlaps several gold spans. True positive still requires a correct reading on top.
+- **Id-valued links (`describes`) are compared through alignment**, not by fingerprint: a
+  description is attachment-correct when its predicted target presence-aligns to the gold
+  target, so a differing evidence quote on the target no longer breaks a correct link.
+- **Reference matching compares the resolved mention by its span**, so a different mention
+  sharing the evidence quote is not credited for a coincidentally-correct referent.
+- **Presence vs correctness separated** for conditions and references: presence recognizes
+  the aligned entry; the field sub-counts (content/scope/attachment, referent/abstention)
+  carry correctness independently. A present-but-wrong-scope condition is presence TP with
+  scope 0/1.
+- **Oracle assertions check expected counts computed from the gold** (per-dimension item
+  counts, condition field counts, referent/abstention counts, literal loose/strict/relaxed)
+  and that every dimension is exercised — an accidentally empty or over-counting report
+  can no longer pass.
+Fourth-review fixes (matching preference, variant key, mentions, source/status):
+- **Correctness-preferring matching.** `_span_pairs` now maximizes semantically-correct
+  pairs first (Kuhn's over correct-only edges), then augments with remaining overlaps — so
+  two entries sharing an evidence span pair to the partner they actually read alike and a
+  self-prediction never mismatches its own entries, in any input order.
+- **Staged description matching + target constraint.** Non-description kinds match first and
+  build the correspondence; descriptions match last using text + `describes` mapped through
+  it (so two same-text descriptions with different targets are distinguished). The sidecar
+  now enforces that `describes` targets a **non-description** entry (no link cycle).
+- **Variant selection by fully-correct counts** (not presence) with a **lowest-id**
+  tie-break, so variants differing only in a condition's content/scope don't tie and let an
+  exact prediction pick the wrong one.
+- **Exact, unambiguous mentions.** A mention must occur exactly once in its evidence quote;
+  matching compares exact mention boundaries (ambiguous gold mention → no credit).
+- **Source + interpretation status.** `score_fidelity` validates source/gold/prediction ids
+  and every entry's source; `support` (and non-reference `resolution`) join every
+  correctness check, so an interpreted reading can't pass as literal extraction.
+- Final: `pyright` clean, `pytest tests -q` → 422 passed; `--oracle` exits 0.
+
+Frozen split (hypotheses; derived layers unauthored): **DEV** t3-1-5, t3-1-6, t3-4-4,
+t1-1-3, t1-1-56 — **REPORT** t2-3-9, t1-1-65, t2-1-13, t4-5-10. Expanding toward 12 is a
+versioned split amendment made before tuning, not an ad-hoc expansion.
