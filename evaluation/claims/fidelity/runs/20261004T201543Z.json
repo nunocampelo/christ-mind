@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "split": "dev",
+  "literal_coverage": {
+    "authored": 0,
+    "total": 5
+  },
+  "derived_coverage": {
+    "authored": 0,
+    "total": 5
+  },
+  "sources": [
+    {
+      "source_id": "t3-1-5",
+      "literal_state": "unauthored",
+      "derived_state": "unauthored",
+      "literal": null,
+      "derived": null
+    },
+    {
+      "source_id": "t3-1-6",
+      "literal_state": "unauthored",
+      "derived_state": "unauthored",
+      "literal": null,
+      "derived": null
+    },
+    {
+      "source_id": "t3-4-4",
+      "literal_state": "unauthored",
+      "derived_state": "unauthored",
+      "literal": null,
+      "derived": null
+    },
+    {
+      "source_id": "t1-1-3",
+      "literal_state": "unauthored",
+      "derived_state": "unauthored",
+      "literal": null,
+      "derived": null
+    },
+    {
+      "source_id": "t1-1-56",
+      "literal_state": "unauthored",
+      "derived_state": "unauthored",
+      "literal": null,
+      "derived": null
+    }
+  ]
+}

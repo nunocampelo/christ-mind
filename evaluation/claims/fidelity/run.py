@@ -12,7 +12,6 @@ without needing authored gold.
 
 import argparse
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -25,17 +24,26 @@ from domain.derivation.models import (
     DerivedKind,
     ResolutionStatus,
 )
-from domain.derivation.serialization import DerivedGoldFile
+from domain.derivation.serialization import SCHEMA_VERSION, DerivedGoldFile
 from domain.sources.models import Source
 from evaluation.claims.fidelity.fixtures import OracleCase, oracle_cases
+from evaluation.claims.fidelity.report import (
+    DerivedReport,
+    LayerCoverage,
+    LayerState,
+    LiteralReport,
+    RunRecord,
+    SourceRun,
+    derived_lines,
+    literal_lines,
+    run_lines,
+)
 from evaluation.claims.fidelity.score_fidelity import (
     DimensionScore,
     FidelityReport,
     Prediction,
     score_fidelity,
 )
-from evaluation.claims.gold import load_gold_claims
-from evaluation.claims.score import ScoreReport
 from infrastructure.database.sources_acim import list_acim_sources
 
 GOLD_DIR = Path(__file__).parent / "gold"
@@ -54,48 +62,13 @@ SPLIT_SOURCES: dict[Split, tuple[str, ...]] = {
 }
 
 
-@dataclass(frozen=True)
-class Coverage:
-    authored: int
-    total: int
-
-
 def _load_gold(source_id: str) -> DerivedGold:
     path = GOLD_DIR / f"{source_id}.derived.json"
     return DerivedGoldFile.model_validate_json(path.read_text()).to_gold()
 
 
-def _score_rate(score: DimensionScore) -> str:
-    def fmt(value: float | None) -> str:
-        return "n/a" if value is None else f"{value:.3f}"
-
-    return (
-        f"P {fmt(score.precision)}  R {fmt(score.recall)}  "
-        f"(tp {score.true_positives}, fp {score.false_positives}, fn {score.false_negatives})"
-    )
-
-
 def _report_lines(report: FidelityReport) -> list[str]:
-    c, r = report.condition, report.reference
-    return [
-        f"  variant        {report.chosen_variant_id}",
-        f"  literal loose  {_score_rate_claim(report.literal)}",
-        f"  qualification  {_score_rate(report.qualification)}",
-        f"  requirement    {_score_rate(report.requirement)}",
-        f"  description    {_score_rate(report.description)}",
-        f"  condition      {_score_rate(c.presence)}",
-        f"    content {c.content_matches}/{c.aligned}  scope {c.scope_matches}/{c.aligned}  "
-        f"attachment {c.attachment_matches}/{c.aligned}",
-        f"  reference      {_score_rate(r.presence)}",
-        f"    referent {r.referent_matches}/{r.aligned}  abstention {r.abstention}  "
-        f"unsupported_resolution {r.unsupported_resolution}",
-        f"  unsupported inference  {report.unsupported}",
-    ]
-
-
-def _score_rate_claim(report: ScoreReport) -> str:
-    s = report.loose
-    return f"P {s.precision:.3f}  R {s.recall:.3f}  (tp {s.true_positives}, fp {s.false_positives})"
+    return literal_lines(LiteralReport.of(report.literal)) + derived_lines(DerivedReport.of(report))
 
 
 class OracleError(AssertionError):
@@ -232,31 +205,51 @@ def _all_entries(gold: DerivedGold) -> tuple[DerivedEntry, ...]:
     return gold.shared + first
 
 
-def _coverage(split: Split) -> Coverage:
-    ids = SPLIT_SOURCES[split]
-    authored = sum(
-        _load_gold(sid).derived_status is AuthoringStatus.AUTHORED for sid in ids
+def _coverage(statuses: Sequence[AuthoringStatus]) -> LayerCoverage:
+    return LayerCoverage(
+        authored=sum(s is AuthoringStatus.AUTHORED for s in statuses),
+        total=len(statuses),
     )
-    return Coverage(authored=authored, total=len(ids))
 
 
-def run_split(split: Split, sources: Sequence[Source]) -> list[str]:
-    by_id = {s.id: s for s in sources}
-    coverage = _coverage(split)
-    lines = [f"split {split}: coverage {coverage.authored} authored / {coverage.total} total"]
+def _source_run(source_id: str, gold: DerivedGold) -> SourceRun:
+    """One passage, each layer in its own state. Stage 1 wires no extractor or deriver, so an
+    authored layer has no prediction to score against: it is NOT_RUN (absent input), never an
+    invented empty prediction scored as an all-missing model result. Only a SCORED layer --
+    which this scaffold never reaches -- carries numbers. Reaching SCORED is Stage 2's job and
+    is where the scorer and the literal-claim loader get called; keeping that out of here is
+    why an unauthored layer's gold files are never read for scoring."""
+    literal_state = (
+        LayerState.UNAUTHORED
+        if gold.literal_status is AuthoringStatus.UNAUTHORED
+        else LayerState.NOT_RUN
+    )
+    derived_state = (
+        LayerState.UNAUTHORED
+        if gold.derived_status is AuthoringStatus.UNAUTHORED
+        else LayerState.NOT_RUN
+    )
+    return SourceRun(
+        source_id=source_id, literal_state=literal_state, derived_state=derived_state
+    )
+
+
+def run_split(split: Split) -> RunRecord:
+    runs = []
+    literal_statuses = []
+    derived_statuses = []
     for source_id in SPLIT_SOURCES[split]:
         gold = _load_gold(source_id)
-        if gold.derived_status is AuthoringStatus.UNAUTHORED:
-            lines.append(f"  {source_id}: UNAUTHORED -- skipped (not scored)")
-            continue
-        source = by_id[source_id]
-        gold_claims = load_gold_claims(GOLD_DIR / f"{source_id}.jsonl", sources)
-        # A derived-only run with no deriver has no prediction yet; Stage 2 wires one in.
-        prediction = Prediction(source_id=source_id)
-        report = score_fidelity(prediction, (), gold, gold_claims, source)
-        lines.append(f"\n  {source_id}:")
-        lines += [f"  {line}" for line in _report_lines(report)]
-    return lines
+        literal_statuses.append(gold.literal_status)
+        derived_statuses.append(gold.derived_status)
+        runs.append(_source_run(source_id, gold))
+    return RunRecord(
+        schema_version=SCHEMA_VERSION,
+        split=split.value,
+        literal_coverage=_coverage(literal_statuses),
+        derived_coverage=_coverage(derived_statuses),
+        sources=runs,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -270,16 +263,17 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     sources = list_acim_sources()
 
-    if args.oracle:
-        lines = run_oracle(sources)
-    else:
-        lines = run_split(Split.REPORT if args.report else Split.DEV, sources)
-
-    summary = "\n".join(lines)
-    print(summary)
-
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+    if args.oracle:
+        summary = "\n".join(run_oracle(sources))
+    else:
+        record = run_split(Split.REPORT if args.report else Split.DEV)
+        summary = "\n".join(run_lines(record))
+        (RUNS_DIR / f"{run_id}.json").write_text(record.model_dump_json(indent=2) + "\n")
+
+    print(summary)
     (RUNS_DIR / f"{run_id}.txt").write_text(summary + "\n")
 
 

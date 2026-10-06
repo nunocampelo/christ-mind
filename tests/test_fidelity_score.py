@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 
-from domain.claims.models import Predicate
+from domain.claims.models import Attribution, Mode, Polarity, Predicate
 from domain.derivation.models import (
     AuthoringStatus,
     DerivedGold,
@@ -37,7 +37,14 @@ SOURCE = Source(
     ),
 )
 
-FORGIVENESS = PropositionSig("forgiveness", Predicate.IS, "an empty gesture")
+FORGIVENESS = PropositionSig(
+    "forgiveness",
+    Predicate.IS,
+    "an empty gesture",
+    Polarity.AFFIRMED,
+    Mode.ASSERTION,
+    Attribution.COURSE,
+)
 
 
 def _authored(
@@ -587,11 +594,14 @@ def test_gold_entry_source_mismatch_is_invalid_gold(location):
             Variant("z", (bad if location == "unchosen" else good,)),
         ),
     )
-    with pytest.raises(ValueError, match="gold entry source"):
+    with pytest.raises(ValueError, match="does not own passage"):
         _score(Prediction("p", (good,)), gold)
 
 
-@pytest.mark.parametrize("mention", [None, "", " ", "absent", "this"])
+# Blank mentions ("" / " ") are rejected at construction now (see test_fidelity_identity's
+# blank-field checks), so they never reach anchoring; the cases here construct but fail to
+# anchor unambiguously (absent from the evidence, or repeated).
+@pytest.mark.parametrize("mention", [None, "absent", "this"])
 def test_invalid_gold_mentions_raise_but_predictions_are_scoring_misses(mention):
     source = Source(id="p", book="ACIM", chapter=1, text="this and this again")
     valid = entry(
@@ -619,3 +629,61 @@ def test_same_span_wrong_conditions_have_stable_diagnostics():
         for gold_order in itertools.permutations((first, second))
     ]
     assert all(report == reports[0] for report in reports)
+
+
+def _negated_forgiveness() -> PropositionSig:
+    return replace(FORGIVENESS, polarity=Polarity.NEGATED)
+
+
+def test_condition_on_opposite_polarity_proposition_is_present_but_not_correct():
+    # F1: the predicted condition sits on the right span but attaches to the opposite-polarity
+    # proposition. It is still PRESENT (aligned), but the attachment is wrong, so it is not
+    # fully correct -- a dropped negation on the attachment cannot pass as a match.
+    gold = _authored(shared=(_condition(attaches_to=FORGIVENESS),), exhaustive=True)
+    predicted = _condition(attaches_to=_negated_forgiveness())
+    report = _score(Prediction("p", (predicted,)), gold)
+    assert report.condition.presence.true_positives == 1  # present on the right evidence
+    assert report.condition.attachment_matches == 0  # but attached to the wrong reading
+    assert report.condition.fully_correct == 0
+    assert report.unsupported == 1
+
+
+def test_duplicate_gold_entry_fails_before_scoring():
+    # F3: two identical shared entries are an authoring mistake, caught before scoring rather
+    # than silently deduplicated (which could turn two identical predictions into 2 TP).
+    duplicate = _condition()
+    gold = _authored(shared=(duplicate, replace(duplicate)), exhaustive=True)
+    with pytest.raises(ValueError, match="duplicate entry"):
+        _score(Prediction("p"), gold)
+
+
+def test_duplicate_predictions_stay_one_tp_one_fp():
+    # F3: the uniqueness rule is on GOLD, not predictions. One valid gold entry and two
+    # identical predictions is still 1 TP (the gold is met once) + 1 FP (the excess).
+    occurrence = entry("p", DerivedKind.OCCURRENCE, "Truth is always abundant", base_concept="truth")
+    gold = _authored(shared=(occurrence,), exhaustive=True)
+    report = _score(Prediction("p", (occurrence, replace(occurrence))), gold)
+    assert report.qualification.true_positives == 1
+    assert report.qualification.false_positives == 1
+
+
+def test_entry_shared_across_variants_is_not_rejected_or_double_credited():
+    # F3: one entry legitimately appearing in two alternative variants is NOT a duplicate
+    # (each variant is its own bundle). It validates, and only the chosen variant is scored,
+    # so it is credited once -- not twice.
+    occurrence = entry("p", DerivedKind.OCCURRENCE, "Truth is always abundant", base_concept="truth")
+    gold = _authored(
+        variants=(Variant("a", (occurrence,)), Variant("z", (occurrence,))), exhaustive=True
+    )
+    report = _score(Prediction("p", (occurrence,)), gold)
+    assert report.qualification.true_positives == 1
+    assert report.qualification.false_positives == 0
+
+
+def test_duplicate_variant_ids_rejected():
+    # F3: variant ids identify the alternative readings; two with the same id is malformed.
+    occurrence = entry("p", DerivedKind.OCCURRENCE, "Truth is always abundant", base_concept="truth")
+    other = entry("p", DerivedKind.OCCURRENCE, "future answers", base_concept="questioning")
+    gold = _authored(variants=(Variant("dup", (occurrence,)), Variant("dup", (other,))))
+    with pytest.raises(ValueError, match="duplicate variant id"):
+        _score(Prediction("p"), gold)

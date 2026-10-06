@@ -13,7 +13,7 @@ difference surfaces as a measurable mismatch rather than a broken cross-file lin
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from domain.claims.models import Predicate
+from domain.claims.models import Attribution, Mode, Polarity, Predicate
 
 
 class DerivedKind(StrEnum):
@@ -44,15 +44,41 @@ class AuthoringStatus(StrEnum):
     AUTHORED = "authored"
 
 
+class DerivedValidationError(ValueError):
+    """A derived-gold object violates a semantic invariant (a blank populated field, a
+    duplicate entry in a bundle, a foreign source). Raised at construction and at sidecar
+    load so a direct dataclass input cannot bypass what the loader checks."""
+
+
+def _reject_blank(value: str | None, field_name: str) -> None:
+    """A supplied semantic string must carry content. `None` means genuinely absent and is
+    left to the per-kind required-field rules; an empty or whitespace-only string is a
+    distinct error -- it would otherwise read as 'present but meaning nothing'."""
+    if value is not None and not value.strip():
+        raise DerivedValidationError(f"{field_name} is blank; use None for an absent field")
+
+
 @dataclass(frozen=True)
 class PropositionSig:
     """A gold-owned handle on the proposition a condition/description/requirement attaches
-    to -- the surface triple, never a predicted `claim_id`. Subject/object are stored
-    pre-normalized by the author/tool; the scorer compares them as-is."""
+    to -- the surface triple plus its assertion qualifiers, never a predicted `claim_id`.
+    Subject/object are stored pre-normalized by the author/tool; the scorer compares them
+    as-is. Polarity/mode/attribution are required and distinguishing: the same triple
+    affirmed vs negated (or asserted vs reported of the ego) is a different proposition, so a
+    condition attached to the opposite reading is not fully correct even on the right span.
+    Null objects stay legitimate."""
 
     subject: str
     predicate: Predicate
     object: str | None
+    polarity: Polarity
+    mode: Mode
+    attribution: Attribution
+
+    def __post_init__(self) -> None:
+        if not self.subject.strip():
+            raise DerivedValidationError("proposition subject is blank")
+        _reject_blank(self.object, "proposition object")
 
 
 @dataclass(frozen=True)
@@ -89,6 +115,23 @@ class DerivedEntry:
     # DESCRIPTION
     description_text: str | None = None
     describes: str | None = None  # a PropositionSig-free handle: the target annotation_id
+
+    def __post_init__(self) -> None:
+        if not self.evidence.strip():
+            raise DerivedValidationError("entry evidence is blank")
+        if not self.source_id.strip():
+            raise DerivedValidationError("entry source_id is blank")
+        for name in (
+            "condition_text",
+            "scope",
+            "mention",
+            "referent",
+            "base_concept",
+            "reframed_mode",
+            "description_text",
+            "describes",
+        ):
+            _reject_blank(getattr(self, name), name)
 
 
 @dataclass(frozen=True)

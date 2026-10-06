@@ -32,6 +32,7 @@ from domain.derivation.models import (
     ResolutionStatus,
     Variant,
 )
+from domain.derivation.validation import check_gold
 from domain.sources.models import Source
 from evaluation.claims.score import ScoreReport, _normalize, score_claims
 
@@ -355,6 +356,9 @@ def _sig_eq(a: PropositionSig | None, b: PropositionSig | None) -> bool:
         _normalize(a.subject) == _normalize(b.subject)
         and a.predicate == b.predicate
         and _normalize(a.object) == _normalize(b.object)
+        and a.polarity == b.polarity
+        and a.mode == b.mode
+        and a.attribution == b.attribution
     )
 
 
@@ -609,9 +613,9 @@ def _objective(report: FidelityReport) -> _Objective:
 
 
 def _check_sources(source: Source, prediction: Prediction, gold: DerivedGold) -> None:
-    gold_entries = gold.shared + tuple(e for v in gold.variants for e in v.entries)
-    if any(entry.source_id != gold.source_id for entry in gold_entries):
-        raise ValueError("gold entry source does not match gold source")
+    # Gold entry ownership and bundle uniqueness are the shared domain invariant, so a direct
+    # DerivedGold scored here is held to exactly what the loader/writer enforce.
+    check_gold(gold)
     if source.id != gold.source_id:
         raise ValueError(f"source {source.id!r} does not match gold {gold.source_id!r}")
     if prediction.source_id != gold.source_id:

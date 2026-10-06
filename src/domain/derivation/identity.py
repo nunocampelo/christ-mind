@@ -17,15 +17,37 @@ from domain.derivation.models import (
     Support,
 )
 
-_NULL = "\x00NULL\x00"
+# Separators for joining signature parts (`_SEPARATOR`) and the fields of a proposition
+# triple (`_FIELD`). A field is encoded with an explicit one-char presence tag so no real
+# string -- not even one equal to an old sentinel, nor one containing a separator -- can be
+# read as "absent": `_ABSENT` alone means None, `_PRESENT` + the verbatim value means a real
+# string. Blank strings are rejected upstream (models._reject_blank), so a present value is
+# never empty; the tag is what makes None vs "" vs any literal distinct and uncollidable.
 _SEPARATOR = "\x00"
+_FIELD = "\x01"
+_ABSENT = "\x02"
+_PRESENT = "\x03"
+
+
+def _text(value: str | None) -> str:
+    """Explicit presence-tagged None encoding -- never `value or _NULL`, which folds ""/None
+    together and would also collide a literal equal to the sentinel with an actual None."""
+    return _ABSENT if value is None else _PRESENT + value
 
 
 def _sig(proposition: PropositionSig | None) -> str:
     if proposition is None:
-        return _NULL
-    object_ = _NULL if proposition.object is None else proposition.object
-    return f"{proposition.subject}\x01{proposition.predicate.value}\x01{object_}"
+        return _ABSENT
+    return _PRESENT + _FIELD.join(
+        (
+            proposition.subject,
+            proposition.predicate.value,
+            _text(proposition.object),
+            proposition.polarity.value,
+            proposition.mode.value,
+            proposition.attribution.value,
+        )
+    )
 
 
 def _content_parts(entry: DerivedEntry) -> list[str]:
@@ -34,15 +56,15 @@ def _content_parts(entry: DerivedEntry) -> list[str]:
     change an id."""
     match entry.kind:
         case DerivedKind.CONDITION:
-            return [entry.condition_text or _NULL, entry.scope or _NULL, _sig(entry.attaches_to)]
+            return [_text(entry.condition_text), _text(entry.scope), _sig(entry.attaches_to)]
         case DerivedKind.RESOLVED_REFERENCE:
-            return [entry.mention or _NULL, entry.referent or _NULL]
+            return [_text(entry.mention), _text(entry.referent)]
         case DerivedKind.OCCURRENCE:
-            return [entry.base_concept or _NULL, entry.scope or _NULL]
+            return [_text(entry.base_concept), _text(entry.scope)]
         case DerivedKind.REQUIREMENT:
-            return [_sig(entry.reframed_proposition), entry.reframed_mode or _NULL]
+            return [_sig(entry.reframed_proposition), _text(entry.reframed_mode)]
         case DerivedKind.DESCRIPTION:
-            return [entry.description_text or _NULL, entry.describes or _NULL]
+            return [_text(entry.description_text), _text(entry.describes)]
 
 
 def annotation_signature(

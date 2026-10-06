@@ -87,7 +87,14 @@ def entry(
 
 def _t315() -> OracleCase:
     sid = "t3-1-5"
-    forgiveness = PropositionSig("forgiveness", Predicate.IS, "an empty gesture")
+    forgiveness = PropositionSig(
+        "forgiveness",
+        Predicate.IS,
+        "an empty gesture",
+        polarity=Polarity.AFFIRMED,
+        mode=Mode.ASSERTION,
+        attribution=Attribution.COURSE,
+    )
     entries = (
         entry(
             sid,
@@ -164,7 +171,14 @@ def _t316_requirement_description_literal() -> OracleCase:
     """Covers the requirement and description dimensions and a nonempty literal layer, which
     the other fixtures omit."""
     sid = "t3-1-6"
-    forgiveness = PropositionSig("forgiveness", Predicate.IS, "correction")
+    forgiveness = PropositionSig(
+        "forgiveness",
+        Predicate.IS,
+        "correction",
+        polarity=Polarity.AFFIRMED,
+        mode=Mode.ASSERTION,
+        attribution=Attribution.COURSE,
+    )
     requirement = entry(
         sid,
         DerivedKind.REQUIREMENT,

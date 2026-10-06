@@ -12,18 +12,25 @@ from enum import StrEnum
 
 from pydantic import BaseModel, model_validator
 
-from domain.claims.models import Predicate
+from domain.claims.models import Attribution, Mode, Polarity, Predicate
 from domain.derivation.identity import compute_annotation_id
 from domain.derivation.models import (
     AuthoringStatus,
     DerivedEntry,
     DerivedGold,
     DerivedKind,
+    DerivedValidationError,
     PropositionSig,
     ResolutionStatus,
     Support,
     Variant,
 )
+from domain.derivation.validation import check_gold
+
+# Bumped when the on-disk shape or the signature it feeds changes. v2 added the required
+# polarity/mode/attribution qualifiers on a proposition triple; a nonempty v1 sidecar lacks
+# them, so loading it would silently invent a reading -- it is rejected instead.
+SCHEMA_VERSION = 2
 
 
 class ContentField(StrEnum):
@@ -79,13 +86,30 @@ class PropositionSigLine(BaseModel):
     subject: str
     predicate: Predicate
     object: str | None = None
+    polarity: Polarity
+    mode: Mode
+    attribution: Attribution
 
     @classmethod
     def from_sig(cls, sig: PropositionSig) -> "PropositionSigLine":
-        return cls(subject=sig.subject, predicate=sig.predicate, object=sig.object)
+        return cls(
+            subject=sig.subject,
+            predicate=sig.predicate,
+            object=sig.object,
+            polarity=sig.polarity,
+            mode=sig.mode,
+            attribution=sig.attribution,
+        )
 
     def to_sig(self) -> PropositionSig:
-        return PropositionSig(subject=self.subject, predicate=self.predicate, object=self.object)
+        return PropositionSig(
+            subject=self.subject,
+            predicate=self.predicate,
+            object=self.object,
+            polarity=self.polarity,
+            mode=self.mode,
+            attribution=self.attribution,
+        )
 
 
 class DerivedEntryLine(BaseModel):
@@ -194,6 +218,7 @@ class VariantLine(BaseModel):
 
 
 class DerivedGoldFile(BaseModel):
+    schema_version: int
     source_id: str
     literal_status: AuthoringStatus
     derived_status: AuthoringStatus
@@ -201,6 +226,19 @@ class DerivedGoldFile(BaseModel):
     variants: list[VariantLine] = []
     exhaustive: bool = False
     adjudication_history: list[tuple[str, str]] = []
+
+    @model_validator(mode="after")
+    def _check_schema_version(self) -> "DerivedGoldFile":
+        """Fail loud on an outdated sidecar that carries entries rather than silently reading
+        it under the current rules (a v1 proposition has no qualifiers, so loading it would
+        invent a polarity/mode/attribution). An empty placeholder has nothing to misread, so
+        the author can just bump its version in place."""
+        if self.schema_version != SCHEMA_VERSION and (self.shared or self.variants):
+            raise ValueError(
+                f"sidecar schema_version {self.schema_version} != {SCHEMA_VERSION}; "
+                "re-author this nonempty gold against the current schema"
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_describes_links_resolve(self) -> "DerivedGoldFile":
@@ -230,7 +268,12 @@ class DerivedGoldFile(BaseModel):
 
     @classmethod
     def from_gold(cls, gold: DerivedGold) -> "DerivedGoldFile":
+        """Validate every entry's source and bundle uniqueness against the in-memory gold
+        before the per-entry source field is dropped on serialization -- a foreign entry must
+        surface here, not be rewritten as if it owned the passage."""
+        check_gold(gold)
         return cls(
+            schema_version=SCHEMA_VERSION,
             source_id=gold.source_id,
             literal_status=gold.literal_status,
             derived_status=gold.derived_status,
@@ -241,7 +284,7 @@ class DerivedGoldFile(BaseModel):
         )
 
     def to_gold(self) -> DerivedGold:
-        return DerivedGold(
+        gold = DerivedGold(
             source_id=self.source_id,
             literal_status=self.literal_status,
             derived_status=self.derived_status,
@@ -250,6 +293,8 @@ class DerivedGoldFile(BaseModel):
             exhaustive=self.exhaustive,
             adjudication_history=tuple(self.adjudication_history),
         )
+        check_gold(gold)
+        return gold
 
 
 def _with_id(entry: DerivedEntry) -> DerivedEntry:
