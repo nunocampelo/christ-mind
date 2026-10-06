@@ -138,3 +138,17 @@ proven tool, deliberately placing the 0034 counterexamples — object-less-corre
 plain-assertion-no-conditions, genuine symmetric contrast, multi-reference — so the dev split
 reaches `5/5` and can catch over-interpretation, not just under-interpretation. The 4 reserved
 report passages are authored only when a Stage-2 deriver exists to score against them.
+
+## Known schema limitation (surfaced authoring t3-1-5)
+
+The `scripts/proto_forgiveness_condition.py` prototype drew a derived
+**"understanding healing" → "understanding of" → "healing"** edge: a free-text relation
+linking a derived concept node back to the base concept `healing`. The current `DerivedKind`
+set is **closed** (`occurrence`, `resolved_reference`, `requirement`, `description`,
+`condition`) with **no concept-to-concept relation kind and no free-text edge label**, so this
+link is **not representable**. The t3-1-5 gold therefore captures the reading only as a
+`requirement` (`understanding healing requires right perception`), with `"understanding
+healing"` as an opaque subject string — **the "understanding of → healing" link is
+deliberately omitted, not forgotten**. Modelling it (e.g. a new `relation` kind with a label)
+is a **separate schema-extension slice**, gated like the rest of Stage 2; not forced mid-
+authoring. Documented so a future reader doesn't read the omission as an authoring miss.

@@ -1,0 +1,82 @@
+{
+  "derived": {
+    "schema_version": 2,
+    "source_id": "t3-1-5",
+    "literal_status": "unauthored",
+    "derived_status": "unauthored",
+    "shared": [
+      {
+        "kind": "occurrence",
+        "evidence": "unless it entails correction",
+        "support": "interpreted",
+        "base_concept": "forgiveness",
+        "scope": "lacking correction"
+      },
+      {
+        "kind": "description",
+        "evidence": "an empty gesture",
+        "support": "interpreted",
+        "description_text": "an empty gesture",
+        "describes": "ebdb2cbc8c4d3971"
+      },
+      {
+        "kind": "description",
+        "evidence": "Without this, it is essentially judgemental rather than healing.",
+        "support": "interpreted",
+        "description_text": "essentially judgemental rather than healing",
+        "describes": "ebdb2cbc8c4d3971"
+      },
+      {
+        "kind": "requirement",
+        "evidence": "Forgiveness is an empty gesture unless it entails correction.",
+        "support": "interpreted",
+        "reframed_proposition": {
+          "subject": "forgiveness",
+          "predicate": "requires",
+          "object": "correction",
+          "polarity": "affirmed",
+          "mode": "conditional",
+          "attribution": "course"
+        },
+        "reframed_mode": "conditional"
+      },
+      {
+        "kind": "resolved_reference",
+        "evidence": "Without this",
+        "support": "interpreted",
+        "mention": "this",
+        "referent": "correction"
+      },
+      {
+        "kind": "requirement",
+        "evidence": "Until this has occurred healing cannot be understood.",
+        "support": "interpreted",
+        "reframed_proposition": {
+          "subject": "understanding healing",
+          "predicate": "requires",
+          "object": "right perception for healing",
+          "polarity": "affirmed",
+          "mode": "conditional",
+          "attribution": "course"
+        },
+        "reframed_mode": "conditional"
+      }
+    ],
+    "variants": [],
+    "exhaustive": false,
+    "adjudication_history": []
+  },
+  "literal": [
+    {
+      "source_id": "t3-1-5",
+      "subject": "level-adjustment power of the miracle",
+      "verb_phrase": "induces",
+      "object": "right perception for healing",
+      "predicate": "causes",
+      "polarity": "affirmed",
+      "mode": "assertion",
+      "attribution": "course",
+      "evidence": "The level-adjustment power of the miracle induces the right perception for healing."
+    }
+  ]
+}
