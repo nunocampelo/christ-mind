@@ -21,6 +21,21 @@ the test conventions. A slice that violates these is not ready regardless of its
    "touch all four layers" as a goal. Reject slices that deliver nothing a human can
    observe (e.g. "add the repository interface" with no use case exercising it).
 
+   **User-demonstrable test (do not skip — this is where a plausible-looking slice fails).**
+   The contract must name the **exact command the *user* runs to watch this slice behave** —
+   a CLI invocation (`python -m ...`), an MCP tool call via the inspector, a server+client
+   interaction. A passing pytest suite is **evidence you hand the user, not something the
+   user runs to observe the outcome** — the two are not interchangeable, and "observable via
+   a round-trip test" does **not** satisfy this. If the only way to observe the outcome is
+   reading a test file or a green bar, the slice is **not vertical by default**. You then have
+   exactly two acceptable moves: (a) require the slice widen until there is a user-runnable
+   surface, or (b) if a pure internal/library core is genuinely the right unit, **escalate it
+   to the user** (§Escalate) as a decision — "this slice delivers a library core you cannot
+   run directly; the runnable front-end is a separate step; confirm you want it split this
+   way" — never bless the split silently on the user's behalf. Splitting off the part the
+   user can't touch and calling the remainder a complete slice is the exact failure this
+   check exists to catch.
+
 2. **The declared evidence can actually establish the claimed outcome.** This is your most
    important check. The slice must name its evidence *before* implementation:
    - retrieval / extraction / ranking change → a black-box or claims eval run, with the

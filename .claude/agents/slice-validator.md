@@ -44,6 +44,16 @@ Commands section: `pytest tests -q`, `.venv/bin/pyright`, the eval
      regression without them.
    - **Tool interactions** → capture the actual typed pydantic result the MCP wrapper
      returns, verbatim.
+   - **User-demonstrable command (for any user-facing outcome).** The contract names the
+     exact command *the user* runs to observe the slice. **You run that command yourself and
+     capture its transcript as the evidence of record** — the pytest suite is a gate (step 4),
+     not a substitute for watching the user-facing surface actually behave. If the contract
+     declares a user-facing outcome but names no command the user can run — only a test file —
+     that is a **fail**: say so, because a slice whose outcome a human can only observe by
+     reading a test is not demonstrably delivered. (A slice the user has *explicitly agreed*
+     is an internal/library core — the contract says so, flagged by the plan-critic — is
+     exempt: validate its declared tests, and note in your verdict that no user-runnable
+     surface exists by design.)
 
 2. **A green result is necessary, not sufficient.** Separately ask: *does this evidence
    prove the outcome, or only that the code runs?* State your reasoning explicitly. Watch

@@ -52,6 +52,15 @@ separately:
 
 The plan-critic verifies this can establish the outcome before any code is written.
 
+- **User-demonstrable test (name it first):** the **exact command the *user* runs** to watch
+  this slice behave — `python -m ...`, an MCP inspector call, a server+client interaction. A
+  passing test suite is evidence *you show the user*, not something *they run* to observe the
+  outcome — do not treat the two as interchangeable. If the only way to observe the outcome
+  is reading a test file or a pytest green bar, the slice is **not vertical by default**:
+  either widen it until there is a user-runnable surface, or **explicitly flag it to the user
+  as an internal/library slice they must agree is not independently demonstrable** (the
+  runnable front-end then being a named follow-up). Never split off the un-runnable core and
+  present the remainder as a complete slice without that agreement.
 - **Type:** eval run | observable MCP tool interaction | targeted tests — pick what the
   outcome demands, per CLAUDE.md:
   - retrieval / extraction / ranking → a black-box or claims eval run;
